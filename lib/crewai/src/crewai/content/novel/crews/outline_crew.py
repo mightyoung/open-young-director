@@ -89,15 +89,17 @@ class OutlineCrew(BaseContentCrew):
         Returns:
             dict: 包含world和plot的完整大纲
         """
-        result = self.kickoff()
+        # 直接调用底层 Crew kickoff，获取完整的 CrewOutput（含 tasks_output）
+        crew = self._create_workflow()
+        crew_result = crew.kickoff()
 
         # 从任务输出中提取world数据（避免重复构建）
         world_data = {}
-        if hasattr(result, 'tasks_output') and result.tasks_output:
+        raw_world = ""
+        if hasattr(crew_result, 'tasks_output') and crew_result.tasks_output:
             # 第一个任务是build_world
-            first_task_output = result.tasks_output[0]
+            first_task_output = crew_result.tasks_output[0]
             # 获取原始输出字符串
-            raw_world = ""
             if hasattr(first_task_output, 'raw'):
                 raw_world = first_task_output.raw
             elif hasattr(first_task_output, 'output'):
@@ -120,8 +122,8 @@ class OutlineCrew(BaseContentCrew):
                 except Exception:
                     world_data = {"name": "默认世界", "description": raw_world}
 
-        # 解析plot数据
-        raw_plot = result.raw if hasattr(result, 'raw') else str(result)
+        # 解析plot数据（使用 CrewOutput.raw）
+        raw_plot = getattr(crew_result, 'raw', '') or str(crew_result)
         plot_agent = self._agents.get("plot_planner")
         if plot_agent and hasattr(plot_agent, '_parse_result'):
             plot_data = plot_agent._parse_result(raw_plot)
