@@ -1,32 +1,124 @@
-.DS_Store
-.pytest_cache
-__pycache__
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
 dist/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+
+# Type checking
+.mypy_cache/
+.ruff_cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment and secrets
 .env
-assets/*
-.idea
-test/
-docs_crew/
+.env.local
+.env.*.local
+secrets/
+*.pem
+*.key
+
+# Logs
+*.log
+logs/
+
+# Local development
+*.pdb
+*.db
+*.sqlite3
 chroma.sqlite3
-old_en.json
-db/
-test.py
-rc-tests/*
-*.pkl
-temp/*
-.vscode/*
+chromadb-*.lock
+
+# CrewAI specific dev artifacts
+memory.db
+schema.sql
 crew_tasks_output.json
-.codesight
-.mypy_cache
-.ruff_cache
-.venv
 test_flow.html
 crewairules.mdc
 plan.md
 conceptual_plan.md
 build_image
-chromadb-*.lock
+old_en.json
+
+# Claude Code
 .claude
-.crewai/memory
-blogs/*
-secrets/*
+.claude/
+
+# Dev state directories (regenerateable)
+.swarm/
+.young/
+.pytest_cache
+
+# Knowledge base workspace (separate project)
+knowledge_base/.env
+knowledge_base/__pycache__
+knowledge_base/.pytest_cache
+knowledge_base/.ruff_cache
+knowledge_base/logs/*
+knowledge_base/chapter_cache/*
+knowledge_base/novels/*
+knowledge_base/novels_output/*
+knowledge_base/rl_experiences.db
+knowledge_base/agents/__pycache__
+knowledge_base/consumers/__pycache__
+knowledge_base/crawlers/__pycache__
+knowledge_base/docs/__pycache__
+knowledge_base/llm/__pycache__
+knowledge_base/scene_db/*
+knowledge_base/skills/__pycache__
+knowledge_base/tests/__pycache__
+knowledge_base/triggers/__pycache__
+knowledge_base/media/*
+knowledge_base/cookies/*
+knowledge_base/evaluation/*
+knowledge_base/config/*
+knowledge_base/lib/*
+knowledge_base/film_drama_scripts/*
+knowledge_base/generated_scripts/*
+knowledge_base/resources/*
+knowledge_base/examples/*
+knowledge_base/*.pkl
+knowledge_base/*.json
+!knowledge_base/.env.example
+!knowledge_base/pyproject.toml
+!knowledge_base/pytest.ini
+
+# Trained agents (regenerateable)
+trained_agents_data.pkl
+training_data.pkl
+
+# Docs build output
+docs/_build/
+docs/.docusaurus
+docs/node_modules/
+
+# Temporary files
+temp/
+tmp/
+*.tmp

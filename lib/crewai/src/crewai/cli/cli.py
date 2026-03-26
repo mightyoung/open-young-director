@@ -10,6 +10,7 @@ from crewai.cli.authentication.main import AuthenticationCommand
 from crewai.cli.config import Settings
 from crewai.cli.create_crew import create_crew
 from crewai.cli.create_flow import create_flow
+from crewai.cli.create_content import create_novel, create_podcast, create_blog, create_script, _run_novel_creation
 from crewai.cli.crew_chat import run_chat
 from crewai.cli.deploy.main import DeployCommand
 from crewai.cli.enterprise.main import EnterpriseConfigureCommand
@@ -79,18 +80,32 @@ def uv(uv_args):
 
 
 @crewai.command()
-@click.argument("type", type=click.Choice(["crew", "flow"]))
+@click.argument("type", type=click.Choice(["crew", "flow", "novel", "script", "blog", "podcast"]))
 @click.argument("name")
 @click.option("--provider", type=str, help="The provider to use for the crew")
 @click.option("--skip_provider", is_flag=True, help="Skip provider validation")
-def create(type, name, provider, skip_provider=False):
-    """Create a new crew, or flow."""
+@click.option("--words", default=100000, help="Target word count (for novel)")
+@click.option("--style", default="urban", help="Content style (for novel/script)")
+@click.option("--platforms", default="medium", help="Target platforms (for blog, comma-separated)")
+@click.option("--keywords", default="", help="SEO keywords (for blog, comma-separated)")
+@click.option("--duration", default=30, help="Duration in minutes (for podcast/script)")
+@click.option("--hosts", default=2, help="Number of hosts (for podcast)")
+def create(type, name, provider, skip_provider, words, style, platforms, keywords, duration, hosts):
+    """Create a new crew, flow, or content project (novel/script/blog/podcast)."""
     if type == "crew":
         create_crew(name, provider, skip_provider)
     elif type == "flow":
         create_flow(name)
+    elif type == "novel":
+        _run_novel_creation(topic=name, words=words, style=style, output=f"./{name}_novel", chapters=0)
+    elif type == "script":
+        create_script(topic=name, format="film", duration=duration, output=f"./{name}_script", acts=3)
+    elif type == "blog":
+        create_blog(topic=name, platforms=platforms, keywords=keywords, output=f"./{name}_blog", title_style="seo")
+    elif type == "podcast":
+        create_podcast(topic=name, duration=duration, hosts=hosts, style="conversational", output=f"./{name}_podcast", include_interview=False, include_ads=False)
     else:
-        click.secho("Error: Invalid type. Must be 'crew' or 'flow'.", fg="red")
+        click.secho("Error: Invalid type.", fg="red")
 
 
 @crewai.command()
