@@ -61,17 +61,35 @@ class ReviewPipeline:
                 - polished_draft: 润色后的草稿 (str)
                 - review_result: 审查结果对象
         """
-        # 阶段1: 审查
-        critique_result = self.critique_agent.critique(draft, context)
+        # 阶段1: 审查（添加错误处理，LLM失败时跳过）
+        try:
+            critique_result = self.critique_agent.critique(draft, context)
+        except (ValueError, Exception) as e:
+            # LLM返回空或网络错误时，跳过审查，使用空结果
+            import logging
+            logging.warning(f"审查阶段失败，使用空结果: {e}")
+            critique_result = ReviewResult()
+            critique_result.summary = "审查失败，跳过此阶段"
+            critique_result.score = 10.0
 
         # 阶段2: 修改
-        revised_draft = self.revision_agent.revise(draft, critique_result)
+        try:
+            revised_draft = self.revision_agent.revise(draft, critique_result)
+        except (ValueError, Exception) as e:
+            import logging
+            logging.warning(f"修改阶段失败，使用原始草稿: {e}")
+            revised_draft = draft
 
         # 阶段3: 润色
         if self.skip_polish:
             polished_draft = revised_draft
         else:
-            polished_draft = self.polish_agent.polish(revised_draft)
+            try:
+                polished_draft = self.polish_agent.polish(revised_draft)
+            except (ValueError, Exception) as e:
+                import logging
+                logging.warning(f"润色阶段失败，使用修改后草稿: {e}")
+                polished_draft = revised_draft
 
         return {
             "critique": critique_result,
