@@ -18,7 +18,6 @@ members = [
     "crewai-devtools",
     "crewai-files",
     "crewai-tools",
-    "knowledge-base",
 ]
 overrides = [
     { name = "langchain-core", specifier = ">=0.3.80,<1" },
@@ -46,7 +45,7 @@ dev = [
     { name = "types-aiofiles", specifier = "~=25.1.0" },
     { name = "types-appdirs", specifier = "==1.4.*" },
     { name = "types-psycopg2", specifier = "==2.9.21.20251012" },
-    { name = "types-pymysql", specifier = "==1.1.0.20250916" },
+    { name = "types-pymysql", specifier = "==1.1.0.20251220" },
     { name = "types-pyyaml", specifier = "==6.0.*" },
     { name = "types-regex", specifier = "==2026.1.15.*" },
     { name = "types-requests", specifier = "~=2.31.0.6" },
@@ -3208,24 +3207,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/33/01/a8ea7c5ea32a9b45ceeaee051a04c8ed4320f5add3c51bfa20879b765b70/kiwisolver-1.4.9-pp311-pypy311_pp73-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:85b5352f94e490c028926ea567fc569c52ec79ce131dadb968d3853e809518c2", size = 80281, upload-time = "2025-08-10T21:27:45.369Z" },
     { url = "https://files.pythonhosted.org/packages/da/e3/dbd2ecdce306f1d07a1aaf324817ee993aab7aee9db47ceac757deabafbe/kiwisolver-1.4.9-pp311-pypy311_pp73-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:464415881e4801295659462c49461a24fb107c140de781d55518c4b80cb6790f", size = 78009, upload-time = "2025-08-10T21:27:46.376Z" },
     { url = "https://files.pythonhosted.org/packages/da/e9/0d4add7873a73e462aeb45c036a2dead2562b825aa46ba326727b3f31016/kiwisolver-1.4.9-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:fb940820c63a9590d31d88b815e7a3aa5915cad3ce735ab45f0c730b39547de1", size = 73929, upload-time = "2025-08-10T21:27:48.236Z" },
-]
-
-[[package]]
-name = "knowledge-base"
-source = { editable = "lib/knowledge_base" }
-dependencies = [
-    { name = "chromadb" },
-    { name = "crewai" },
-    { name = "psycopg2-binary" },
-    { name = "redis" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "chromadb", specifier = ">=0.4.0" },
-    { name = "crewai", editable = "lib/crewai" },
-    { name = "psycopg2-binary", specifier = ">=2.9.0" },
-    { name = "redis", specifier = ">=5.0.0" },
 ]
 
 [[package]]
@@ -8079,11 +8060,11 @@ wheels = [
 
 [[package]]
 name = "types-pymysql"
-version = "1.1.0.20250916"
+version = "1.1.0.20251220"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/1f/12/bda1d977c07e0e47502bede1c44a986dd45946494d89e005e04cdeb0f8de/types_pymysql-1.1.0.20250916.tar.gz", hash = "sha256:98d75731795fcc06723a192786662bdfa760e1e00f22809c104fbb47bac5e29b", size = 22131, upload-time = "2025-09-16T02:49:22.039Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d3/59/e959dd6d2f8e3b3c3f058d79ac9ece328922a5a8770c707fe9c3a757481c/types_pymysql-1.1.0.20251220.tar.gz", hash = "sha256:ae1c3df32a777489431e2e9963880a0df48f6591e0aa2fd3a6fabd9dee6eca54", size = 22184, upload-time = "2025-12-20T03:07:38.689Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/21/eb/a225e32a6e7b196af67ab2f1b07363595f63255374cc3b88bfdab53b4ee8/types_pymysql-1.1.0.20250916-py3-none-any.whl", hash = "sha256:873eb9836bb5e3de4368cc7010ca72775f86e9692a5c7810f8c7f48da082e55b", size = 23063, upload-time = "2025-09-16T02:49:20.933Z" },
+    { url = "https://files.pythonhosted.org/packages/8b/fa/4f4d3bfca9ef6dd17d69ed18b96564c53b32d3ce774132308d0bee849f10/types_pymysql-1.1.0.20251220-py3-none-any.whl", hash = "sha256:fa1082af7dea6c53b6caa5784241924b1296ea3a8d3bd060417352c5e10c0618", size = 23067, upload-time = "2025-12-20T03:07:37.766Z" },
 ]
 
 [[package]]
