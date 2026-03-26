@@ -162,6 +162,7 @@ members = [
     "lib/crewai-tools",
     "lib/devtools",
     "lib/crewai-files",
+    "lib/knowledge_base",
 ]
 
 
@@ -170,3 +171,4 @@ crewai = { workspace = true }
 crewai-tools = { workspace = true }
 crewai-devtools = { workspace = true }
 crewai-files = { workspace = true }
+knowledge_base = { workspace = true }
