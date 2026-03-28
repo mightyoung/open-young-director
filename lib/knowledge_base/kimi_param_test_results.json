@@ -1,0 +1,1047 @@
+{
+  "test_time": "2026-03-21T23:37:02.557597",
+  "total_tests": 39,
+  "results": [
+    {
+      "content_type": "podcast",
+      "temperature": 0.5,
+      "max_tokens": 8192,
+      "success": true,
+      "response_time": 29.496,
+      "output_length": 1538,
+      "output_preview": "# 《太古魔帝传》播客剧本 · 第一期\n\n---\n\n## 【开场音乐渐入】\n\n**主持人（小墨）：**\n各位道友晚上好！欢迎来到**《修仙夜话》**，我是你们的老朋友小墨。此刻正在收听节目的你——是在御剑赶路的途中？还是在洞府闭关的间隙？又或者……只是地铁上挤成沙丁鱼的普通打工人？（笑）没关系，今晚这期节目，保证让你**一秒入道，原地飞升**！\n\n---\n\n## 【本期话题引入】\n\n**小墨：**",
+      "error": "",
+      "usage": {
+        "input_tokens": 81,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "output_tokens": 973,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 81,
+        "cached_tokens": 0,
+        "completion_tokens": 973,
+        "total_tokens": 1054
+      }
+    },
+    {
+      "content_type": "podcast",
+      "temperature": 0.7,
+      "max_tokens": 2048,
+      "success": true,
+      "response_time": 32.503,
+      "output_length": 1790,
+      "output_preview": "# 《太古魔帝传》播客剧本 · 第一期\n\n---\n\n## 【开场音效】\n*低沉的古琴音+剑鸣声渐入*\n\n---\n\n## 【主持人开场白】\n\n**主持人（阿墨）：**\n各位道友好！欢迎来到**《修仙夜话》**——一档专门扒拉修仙小说那些事儿的热血播客。我是你们的老朋友阿墨。\n\n*（压低声音，故作神秘）*\n\n话说最近修仙界出了件大事。不是什么宗门被灭，也不是什么神兵出世，而是一个叫**韩林**的少年—",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 81,
+        "output_tokens": 1072,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 81,
+        "cached_tokens": 81,
+        "completion_tokens": 1072,
+        "total_tokens": 1153
+      }
+    },
+    {
+      "content_type": "podcast",
+      "temperature": 0.5,
+      "max_tokens": 4096,
+      "success": true,
+      "response_time": 35.896,
+      "output_length": 1938,
+      "output_preview": "# 《太古魔帝传》播客剧本 · 第一期\n\n---\n\n## 【开场音乐渐入，带有古风电子混音】\n\n---\n\n**主持人（小北）：**\n\n\"各位道友晚上好！欢迎收听《修仙电波》，我是你们的老朋友小北。今天演播室的灯开得特别暗——别问，问就是在配合咱们这期的主题。毕竟要聊的这位主角，人家走的是**魔道路线**，咱得有点氛围感对吧？\"\n\n**【轻笑】**\n\n\"不过先说好，这期节目正道盟的听众朋友先别急着举",
+      "error": "",
+      "usage": {
+        "input_tokens": 81,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "output_tokens": 1190,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 81,
+        "cached_tokens": 0,
+        "completion_tokens": 1190,
+        "total_tokens": 1271
+      }
+    },
+    {
+      "content_type": "podcast",
+      "temperature": 0.5,
+      "max_tokens": 2048,
+      "success": true,
+      "response_time": 40.821,
+      "output_length": 2147,
+      "output_preview": "# 《太古魔帝传》播客剧本·第一期\n\n---\n\n## 【开场音效】\n*古风电子乐渐入，一声悠远钟声，剑鸣音效*\n\n---\n\n## 【主持人开场白】\n\n**主持人（小夜）：**\n各位道友晚上好！欢迎收听**《修仙雷达》**——一档专门扒拉那些让你熬夜爆肝的网文神作的播客。我是你们的主持人小夜，此刻正坐在我的\"洞府\"——也就是被咖啡杯和充电线包围的书桌前面，向各位发出神识传音。\n\n先问大家一个问题啊：",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 81,
+        "output_tokens": 1366,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 81,
+        "cached_tokens": 81,
+        "completion_tokens": 1366,
+        "total_tokens": 1447
+      }
+    },
+    {
+      "content_type": "podcast",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "success": true,
+      "response_time": 28.748,
+      "output_length": 1630,
+      "output_preview": "# 《太古魔帝传》播客剧本\n\n## 【开头部分】\n\n---\n\n### 【开场音效：古风剑鸣+低沉鼓点】\n\n**主持人（小墨）：**\n\"各位道友，晚上好！欢迎收听《修仙夜话》——我是你们的老朋友小墨。刚才这声剑鸣，有没有让你心头一颤？没错，今晚我们要聊的这本小说，开局就是王炸，全程高能无尿点！\"\n\n**主持人（阿夜）：**\n\"我是阿夜。小墨，你先别激动，容我说句公道话——修仙小说我看过不下八百本，什",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 81,
+        "output_tokens": 1063,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 81,
+        "cached_tokens": 81,
+        "completion_tokens": 1063,
+        "total_tokens": 1144
+      }
+    },
+    {
+      "content_type": "podcast",
+      "temperature": 0.7,
+      "max_tokens": 4096,
+      "success": true,
+      "response_time": 34.694,
+      "output_length": 1679,
+      "output_preview": "# 《太古魔帝传》播客剧本 · 第一期\n\n---\n\n## 【开场音效】\n*古风电子混音渐入，剑鸣声，远处雷鸣*\n\n---\n\n## 【主持人开场白】\n\n**主播阿夜**（带笑，语速轻快）：\n> \"各位道友，晚上好！欢迎收听《修仙夜话》——我是你们的老朋友，筑基未遂、熬夜金丹的阿夜。\"\n\n*轻笑*\n\n> \"先问大家一个问题啊：如果你某天放学路上，突然被一道黑光劈中，脑子里多了个声音说'小子，本座等你三",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 81,
+        "output_tokens": 1092,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 81,
+        "cached_tokens": 81,
+        "completion_tokens": 1092,
+        "total_tokens": 1173
+      }
+    },
+    {
+      "content_type": "podcast",
+      "temperature": 0.75,
+      "max_tokens": 2048,
+      "success": true,
+      "response_time": 28.591,
+      "output_length": 1372,
+      "output_preview": "# 《太古魔帝传》播客剧本 · 第一期\n\n---\n\n## 【开场音效：古风电子混音，渐入】\n\n---\n\n## 主持人开场白\n\n**主持人（小夜）：**\n> \"各位道友晚上好！欢迎来到**《修仙电台》**，我是你们的主播小夜。此刻北京时间晚上八点，不知道你是在洞府闭关、御剑通勤，还是……和我一样，正瘫在沙发上啃辣条？\"\n>\n> \"先说好，本期节目**不含渡劫指导、不提供筑基丹代购**，但保证让你——",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 81,
+        "output_tokens": 861,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 81,
+        "cached_tokens": 81,
+        "completion_tokens": 861,
+        "total_tokens": 942
+      }
+    },
+    {
+      "content_type": "podcast",
+      "temperature": 0.75,
+      "max_tokens": 4096,
+      "success": true,
+      "response_time": 38.407,
+      "output_length": 1853,
+      "output_preview": "# 《太古魔帝传》播客剧本 | 第一期：魔帝传承，逆天开局\n\n---\n\n## 【开场音效】\n*低沉的古琴+剑鸣声渐入*\n\n---\n\n## 主持人开场白\n\n**阿辰（主持人）：**\n各位道友晚上好！欢迎收听《修仙夜话》，我是你们的老朋友阿辰。此刻正在收听的你——没错，就是在地铁上偷偷摸鱼、在工位上假装敲代码、或者在深夜被窝里修仙的那位——请把\"道心坚定\"打在公屏上！\n\n*（轻笑）*\n\n今天这期节目，",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 81,
+        "output_tokens": 1201,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 81,
+        "cached_tokens": 81,
+        "completion_tokens": 1201,
+        "total_tokens": 1282
+      }
+    },
+    {
+      "content_type": "podcast",
+      "temperature": 0.75,
+      "max_tokens": 8192,
+      "success": true,
+      "response_time": 26.984,
+      "output_length": 1523,
+      "output_preview": "# 《太古魔帝传》播客剧本 · 开篇\n\n---\n\n## 【开场音乐渐入】\n\n**主持人（小墨）：**\n\"各位道友晚上好！欢迎来到《修仙夜话》——这里是专门聊网文、嗑剧情、替主角操心的一亩三分地。我是你们的老朋友小墨，旁边这位是……\"\n\n**嘉宾（老白）：**\n\"老白，一个看了十五年修仙文、筑基失败无数次的资深书虫。\"\n\n**小墨：**\n\"哈哈，老白今天咱们不筑基，咱们聊点更刺激的——**魔道传承*",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 81,
+        "output_tokens": 989,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 81,
+        "cached_tokens": 81,
+        "completion_tokens": 989,
+        "total_tokens": 1070
+      }
+    },
+    {
+      "content_type": "podcast",
+      "temperature": 0.9,
+      "max_tokens": 4096,
+      "success": true,
+      "response_time": 31.889,
+      "output_length": 1587,
+      "output_preview": "# 《太古魔帝传》播客剧本 · 第一期\n\n---\n\n## 【开场音乐渐入】\n\n---\n\n**主持人（小北）：**\n\n\"各位道友晚上好！欢迎来到《修仙电台》——我是你们的老朋友小北。先问大家一个问题啊：如果你某天 dumpster diving……啊不是，是下山采药的时候，突然捡到一个黑漆漆的破戒指，里面蹦出个老爷爷说'少年，我看你骨骼清奇'——你是跑呢，还是跑呢，还是……当场拜师？\"\n\n（停顿，笑",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 81,
+        "output_tokens": 994,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 81,
+        "cached_tokens": 81,
+        "completion_tokens": 994,
+        "total_tokens": 1075
+      }
+    },
+    {
+      "content_type": "podcast",
+      "temperature": 0.9,
+      "max_tokens": 2048,
+      "success": true,
+      "response_time": 33.14,
+      "output_length": 1705,
+      "output_preview": "# 《太古魔帝传》播客剧本 · 开篇\n\n---\n\n## 【开场音效】\n*神秘古风BGM渐入，一声低沉的魔音嗡鸣*\n\n---\n\n## 【主持人开场白】\n\n**主持人（小夜）：**\n各位道友晚上好！欢迎收听**《仙途夜话》**——全网最会唠的修仙播客，我是你们的主播小夜。\n\n*（压低声音，故作神秘）*\n\n今天这期节目开播之前，我得先问各位一个问题——\n\n**如果你某天捡垃圾……啊不是，是** **\"历",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 81,
+        "output_tokens": 1070,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 81,
+        "cached_tokens": 81,
+        "completion_tokens": 1070,
+        "total_tokens": 1151
+      }
+    },
+    {
+      "content_type": "video_prompt",
+      "temperature": 0.5,
+      "max_tokens": 1024,
+      "success": true,
+      "response_time": 11.726,
+      "output_length": 1955,
+      "output_preview": "```json\n{\n  \"prompt\": \"A young warrior named Han Lin stands on the precipice of a jagged mountain peak, his flowing dark robes billowing dramatically in the fierce high-altitude wind. The camera begin",
+      "error": "",
+      "usage": {
+        "input_tokens": 67,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "output_tokens": 391,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 67,
+        "cached_tokens": 0,
+        "completion_tokens": 391,
+        "total_tokens": 458
+      }
+    },
+    {
+      "content_type": "video_prompt",
+      "temperature": 0.5,
+      "max_tokens": 2048,
+      "success": true,
+      "response_time": 21.303,
+      "output_length": 3651,
+      "output_preview": "```json\n{\n  \"video_prompt\": {\n    \"scene_description\": \"A young cultivator named Han Lin stands alone on the peak of an ancient mountain, overlooking an endless sea of clouds stretching to the horizon",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 67,
+        "output_tokens": 771,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 67,
+        "cached_tokens": 67,
+        "completion_tokens": 771,
+        "total_tokens": 838
+      }
+    },
+    {
+      "content_type": "video_prompt",
+      "temperature": 0.5,
+      "max_tokens": 4096,
+      "success": true,
+      "response_time": 20.69,
+      "output_length": 3270,
+      "output_preview": "```json\n{\n  \"video_prompt\": {\n    \"scene_description\": \"A young warrior named Han Lin stands alone on the precipice of a jagged mountain peak, his flowing robes billowing dramatically in the high-alti",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 67,
+        "output_tokens": 695,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 67,
+        "cached_tokens": 67,
+        "completion_tokens": 695,
+        "total_tokens": 762
+      }
+    },
+    {
+      "content_type": "podcast",
+      "temperature": 0.9,
+      "max_tokens": 8192,
+      "success": true,
+      "response_time": 38.8,
+      "output_length": 2120,
+      "output_preview": "# 《太古魔帝传》播客剧本 · 第一期\n\n---\n\n## 【开场音效】\n*低沉的古琴+金属碰撞声，渐入*\n\n---\n\n## 【主持人开场白】\n\n**主持人（小夜）：**\n各位道友晚上好！欢迎收听**《修仙电台》**，我是你们的老朋友小夜。\n\n先问大家一个问题——如果你某天出门倒垃圾，突然一道金光砸你脑门上，里面传出个苍老的声音说\"少年，老夫等你三千年了\"，你是报警还是拜师？\n\n*（停顿，笑）*\n\n",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 81,
+        "output_tokens": 1289,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 81,
+        "cached_tokens": 81,
+        "completion_tokens": 1289,
+        "total_tokens": 1370
+      }
+    },
+    {
+      "content_type": "video_prompt",
+      "temperature": 0.7,
+      "max_tokens": 1024,
+      "success": true,
+      "response_time": 18.502,
+      "output_length": 3048,
+      "output_preview": "```json\n{\n  \"video_prompt\": {\n    \"scene_description\": \"A young cultivator named Han Lin stands alone on the peak of an ancient mountain, overlooking an endless sea of clouds that stretches to the hor",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 67,
+        "output_tokens": 649,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 67,
+        "cached_tokens": 67,
+        "completion_tokens": 649,
+        "total_tokens": 716
+      }
+    },
+    {
+      "content_type": "video_prompt",
+      "temperature": 0.9,
+      "max_tokens": 1024,
+      "success": true,
+      "response_time": 9.417,
+      "output_length": 1581,
+      "output_preview": "```json\n{\n  \"prompt\": \"A young cultivator named Han Lin stands alone on the peak of a towering mountain summit, his flowing robes billowing dramatically in the celestial wind. The camera begins with a",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 67,
+        "output_tokens": 317,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 67,
+        "cached_tokens": 67,
+        "completion_tokens": 317,
+        "total_tokens": 384
+      }
+    },
+    {
+      "content_type": "video_prompt",
+      "temperature": 0.9,
+      "max_tokens": 2048,
+      "success": true,
+      "response_time": 14.564,
+      "output_length": 2266,
+      "output_preview": "```json\n{\n  \"prompt\": \"A young warrior named Han Lin stands atop a jagged mountain peak, his flowing robes and long black hair billowing dramatically in the high-altitude wind. The camera frames him i",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 67,
+        "output_tokens": 526,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 67,
+        "cached_tokens": 67,
+        "completion_tokens": 526,
+        "total_tokens": 593
+      }
+    },
+    {
+      "content_type": "video_prompt",
+      "temperature": 0.9,
+      "max_tokens": 4096,
+      "success": true,
+      "response_time": 10.454,
+      "output_length": 1707,
+      "output_preview": "```json\n{\n  \"prompt\": \"A young cultivator named Han Lin stands alone on the jagged peak of a sacred mountain, his flowing dark robes and long black hair billowing dramatically in the high-altitude win",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 67,
+        "output_tokens": 351,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 67,
+        "cached_tokens": 67,
+        "completion_tokens": 351,
+        "total_tokens": 418
+      }
+    },
+    {
+      "content_type": "video_prompt",
+      "temperature": 0.7,
+      "max_tokens": 4096,
+      "success": true,
+      "response_time": 21.402,
+      "output_length": 3673,
+      "output_preview": "```json\n{\n  \"video_prompt\": {\n    \"scene_description\": \"A young warrior named Han Lin stands alone on the summit of a jagged mountain peak, overlooking an endless sea of clouds stretching to the horiz",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 67,
+        "output_tokens": 787,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 67,
+        "cached_tokens": 67,
+        "completion_tokens": 787,
+        "total_tokens": 854
+      }
+    },
+    {
+      "content_type": "video_prompt",
+      "temperature": 0.7,
+      "max_tokens": 2048,
+      "success": true,
+      "response_time": 24.409,
+      "output_length": 4144,
+      "output_preview": "```json\n{\n  \"video_prompt\": {\n    \"scene_description\": \"A young Taoist cultivator named Han Lin stands alone on the jagged peak of a sacred mountain, his flowing robes billowing in the ethereal wind a",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 67,
+        "output_tokens": 880,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 67,
+        "cached_tokens": 67,
+        "completion_tokens": 880,
+        "total_tokens": 947
+      }
+    },
+    {
+      "content_type": "character_desc",
+      "temperature": 0.5,
+      "max_tokens": 1024,
+      "success": true,
+      "response_time": 22.691,
+      "output_length": 1319,
+      "output_preview": "```json\n{\n  \"基本信息\": {\n    \"姓名\": \"韩林\",\n    \"性别\": \"男\",\n    \"年龄\": 16,\n    \"身份\": \"散修/外门弟子\"\n  },\n  \"外貌特征\": {\n    \"面容\": \"五官端正，眉目清秀，肤色因常年劳作略显黝黑，唯有一双眼睛深邃如潭，透着与年龄不符的沉静\",\n    \"身材\": \"身形单薄却挺拔，肩宽腰窄，四肢修长有力，行走时步履轻捷无",
+      "error": "",
+      "usage": {
+        "input_tokens": 55,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "output_tokens": 783,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 55,
+        "cached_tokens": 0,
+        "completion_tokens": 783,
+        "total_tokens": 838
+      }
+    },
+    {
+      "content_type": "character_desc",
+      "temperature": 0.5,
+      "max_tokens": 2048,
+      "success": true,
+      "response_time": 24.832,
+      "output_length": 1486,
+      "output_preview": "```json\n{\n  \"角色名称\": \"韩林\",\n  \"基本信息\": {\n    \"年龄\": \"十六岁\",\n    \"性别\": \"男\",\n    \"出身\": \"边陲小镇猎户之子\"\n  },\n  \"外貌描写\": {\n    \"面容\": \"五官端正却不张扬，眉如远山含黛，一双眼眸深邃如潭，平静时温润如玉，凝神时锋芒内敛\",\n    \"身形\": \"身形修长偏瘦，因常年随父入山狩猎，肩背挺拔如松，步履轻",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 55,
+        "output_tokens": 914,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 55,
+        "cached_tokens": 55,
+        "completion_tokens": 914,
+        "total_tokens": 969
+      }
+    },
+    {
+      "content_type": "character_desc",
+      "temperature": 0.7,
+      "max_tokens": 1024,
+      "success": true,
+      "response_time": 27.408,
+      "output_length": 1714,
+      "output_preview": "```json\n{\n  \"角色姓名\": \"韩林\",\n  \"基本信息\": {\n    \"年龄\": 16,\n    \"性别\": \"男\",\n    \"出身\": \"凡人界边陲小镇——青溪村猎户之子\"\n  },\n  \"外貌特征\": {\n    \"整体气质\": \"如深潭静水，不显锋芒\",\n    \"面容\": \"五官端正，眉目清俊却不张扬，肤色因常年劳作呈浅麦色\",\n    \"眼神\": \"漆黑如墨，平静时温润如",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 55,
+        "output_tokens": 977,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 55,
+        "cached_tokens": 55,
+        "completion_tokens": 977,
+        "total_tokens": 1032
+      }
+    },
+    {
+      "content_type": "character_desc",
+      "temperature": 0.5,
+      "max_tokens": 4096,
+      "success": true,
+      "response_time": 31.25,
+      "output_length": 1808,
+      "output_preview": "```json\n{\n  \"角色基本信息\": {\n    \"姓名\": \"韩林\",\n    \"性别\": \"男\",\n    \"年龄\": \"十六岁\",\n    \"身份\": \"青竹山外门弟子\"\n  },\n  \"外貌描述\": {\n    \"身形\": \"身形清瘦修长，脊背挺直如松，行走时步履轻缓无声\",\n    \"面容\": \"面容清秀却不张扬，肤色因常年劳作略显苍白，眉骨微凸，衬得眼窝略深\",\n    \"眉眼\"",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 55,
+        "output_tokens": 1100,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 55,
+        "cached_tokens": 55,
+        "completion_tokens": 1100,
+        "total_tokens": 1155
+      }
+    },
+    {
+      "content_type": "character_desc",
+      "temperature": 0.7,
+      "max_tokens": 2048,
+      "success": true,
+      "response_time": 28.472,
+      "output_length": 1727,
+      "output_preview": "```json\n{\n  \"角色信息\": {\n    \"姓名\": \"韩林\",\n    \"性别\": \"男\",\n    \"年龄\": 16,\n    \"修为境界\": \"炼气期三层\"\n  },\n  \"外貌特征\": {\n    \"面容\": \"五官端正，眉宇间透着一股与年龄不符的沉稳，双眸深邃如古井，目光内敛含蓄\",\n    \"身材\": \"身形清瘦挺拔，肩宽腰窄，虽无壮硕之感，却隐含柔韧之力\",\n    \"肤色",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 55,
+        "output_tokens": 986,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 55,
+        "cached_tokens": 55,
+        "completion_tokens": 986,
+        "total_tokens": 1041
+      }
+    },
+    {
+      "content_type": "character_desc",
+      "temperature": 0.7,
+      "max_tokens": 4096,
+      "success": true,
+      "response_time": 27.098,
+      "output_length": 1571,
+      "output_preview": "```json\n{\n  \"角色基本信息\": {\n    \"姓名\": \"韩林\",\n    \"性别\": \"男\",\n    \"年龄\": \"十六岁\",\n    \"境界\": \"炼气期三层\",\n    \"灵根\": \"伪灵根（五灵根），隐藏变异风灵根\"\n  },\n  \"外貌特征\": {\n    \"面容\": \"五官端正，眉眼间带着与年龄不符的沉静，双目幽深如潭，不笑时略显清冷\",\n    \"身形\": \"身形偏瘦削",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 55,
+        "output_tokens": 886,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 55,
+        "cached_tokens": 55,
+        "completion_tokens": 886,
+        "total_tokens": 941
+      }
+    },
+    {
+      "content_type": "character_desc",
+      "temperature": 0.9,
+      "max_tokens": 2048,
+      "success": true,
+      "response_time": 27.255,
+      "output_length": 1648,
+      "output_preview": "```json\n{\n  \"基本信息\": {\n    \"姓名\": \"韩林\",\n    \"性别\": \"男\",\n    \"年龄\": 16,\n    \"修为境界\": \"炼气期六层\"\n  },\n  \"外貌特征\": {\n    \"面容\": \"五官端正，眉如远山，双目深邃沉静，似古井无波\",\n    \"肤色\": \"微黑，常年劳作与风吹日晒所致\",\n    \"身形\": \"瘦削挺拔，肩宽腰窄，站姿如松\",\n    ",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 55,
+        "output_tokens": 911,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 55,
+        "cached_tokens": 55,
+        "completion_tokens": 911,
+        "total_tokens": 966
+      }
+    },
+    {
+      "content_type": "character_desc",
+      "temperature": 0.9,
+      "max_tokens": 1024,
+      "success": true,
+      "response_time": 29.838,
+      "output_length": 1690,
+      "output_preview": "```json\n{\n  \"角色名称\": \"韩林\",\n  \"角色定位\": \"主角\",\n  \"基本信息\": {\n    \"年龄\": 16,\n    \"出身\": \"凡人界边陲小镇——青牛镇\",\n    \"当前修为\": \"炼气期三层\",\n    \"灵根属性\": \"伪灵根（四灵根），隐藏变异风灵根待觉醒\"\n  },\n  \"外貌描写\": {\n    \"面容\": \"五官端正却不张扬，眉眼间带着与年龄不符的沉静，",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 55,
+        "output_tokens": 997,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 55,
+        "cached_tokens": 55,
+        "completion_tokens": 997,
+        "total_tokens": 1052
+      }
+    },
+    {
+      "content_type": "character_desc",
+      "temperature": 0.9,
+      "max_tokens": 4096,
+      "success": true,
+      "response_time": 23.558,
+      "output_length": 1323,
+      "output_preview": "```json\n{\n  \"角色名称\": \"韩林\",\n  \"基本信息\": {\n    \"年龄\": 16,\n    \"性别\": \"男\",\n    \"出身\": \"凡俗边陲小村，父母双亡，靠村中猎户接济长大\"\n  },\n  \"外貌描写\": {\n    \"面容\": \"五官端正却不张扬，眉眼低垂时似含远山薄雾，抬眸间偶有精光内敛\",\n    \"身形\": \"清瘦挺拔如临风青竹，肩宽腰窄，行走无声\",\n    \"",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 55,
+        "output_tokens": 835,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 55,
+        "cached_tokens": 55,
+        "completion_tokens": 835,
+        "total_tokens": 890
+      }
+    },
+    {
+      "content_type": "scene_desc",
+      "temperature": 0.5,
+      "max_tokens": 1024,
+      "success": true,
+      "response_time": 20.042,
+      "output_length": 1270,
+      "output_preview": "```json\n{\n  \"场景名称\": \"天玄峰顶\",\n  \"场景类型\": \"修仙宗门圣地\",\n  \"地理位置\": {\n    \"所属宗门\": \"青云宗\",\n    \"相对位置\": \"主峰之巅，海拔九千九百九十九丈\",\n    \"地形特征\": {\n      \"山体\": \"孤峰插云，三面绝壁如刀削，唯北侧有\"登龙道\"蜿蜒而上\",\n      \"平台\": \"峰顶方圆三百丈，天然平整如削，青玉岩质地，",
+      "error": "",
+      "usage": {
+        "input_tokens": 59,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "output_tokens": 745,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 59,
+        "cached_tokens": 0,
+        "completion_tokens": 745,
+        "total_tokens": 804
+      }
+    },
+    {
+      "content_type": "scene_desc",
+      "temperature": 0.7,
+      "max_tokens": 1024,
+      "success": true,
+      "response_time": 11.906,
+      "output_length": 761,
+      "output_preview": "```json\n{\n  \"场景名称\": \"天玄峰顶\",\n  \"场景类型\": \"修仙圣地\",\n  \"地理位置\": {\n    \"所属宗门\": \"青云宗\",\n    \"方位\": \"主峰之巅\",\n    \"海拔\": \"九千九百九十九丈\",\n    \"相对位置\": \"凌驾于七十二峰之上，俯瞰云海\"\n  },\n  \"自然环境\": {\n    \"气候\": \"终年云雾缭绕，罡风凛冽\",\n    \"灵气浓度\": ",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 59,
+        "output_tokens": 425,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 59,
+        "cached_tokens": 59,
+        "completion_tokens": 425,
+        "total_tokens": 484
+      }
+    },
+    {
+      "content_type": "scene_desc",
+      "temperature": 0.5,
+      "max_tokens": 2048,
+      "success": true,
+      "response_time": 24.208,
+      "output_length": 1495,
+      "output_preview": "```json\n{\n  \"场景名称\": \"天玄峰顶\",\n  \"场景类型\": \"修仙圣地·宗门核心\",\n  \"地理位置\": {\n    \"所属宗门\": \"青云宗\",\n    \"地形特征\": \"九峰之首，孤悬云海之上\",\n    \"海拔\": \"九千九百九十九丈\",\n    \"相对位置\": {\n      \"下方\": \"七十二座辅峰如臣子拱卫\",\n      \"东方\": \"紫气东来，日出先照之处\",\n ",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 59,
+        "output_tokens": 830,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 59,
+        "cached_tokens": 59,
+        "completion_tokens": 830,
+        "total_tokens": 889
+      }
+    },
+    {
+      "content_type": "scene_desc",
+      "temperature": 0.5,
+      "max_tokens": 4096,
+      "success": true,
+      "response_time": 23.733,
+      "output_length": 1634,
+      "output_preview": "```json\n{\n  \"场景名称\": \"天玄峰顶\",\n  \"场景类型\": \"修仙圣地·宗门核心\",\n  \"地理位置\": {\n    \"所属宗门\": \"青云宗\",\n    \"相对位置\": \"主峰之巅，海拔九千九百九十九丈\",\n    \"地形特征\": {\n      \"山体\": \"孤峰插云，三面绝壁如刀削，仅有一条\"登龙道\"蜿蜒而上\",\n      \"平台\": \"山巅方圆三百丈，天然平整如镜，疑似上",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 59,
+        "output_tokens": 917,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 59,
+        "cached_tokens": 59,
+        "completion_tokens": 917,
+        "total_tokens": 976
+      }
+    },
+    {
+      "content_type": "scene_desc",
+      "temperature": 0.7,
+      "max_tokens": 2048,
+      "success": true,
+      "response_time": 16.136,
+      "output_length": 1061,
+      "output_preview": "```json\n{\n  \"场景名称\": \"天玄峰顶\",\n  \"所属势力\": \"青云宗\",\n  \"地理位置\": {\n    \"海拔\": \"九千九百九十九丈\",\n    \"相对位置\": \"青云山脉正中央，七十二峰拱卫之首\",\n    \"地形特征\": [\n      \"峰顶呈莲花状平台，方圆三百丈\",\n      \"三面绝壁如刀削，一面有天梯蜿蜒而下\",\n      \"平台中央微陷，天然汇聚天地灵气\"\n",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 59,
+        "output_tokens": 621,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 59,
+        "cached_tokens": 59,
+        "completion_tokens": 621,
+        "total_tokens": 680
+      }
+    },
+    {
+      "content_type": "scene_desc",
+      "temperature": 0.7,
+      "max_tokens": 4096,
+      "success": true,
+      "response_time": 15.572,
+      "output_length": 1085,
+      "output_preview": "```json\n{\n  \"场景名称\": \"天玄峰顶\",\n  \"地理位置\": {\n    \"所属宗门\": \"青云宗\",\n    \"相对位置\": \"主峰之巅\",\n    \"海拔\": \"九千九百九十九丈\",\n    \"地形特征\": [\n      \"三面绝壁如刀削\",\n      \"一面缓坡接云海\",\n      \"峰顶平台方圆百丈\",\n      \"天然灵脉交汇之处\"\n    ]\n  },\n  \"气候",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 59,
+        "output_tokens": 608,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 59,
+        "cached_tokens": 59,
+        "completion_tokens": 608,
+        "total_tokens": 667
+      }
+    },
+    {
+      "content_type": "scene_desc",
+      "temperature": 0.9,
+      "max_tokens": 1024,
+      "success": true,
+      "response_time": 24.388,
+      "output_length": 1724,
+      "output_preview": "```json\n{\n  \"场景名称\": \"天玄峰顶\",\n  \"所属宗门\": \"青云宗\",\n  \"场景类型\": \"主峰禁地/祭天圣地\",\n  \n  \"地理位置\": {\n    \"海拔\": \"九千九百九十九丈，直插云霄\",\n    \"相对位置\": \"青云山脉正中央，七十二峰拱卫\",\n    \"地形特征\": [\n      \"峰顶呈浑圆平台状，方圆千丈\",\n      \"四周悬崖如刀削斧凿，壁立千仞\",",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 59,
+        "output_tokens": 956,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 59,
+        "cached_tokens": 59,
+        "completion_tokens": 956,
+        "total_tokens": 1015
+      }
+    },
+    {
+      "content_type": "scene_desc",
+      "temperature": 0.9,
+      "max_tokens": 4096,
+      "success": true,
+      "response_time": 22.308,
+      "output_length": 1435,
+      "output_preview": "```json\n{\n  \"场景名称\": \"天玄峰顶\",\n  \"地理位置\": {\n    \"所属宗门\": \"青云宗\",\n    \"相对位置\": \"主峰之巅\",\n    \"海拔\": \"九千九百九十九丈\",\n    \"地形特征\": [\n      \"三面绝壁如刀削\",\n      \"东侧连接云海栈道\",\n      \"中央为万年玄玉铺就的平顶平台\"\n    ]\n  },\n  \"自然气象\": {\n    ",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 59,
+        "output_tokens": 794,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 59,
+        "cached_tokens": 59,
+        "completion_tokens": 794,
+        "total_tokens": 853
+      }
+    },
+    {
+      "content_type": "scene_desc",
+      "temperature": 0.9,
+      "max_tokens": 2048,
+      "success": true,
+      "response_time": 30.699,
+      "output_length": 2140,
+      "output_preview": "```json\n{\n  \"场景名称\": \"天玄峰顶\",\n  \"场景类型\": \"修仙/宗门圣地\",\n  \"地理位置\": {\n    \"所属宗门\": \"青云宗\",\n    \"具体位置\": \"主峰之巅，海拔逾万丈\",\n    \"地形特征\": [\n      \"孤峰插云，三面绝壁如刀削\",\n      \"峰顶呈浑圆状，方圆约三百丈\",\n      \"东侧有天然灵泉渗出，汇成碧玉小潭\"\n    ],\n   ",
+      "error": "",
+      "usage": {
+        "input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 59,
+        "output_tokens": 1163,
+        "service_tier": "standard",
+        "inference_geo": "not_available",
+        "prompt_tokens": 59,
+        "cached_tokens": 59,
+        "completion_tokens": 1163,
+        "total_tokens": 1222
+      }
+    }
+  ],
+  "analysis": {
+    "podcast": {
+      "total_tests": 12,
+      "successful": 12,
+      "failed": 0,
+      "default_temp": 0.75,
+      "default_tokens": 4096,
+      "temp_analysis": {
+        "t_0.5": {
+          "avg_time": 35.4,
+          "avg_length": 1874.0,
+          "count": 3
+        },
+        "t_0.7": {
+          "avg_time": 31.98,
+          "avg_length": 1700.0,
+          "count": 3
+        },
+        "t_0.75": {
+          "avg_time": 31.33,
+          "avg_length": 1583.0,
+          "count": 3
+        },
+        "t_0.9": {
+          "avg_time": 34.61,
+          "avg_length": 1804.0,
+          "count": 3
+        }
+      },
+      "tokens_analysis": {
+        "tokens_2048": {
+          "avg_time": 33.76,
+          "avg_length": 1754.0,
+          "count": 4
+        },
+        "tokens_4096": {
+          "avg_time": 35.22,
+          "avg_length": 1764.0,
+          "count": 4
+        },
+        "tokens_8192": {
+          "avg_time": 31.01,
+          "avg_length": 1703.0,
+          "count": 4
+        }
+      },
+      "best_temp": 0.7,
+      "best_tokens": 8192,
+      "recommendation": "  ✅ 当前配置(0.75, 4096)合理"
+    },
+    "video_prompt": {
+      "total_tests": 9,
+      "successful": 9,
+      "failed": 0,
+      "default_temp": 0.7,
+      "default_tokens": 2048,
+      "temp_analysis": {
+        "t_0.5": {
+          "avg_time": 17.91,
+          "avg_length": 2959.0,
+          "count": 3
+        },
+        "t_0.7": {
+          "avg_time": 21.44,
+          "avg_length": 3622.0,
+          "count": 3
+        },
+        "t_0.9": {
+          "avg_time": 11.48,
+          "avg_length": 1851.0,
+          "count": 3
+        }
+      },
+      "tokens_analysis": {
+        "tokens_1024": {
+          "avg_time": 13.21,
+          "avg_length": 2195.0,
+          "count": 3
+        },
+        "tokens_2048": {
+          "avg_time": 20.09,
+          "avg_length": 3354.0,
+          "count": 3
+        },
+        "tokens_4096": {
+          "avg_time": 17.51,
+          "avg_length": 2883.0,
+          "count": 3
+        }
+      },
+      "best_temp": 0.7,
+      "best_tokens": 4096,
+      "recommendation": "  📉 较低temperature(0.5)产出更长内容"
+    },
+    "character_desc": {
+      "total_tests": 9,
+      "successful": 9,
+      "failed": 0,
+      "default_temp": 0.7,
+      "default_tokens": 8192,
+      "temp_analysis": {
+        "t_0.5": {
+          "avg_time": 26.26,
+          "avg_length": 1538.0,
+          "count": 3
+        },
+        "t_0.7": {
+          "avg_time": 27.66,
+          "avg_length": 1671.0,
+          "count": 3
+        },
+        "t_0.9": {
+          "avg_time": 26.88,
+          "avg_length": 1554.0,
+          "count": 3
+        }
+      },
+      "tokens_analysis": {
+        "tokens_1024": {
+          "avg_time": 26.65,
+          "avg_length": 1574.0,
+          "count": 3
+        },
+        "tokens_2048": {
+          "avg_time": 26.85,
+          "avg_length": 1620.0,
+          "count": 3
+        },
+        "tokens_4096": {
+          "avg_time": 27.3,
+          "avg_length": 1567.0,
+          "count": 3
+        }
+      },
+      "best_temp": 0.7,
+      "best_tokens": 1024,
+      "recommendation": "  ✅ 当前配置(0.7, 8192)合理"
+    },
+    "scene_desc": {
+      "total_tests": 9,
+      "successful": 9,
+      "failed": 0,
+      "default_temp": 0.7,
+      "default_tokens": 8192,
+      "temp_analysis": {
+        "t_0.5": {
+          "avg_time": 22.66,
+          "avg_length": 1466.0,
+          "count": 3
+        },
+        "t_0.7": {
+          "avg_time": 14.54,
+          "avg_length": 969.0,
+          "count": 3
+        },
+        "t_0.9": {
+          "avg_time": 25.8,
+          "avg_length": 1766.0,
+          "count": 3
+        }
+      },
+      "tokens_analysis": {
+        "tokens_1024": {
+          "avg_time": 18.78,
+          "avg_length": 1252.0,
+          "count": 3
+        },
+        "tokens_2048": {
+          "avg_time": 23.68,
+          "avg_length": 1565.0,
+          "count": 3
+        },
+        "tokens_4096": {
+          "avg_time": 20.54,
+          "avg_length": 1385.0,
+          "count": 3
+        }
+      },
+      "best_temp": 0.9,
+      "best_tokens": 1024,
+      "recommendation": "  📈 较高temperature(0.9)产出更长内容"
+    }
+  }
+}

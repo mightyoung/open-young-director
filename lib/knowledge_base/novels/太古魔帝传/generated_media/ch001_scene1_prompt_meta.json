@@ -1,0 +1,16 @@
+{
+  "chapter": 1,
+  "scene_index": 1,
+  "duration": 60,
+  "scene_description": "【场景】太虚宗演武场，清晨\n\n◆开场\n【韩林】*缓缓抬眸，望向演武场上那座测灵台*\n清晨的薄雾还未散尽，太虚宗演武场上已人山人海。我立于人群边缘，一袭洗得发白的青衫，与周遭锦衣华服的世家子弟格格不入。\n*五指悄然收紧，指节泛白*",
+  "characters": [
+    "韩林",
+    "柳如烟",
+    "赵元启"
+  ],
+  "mood": "dramatic",
+  "location": null,
+  "prompt_length": 2224,
+  "model": "Seedance 2.0",
+  "prompt_file": "lib/knowledge_base/novels/太古魔帝传/generated_media/ch001_scene1_seedance_prompt.txt"
+}

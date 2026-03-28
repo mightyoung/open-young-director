@@ -1,0 +1,20 @@
+{
+  "chapters": [
+    1
+  ],
+  "video_success": 0,
+  "audio_success": 0,
+  "results": [
+    {
+      "chapter": 1,
+      "video": {
+        "success": false,
+        "error": "No video prompt found"
+      },
+      "audio": {
+        "success": false,
+        "error": "No podcast script found"
+      }
+    }
+  ]
+}

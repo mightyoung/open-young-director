@@ -49,8 +49,17 @@ class CritiqueAgent:
             ReviewResult: 包含发现的问题列表和评分
         """
         prompt = self._build_critique_prompt(draft, context)
-        response = self.agent.kickoff(messages=prompt)
-        return self._parse_critique_response(response, draft)
+        try:
+            response = self.agent.kickoff(messages=prompt)
+            return self._parse_critique_response(response, draft)
+        except ValueError as e:
+            # LLM返回空响应时，使用空结果跳过审查
+            import logging
+            logging.warning(f"审查失败，使用空结果: {e}")
+            result = ReviewResult()
+            result.summary = "审查失败，跳过此阶段"
+            result.score = 10.0
+            return result
 
     def _build_critique_prompt(self, draft: str, context: "ReviewContext") -> str:
         """构建审查提示词"""

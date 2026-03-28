@@ -1,0 +1,54 @@
+{
+  "chapter": 1,
+  "chapter_title": "废物少年",
+  "scenes": [
+    {
+      "scene_index": 1,
+      "scene_description": "韩林立于演武场边缘，清晨薄雾中抬眸望向测灵台，目光深沉如古井",
+      "prompt_text": "A young cultivator in his early twenties stands at the edge of a vast martial arts arena, wearing a faded blue scholarly robe, morning mist swirling around him. He gazes toward the spirit-testing altar, eyes deep and still like an ancient well. Camera: aerial establishing shot, slow reveal. Lighting: soft golden dawn light piercing through misty fog. Style: xianxia fantasy, ethereal ancient Chinese cultivation world, solemn atmosphere. Mood: epic, emotionally charged, sense of isolation. Quality: 8K, cinematic, hyperrealistic, no blur, no watermark, no low quality",
+      "characters": [
+        "韩林"
+      ],
+      "shot_type": "establishing",
+      "emotion": "determined"
+    },
+    {
+      "scene_index": 2,
+      "scene_description": "柳如烟缓步向前，一袭白裙如仙子临尘，目光清冷如霜雪，玉佩碎裂退婚",
+      "prompt_text": "An elegant young woman in pristine white robes glides forward like a fairy descending to earth, her gaze cold as frost and snow. She raises a jade pendant inscribed with their engagement oath, then lets it shatter — spiritual light scattering like star fragments into the air. Camera: medium shot, slow push-in. Lighting: cool white light, ethereal rim lighting against dark background. Style: xianxia fantasy, icy beauty, cold aristocratic demeanor. Mood: cruel, merciless, emotionally devastating. Quality: 8K, cinematic, hyperrealistic, no blur, no watermark, no low quality",
+      "characters": [
+        "柳如烟"
+      ],
+      "shot_type": "medium_close_up",
+      "emotion": "cold"
+    },
+    {
+      "scene_index": 3,
+      "scene_description": "韩林与柳如烟对视，脊背挺直如松，表情平静，声音低沉",
+      "prompt_text": "A young man in faded blue robes stands at the edge of the spirit-testing altar, his spine straight as a pine tree. He meets her cold gaze without flinching, his expression blank yet his eyes betraying deep complexity. Camera: over-shoulder shot framing both characters. Lighting: dramatic chiaroscuro, golden rim light. Style: xianxia fantasy, tension between past lovers. Mood: bittersweet, dignified resignation, quiet determination. Quality: 8K, cinematic, hyperrealistic, no blur, no watermark, no low quality",
+      "characters": [
+        "韩林",
+        "柳如烟"
+      ],
+      "shot_type": "two_shot",
+      "emotion": "determined"
+    },
+    {
+      "scene_index": 4,
+      "scene_description": "测灵台前，韩林取出父亲遗物青玉令牌，握紧拳头，准备最后一搏",
+      "prompt_text": "Close-up on a young man's hand slowly drawing a jade token from his chest — the token carved with the character \"Han\", his father's legacy earned through sacrifice. His fingers tighten around it, knuckles whitening. Camera: extreme close-up on hands and jade token, then pull back to reveal his stoic face. Lighting: warm golden light catching the jade's luminescence, volumetric fog. Style: xianxia fantasy, emotional weight, legacy of sacrifice. Mood: epic, determined, the calm before transformation. Quality: 8K, cinematic, hyperrealistic, no blur, no watermark, no low quality",
+      "characters": [
+        "韩林"
+      ],
+      "shot_type": "close_up",
+      "emotion": "determined"
+    }
+  ],
+  "characters": [
+    "赵元启",
+    "柳如烟",
+    "林渊",
+    "韩林"
+  ],
+  "generated_with_consistency": true
+}

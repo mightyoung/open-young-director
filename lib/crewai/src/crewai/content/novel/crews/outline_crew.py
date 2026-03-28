@@ -144,3 +144,25 @@ class OutlineCrew(BaseContentCrew):
             "world": world_data,
             "plot": plot_data,
         }
+
+    def generate_outline_with_feedback(
+        self,
+        original_outline: dict,
+        feedback: dict,
+        feedback_applier: Any = None,
+    ) -> dict:
+        """根据反馈生成调整后的大纲
+
+        Args:
+            original_outline: 原始大纲
+            feedback: 结构化反馈
+            feedback_applier: FeedbackApplier 实例
+
+        Returns:
+            调整后的大纲
+        """
+        if feedback_applier is None:
+            from crewai.content.novel.feedback_applier import FeedbackApplier
+            feedback_applier = FeedbackApplier(llm=self.config.get("llm"))
+
+        return feedback_applier.apply_outline_feedback(original_outline, feedback)

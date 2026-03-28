@@ -1,0 +1,21 @@
+{
+  "chapters": [
+    1
+  ],
+  "video_success": 1,
+  "audio_success": 0,
+  "results": [
+    {
+      "chapter": 1,
+      "video": {
+        "chapter": 1,
+        "scene_index": 1,
+        "success": true,
+        "duration": 60,
+        "prompt_length": 2224,
+        "prompt_preview": "【RAW photo, 60秒完整连贯影视级视频，shot on ARRI Alexa 65电影机，2.39:1宽银幕电影画幅，8K UHD超清分辨率，HDR高动态范围，自然电影胶片颗粒，超写实真人实拍质感，全程无画面跳变、无人物属性畸变、无光影逻辑混乱，严格遵循五维控制坐标系理论，全局维度锁死+动态维度精准时序控制\n【全局固定五维基准】\n绝对主体锚定：[19岁男性韩林，面容清俊棱角分明，左眉带一",
+        "prompt_file": "lib/knowledge_base/novels/太古魔帝传/generated_media/ch001_scene1_seedance_prompt.txt"
+      }
+    }
+  ]
+}

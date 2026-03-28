@@ -1,0 +1,1356 @@
+{
+  "test_time": "2026-03-21T23:42:48.819440",
+  "total_tests": 39,
+  "results": [
+    {
+      "content_type": "podcast",
+      "temperature": 0.5,
+      "max_tokens": 2048,
+      "success": true,
+      "response_time": 30.618,
+      "output_length": 1285,
+      "response_time_score": 3.0,
+      "output_length_score": 4.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 2.25,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "title",
+        "content",
+        "duration_minutes",
+        "speakers",
+        "key_topics"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "podcast",
+      "temperature": 0.5,
+      "max_tokens": 4096,
+      "success": true,
+      "response_time": 30.812,
+      "output_length": 1259,
+      "response_time_score": 3.0,
+      "output_length_score": 2.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 1.75,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "title",
+        "content",
+        "duration_minutes",
+        "speakers",
+        "key_topics"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "podcast",
+      "temperature": 0.5,
+      "max_tokens": 8192,
+      "success": true,
+      "response_time": 45.759,
+      "output_length": 1720,
+      "response_time_score": 2.0,
+      "output_length_score": 2.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 1.5,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "title",
+        "content",
+        "duration_minutes",
+        "speakers",
+        "key_topics"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "podcast",
+      "temperature": 0.7,
+      "max_tokens": 2048,
+      "success": true,
+      "response_time": 52.511,
+      "output_length": 2130,
+      "response_time_score": 2.0,
+      "output_length_score": 1.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 1.25,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "title",
+        "content",
+        "duration_minutes",
+        "speakers",
+        "key_topics"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "podcast",
+      "temperature": 0.7,
+      "max_tokens": 4096,
+      "success": true,
+      "response_time": 43.015,
+      "output_length": 1764,
+      "response_time_score": 2.0,
+      "output_length_score": 3.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 1.75,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "title",
+        "content",
+        "duration_minutes",
+        "speakers",
+        "key_topics"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "podcast",
+      "temperature": 0.75,
+      "max_tokens": 2048,
+      "success": true,
+      "response_time": 29.201,
+      "output_length": 1170,
+      "response_time_score": 3.0,
+      "output_length_score": 3.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 2.0,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "title",
+        "content",
+        "duration_minutes",
+        "speakers",
+        "key_topics"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "podcast",
+      "temperature": 0.75,
+      "max_tokens": 4096,
+      "success": true,
+      "response_time": 27.149,
+      "output_length": 1067,
+      "response_time_score": 3.0,
+      "output_length_score": 2.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 1.75,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "title",
+        "content",
+        "duration_minutes",
+        "speakers",
+        "key_topics"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "podcast",
+      "temperature": 0.7,
+      "max_tokens": 8192,
+      "success": true,
+      "response_time": 57.557,
+      "output_length": 2239,
+      "response_time_score": 2.0,
+      "output_length_score": 2.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 1.5,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "title",
+        "content",
+        "duration_minutes",
+        "speakers",
+        "key_topics"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "podcast",
+      "temperature": 0.75,
+      "max_tokens": 8192,
+      "success": true,
+      "response_time": 27.014,
+      "output_length": 1012,
+      "response_time_score": 3.0,
+      "output_length_score": 2.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 1.75,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "title",
+        "content",
+        "duration_minutes",
+        "speakers",
+        "key_topics"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "podcast",
+      "temperature": 0.9,
+      "max_tokens": 2048,
+      "success": true,
+      "response_time": 29.862,
+      "output_length": 1157,
+      "response_time_score": 3.0,
+      "output_length_score": 3.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 2.0,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "title",
+        "content",
+        "duration_minutes",
+        "speakers",
+        "key_topics"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "video_prompt",
+      "temperature": 0.5,
+      "max_tokens": 1024,
+      "success": true,
+      "response_time": 7.164,
+      "output_length": 791,
+      "response_time_score": 5.0,
+      "output_length_score": 4.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 2.75,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "scene_name",
+        "prompt_text",
+        "style_tags",
+        "characters",
+        "mood"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "podcast",
+      "temperature": 0.9,
+      "max_tokens": 4096,
+      "success": true,
+      "response_time": 30.096,
+      "output_length": 1173,
+      "response_time_score": 3.0,
+      "output_length_score": 2.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 1.75,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "title",
+        "content",
+        "duration_minutes",
+        "speakers",
+        "key_topics"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "video_prompt",
+      "temperature": 0.5,
+      "max_tokens": 4096,
+      "success": true,
+      "response_time": 6.957,
+      "output_length": 778,
+      "response_time_score": 5.0,
+      "output_length_score": 2.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 2.25,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "scene_name",
+        "prompt_text",
+        "style_tags",
+        "characters",
+        "mood"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "video_prompt",
+      "temperature": 0.5,
+      "max_tokens": 2048,
+      "success": true,
+      "response_time": 10.677,
+      "output_length": 1054,
+      "response_time_score": 5.0,
+      "output_length_score": 3.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 2.5,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "scene_name",
+        "prompt_text",
+        "style_tags",
+        "characters",
+        "mood"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "podcast",
+      "temperature": 0.9,
+      "max_tokens": 8192,
+      "success": true,
+      "response_time": 29.748,
+      "output_length": 1257,
+      "response_time_score": 3.0,
+      "output_length_score": 2.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 1.75,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "title",
+        "content",
+        "duration_minutes",
+        "speakers",
+        "key_topics"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "video_prompt",
+      "temperature": 0.7,
+      "max_tokens": 1024,
+      "success": true,
+      "response_time": 10.205,
+      "output_length": 1245,
+      "response_time_score": 5.0,
+      "output_length_score": 1.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 2.0,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "scene_name",
+        "prompt_text",
+        "style_tags",
+        "characters",
+        "mood"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "video_prompt",
+      "temperature": 0.7,
+      "max_tokens": 2048,
+      "success": true,
+      "response_time": 9.213,
+      "output_length": 1085,
+      "response_time_score": 5.0,
+      "output_length_score": 3.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 2.5,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "scene_name",
+        "prompt_text",
+        "style_tags",
+        "characters",
+        "mood"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "video_prompt",
+      "temperature": 0.7,
+      "max_tokens": 4096,
+      "success": true,
+      "response_time": 9.679,
+      "output_length": 1117,
+      "response_time_score": 5.0,
+      "output_length_score": 2.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 2.25,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "scene_name",
+        "prompt_text",
+        "style_tags",
+        "characters",
+        "mood"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "video_prompt",
+      "temperature": 0.9,
+      "max_tokens": 2048,
+      "success": true,
+      "response_time": 6.749,
+      "output_length": 766,
+      "response_time_score": 5.0,
+      "output_length_score": 2.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 2.25,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "scene_name",
+        "prompt_text",
+        "style_tags",
+        "characters",
+        "mood"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "video_prompt",
+      "temperature": 0.9,
+      "max_tokens": 1024,
+      "success": true,
+      "response_time": 9.873,
+      "output_length": 1207,
+      "response_time_score": 5.0,
+      "output_length_score": 1.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 2.0,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "scene_name",
+        "prompt_text",
+        "style_tags",
+        "characters",
+        "mood"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "video_prompt",
+      "temperature": 0.9,
+      "max_tokens": 4096,
+      "success": true,
+      "response_time": 8.949,
+      "output_length": 1100,
+      "response_time_score": 5.0,
+      "output_length_score": 2.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 2.25,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "scene_name",
+        "prompt_text",
+        "style_tags",
+        "characters",
+        "mood"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "character_desc",
+      "temperature": 0.5,
+      "max_tokens": 1024,
+      "success": true,
+      "response_time": 34.911,
+      "output_length": 1940,
+      "response_time_score": 3.0,
+      "output_length_score": 1.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 1.5,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "name",
+        "full_description",
+        "appearance",
+        "personality",
+        "background",
+        "relationships"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "character_desc",
+      "temperature": 0.5,
+      "max_tokens": 2048,
+      "success": true,
+      "response_time": 40.184,
+      "output_length": 2156,
+      "response_time_score": 2.0,
+      "output_length_score": 1.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 1.25,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "name",
+        "full_description",
+        "appearance",
+        "personality",
+        "background",
+        "relationships"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "character_desc",
+      "temperature": 0.5,
+      "max_tokens": 4096,
+      "success": true,
+      "response_time": 43.407,
+      "output_length": 2391,
+      "response_time_score": 2.0,
+      "output_length_score": 3.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 1.75,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "name",
+        "full_description",
+        "appearance",
+        "personality",
+        "background",
+        "relationships"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "character_desc",
+      "temperature": 0.7,
+      "max_tokens": 1024,
+      "success": true,
+      "response_time": 40.653,
+      "output_length": 1694,
+      "response_time_score": 2.0,
+      "output_length_score": 1.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 1.25,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "name",
+        "full_description",
+        "appearance",
+        "personality",
+        "background",
+        "relationships"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "character_desc",
+      "temperature": 0.7,
+      "max_tokens": 2048,
+      "success": true,
+      "response_time": 42.132,
+      "output_length": 2327,
+      "response_time_score": 2.0,
+      "output_length_score": 1.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 1.25,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "name",
+        "full_description",
+        "appearance",
+        "personality",
+        "background",
+        "relationships"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "character_desc",
+      "temperature": 0.9,
+      "max_tokens": 1024,
+      "success": true,
+      "response_time": 32.176,
+      "output_length": 1824,
+      "response_time_score": 3.0,
+      "output_length_score": 1.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 1.5,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "name",
+        "full_description",
+        "appearance",
+        "personality",
+        "background",
+        "relationships"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "character_desc",
+      "temperature": 0.7,
+      "max_tokens": 4096,
+      "success": true,
+      "response_time": 37.398,
+      "output_length": 2066,
+      "response_time_score": 2.0,
+      "output_length_score": 3.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 1.75,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "name",
+        "full_description",
+        "appearance",
+        "personality",
+        "background",
+        "relationships"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "character_desc",
+      "temperature": 0.9,
+      "max_tokens": 2048,
+      "success": true,
+      "response_time": 31.556,
+      "output_length": 1595,
+      "response_time_score": 3.0,
+      "output_length_score": 4.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 2.25,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "name",
+        "full_description",
+        "appearance",
+        "personality",
+        "background",
+        "relationships"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "scene_desc",
+      "temperature": 0.5,
+      "max_tokens": 2048,
+      "success": true,
+      "response_time": 16.634,
+      "output_length": 819,
+      "response_time_score": 4.0,
+      "output_length_score": 2.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 2.0,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "name",
+        "location",
+        "atmosphere",
+        "visual_details",
+        "characters_present",
+        "significance"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "scene_desc",
+      "temperature": 0.5,
+      "max_tokens": 4096,
+      "success": true,
+      "response_time": 16.117,
+      "output_length": 809,
+      "response_time_score": 4.0,
+      "output_length_score": 2.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 2.0,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "name",
+        "location",
+        "atmosphere",
+        "visual_details",
+        "characters_present",
+        "significance"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "scene_desc",
+      "temperature": 0.5,
+      "max_tokens": 1024,
+      "success": true,
+      "response_time": 21.228,
+      "output_length": 920,
+      "response_time_score": 4.0,
+      "output_length_score": 5.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 2.75,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "name",
+        "location",
+        "atmosphere",
+        "visual_details",
+        "characters_present",
+        "significance"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "scene_desc",
+      "temperature": 0.7,
+      "max_tokens": 1024,
+      "success": true,
+      "response_time": 12.008,
+      "output_length": 578,
+      "response_time_score": 5.0,
+      "output_length_score": 3.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 2.5,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "name",
+        "location",
+        "atmosphere",
+        "visual_details",
+        "characters_present",
+        "significance"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "scene_desc",
+      "temperature": 0.7,
+      "max_tokens": 2048,
+      "success": true,
+      "response_time": 12.271,
+      "output_length": 631,
+      "response_time_score": 5.0,
+      "output_length_score": 2.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 2.25,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "name",
+        "location",
+        "atmosphere",
+        "visual_details",
+        "characters_present",
+        "significance"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "character_desc",
+      "temperature": 0.9,
+      "max_tokens": 4096,
+      "success": true,
+      "response_time": 34.098,
+      "output_length": 2134,
+      "response_time_score": 3.0,
+      "output_length_score": 3.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 2.0,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "name",
+        "full_description",
+        "appearance",
+        "personality",
+        "background",
+        "relationships"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "scene_desc",
+      "temperature": 0.7,
+      "max_tokens": 4096,
+      "success": true,
+      "response_time": 11.919,
+      "output_length": 486,
+      "response_time_score": 5.0,
+      "output_length_score": 2.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 2.25,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "name",
+        "location",
+        "atmosphere",
+        "visual_details",
+        "characters_present",
+        "significance"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "scene_desc",
+      "temperature": 0.9,
+      "max_tokens": 1024,
+      "success": true,
+      "response_time": 9.619,
+      "output_length": 479,
+      "response_time_score": 5.0,
+      "output_length_score": 3.0,
+      "json_parseable_score": 5.0,
+      "content_quality_score": 5.0,
+      "overall_score": 4.5,
+      "json_valid": true,
+      "json_fields_present": [
+        "name",
+        "location",
+        "atmosphere",
+        "visual_details",
+        "characters_present",
+        "significance"
+      ],
+      "json_fields_missing": [],
+      "error": ""
+    },
+    {
+      "content_type": "scene_desc",
+      "temperature": 0.9,
+      "max_tokens": 2048,
+      "success": true,
+      "response_time": 11.849,
+      "output_length": 642,
+      "response_time_score": 5.0,
+      "output_length_score": 2.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 2.25,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "name",
+        "location",
+        "atmosphere",
+        "visual_details",
+        "characters_present",
+        "significance"
+      ],
+      "error": ""
+    },
+    {
+      "content_type": "scene_desc",
+      "temperature": 0.9,
+      "max_tokens": 4096,
+      "success": true,
+      "response_time": 13.16,
+      "output_length": 686,
+      "response_time_score": 5.0,
+      "output_length_score": 2.0,
+      "json_parseable_score": 1.0,
+      "content_quality_score": 1.0,
+      "overall_score": 2.25,
+      "json_valid": false,
+      "json_fields_present": [],
+      "json_fields_missing": [
+        "name",
+        "location",
+        "atmosphere",
+        "visual_details",
+        "characters_present",
+        "significance"
+      ],
+      "error": ""
+    }
+  ],
+  "analysis": {
+    "podcast": {
+      "total_tests": 12,
+      "successful": 12,
+      "default_temp": 0.75,
+      "default_tokens": 4096,
+      "current_score": 1.75,
+      "best_config": "t0.5_tokens2048",
+      "best_score": 2.25,
+      "config_scores": {
+        "t0.5_tokens2048": {
+          "temperature": 0.5,
+          "max_tokens": 2048,
+          "avg_score": 2.25,
+          "avg_response_time": 30.6,
+          "avg_output_length": 1285.0
+        },
+        "t0.5_tokens4096": {
+          "temperature": 0.5,
+          "max_tokens": 4096,
+          "avg_score": 1.75,
+          "avg_response_time": 30.8,
+          "avg_output_length": 1259.0
+        },
+        "t0.5_tokens8192": {
+          "temperature": 0.5,
+          "max_tokens": 8192,
+          "avg_score": 1.5,
+          "avg_response_time": 45.8,
+          "avg_output_length": 1720.0
+        },
+        "t0.7_tokens2048": {
+          "temperature": 0.7,
+          "max_tokens": 2048,
+          "avg_score": 1.25,
+          "avg_response_time": 52.5,
+          "avg_output_length": 2130.0
+        },
+        "t0.7_tokens4096": {
+          "temperature": 0.7,
+          "max_tokens": 4096,
+          "avg_score": 1.75,
+          "avg_response_time": 43.0,
+          "avg_output_length": 1764.0
+        },
+        "t0.7_tokens8192": {
+          "temperature": 0.7,
+          "max_tokens": 8192,
+          "avg_score": 1.5,
+          "avg_response_time": 57.6,
+          "avg_output_length": 2239.0
+        },
+        "t0.75_tokens2048": {
+          "temperature": 0.75,
+          "max_tokens": 2048,
+          "avg_score": 2.0,
+          "avg_response_time": 29.2,
+          "avg_output_length": 1170.0
+        },
+        "t0.75_tokens4096": {
+          "temperature": 0.75,
+          "max_tokens": 4096,
+          "avg_score": 1.75,
+          "avg_response_time": 27.1,
+          "avg_output_length": 1067.0
+        },
+        "t0.75_tokens8192": {
+          "temperature": 0.75,
+          "max_tokens": 8192,
+          "avg_score": 1.75,
+          "avg_response_time": 27.0,
+          "avg_output_length": 1012.0
+        },
+        "t0.9_tokens2048": {
+          "temperature": 0.9,
+          "max_tokens": 2048,
+          "avg_score": 2.0,
+          "avg_response_time": 29.9,
+          "avg_output_length": 1157.0
+        },
+        "t0.9_tokens4096": {
+          "temperature": 0.9,
+          "max_tokens": 4096,
+          "avg_score": 1.75,
+          "avg_response_time": 30.1,
+          "avg_output_length": 1173.0
+        },
+        "t0.9_tokens8192": {
+          "temperature": 0.9,
+          "max_tokens": 8192,
+          "avg_score": 1.75,
+          "avg_response_time": 29.7,
+          "avg_output_length": 1257.0
+        }
+      },
+      "temp_analysis": {
+        "t_0.5": {
+          "avg_score": 1.83,
+          "avg_time": 35.7
+        },
+        "t_0.7": {
+          "avg_score": 1.5,
+          "avg_time": 51.0
+        },
+        "t_0.75": {
+          "avg_score": 1.83,
+          "avg_time": 27.8
+        },
+        "t_0.9": {
+          "avg_score": 1.83,
+          "avg_time": 29.9
+        }
+      },
+      "tokens_analysis": {
+        "tokens_2048": {
+          "avg_score": 1.88,
+          "avg_time": 35.5
+        },
+        "tokens_4096": {
+          "avg_score": 1.75,
+          "avg_time": 32.8
+        },
+        "tokens_8192": {
+          "avg_score": 1.62,
+          "avg_time": 40.0
+        }
+      }
+    },
+    "video_prompt": {
+      "total_tests": 9,
+      "successful": 9,
+      "default_temp": 0.7,
+      "default_tokens": 2048,
+      "current_score": 2.5,
+      "best_config": "t0.5_tokens1024",
+      "best_score": 2.75,
+      "config_scores": {
+        "t0.5_tokens1024": {
+          "temperature": 0.5,
+          "max_tokens": 1024,
+          "avg_score": 2.75,
+          "avg_response_time": 7.2,
+          "avg_output_length": 791.0
+        },
+        "t0.5_tokens2048": {
+          "temperature": 0.5,
+          "max_tokens": 2048,
+          "avg_score": 2.5,
+          "avg_response_time": 10.7,
+          "avg_output_length": 1054.0
+        },
+        "t0.5_tokens4096": {
+          "temperature": 0.5,
+          "max_tokens": 4096,
+          "avg_score": 2.25,
+          "avg_response_time": 7.0,
+          "avg_output_length": 778.0
+        },
+        "t0.7_tokens1024": {
+          "temperature": 0.7,
+          "max_tokens": 1024,
+          "avg_score": 2.0,
+          "avg_response_time": 10.2,
+          "avg_output_length": 1245.0
+        },
+        "t0.7_tokens2048": {
+          "temperature": 0.7,
+          "max_tokens": 2048,
+          "avg_score": 2.5,
+          "avg_response_time": 9.2,
+          "avg_output_length": 1085.0
+        },
+        "t0.7_tokens4096": {
+          "temperature": 0.7,
+          "max_tokens": 4096,
+          "avg_score": 2.25,
+          "avg_response_time": 9.7,
+          "avg_output_length": 1117.0
+        },
+        "t0.9_tokens1024": {
+          "temperature": 0.9,
+          "max_tokens": 1024,
+          "avg_score": 2.0,
+          "avg_response_time": 9.9,
+          "avg_output_length": 1207.0
+        },
+        "t0.9_tokens2048": {
+          "temperature": 0.9,
+          "max_tokens": 2048,
+          "avg_score": 2.25,
+          "avg_response_time": 6.7,
+          "avg_output_length": 766.0
+        },
+        "t0.9_tokens4096": {
+          "temperature": 0.9,
+          "max_tokens": 4096,
+          "avg_score": 2.25,
+          "avg_response_time": 8.9,
+          "avg_output_length": 1100.0
+        }
+      },
+      "temp_analysis": {
+        "t_0.5": {
+          "avg_score": 2.5,
+          "avg_time": 8.3
+        },
+        "t_0.7": {
+          "avg_score": 2.25,
+          "avg_time": 9.7
+        },
+        "t_0.9": {
+          "avg_score": 2.17,
+          "avg_time": 8.5
+        }
+      },
+      "tokens_analysis": {
+        "tokens_1024": {
+          "avg_score": 2.25,
+          "avg_time": 9.1
+        },
+        "tokens_2048": {
+          "avg_score": 2.42,
+          "avg_time": 8.9
+        },
+        "tokens_4096": {
+          "avg_score": 2.25,
+          "avg_time": 8.5
+        }
+      }
+    },
+    "character_desc": {
+      "total_tests": 9,
+      "successful": 9,
+      "default_temp": 0.7,
+      "default_tokens": 8192,
+      "current_score": 0,
+      "best_config": "t0.9_tokens2048",
+      "best_score": 2.25,
+      "config_scores": {
+        "t0.5_tokens1024": {
+          "temperature": 0.5,
+          "max_tokens": 1024,
+          "avg_score": 1.5,
+          "avg_response_time": 34.9,
+          "avg_output_length": 1940.0
+        },
+        "t0.5_tokens2048": {
+          "temperature": 0.5,
+          "max_tokens": 2048,
+          "avg_score": 1.25,
+          "avg_response_time": 40.2,
+          "avg_output_length": 2156.0
+        },
+        "t0.5_tokens4096": {
+          "temperature": 0.5,
+          "max_tokens": 4096,
+          "avg_score": 1.75,
+          "avg_response_time": 43.4,
+          "avg_output_length": 2391.0
+        },
+        "t0.7_tokens1024": {
+          "temperature": 0.7,
+          "max_tokens": 1024,
+          "avg_score": 1.25,
+          "avg_response_time": 40.7,
+          "avg_output_length": 1694.0
+        },
+        "t0.7_tokens2048": {
+          "temperature": 0.7,
+          "max_tokens": 2048,
+          "avg_score": 1.25,
+          "avg_response_time": 42.1,
+          "avg_output_length": 2327.0
+        },
+        "t0.7_tokens4096": {
+          "temperature": 0.7,
+          "max_tokens": 4096,
+          "avg_score": 1.75,
+          "avg_response_time": 37.4,
+          "avg_output_length": 2066.0
+        },
+        "t0.9_tokens1024": {
+          "temperature": 0.9,
+          "max_tokens": 1024,
+          "avg_score": 1.5,
+          "avg_response_time": 32.2,
+          "avg_output_length": 1824.0
+        },
+        "t0.9_tokens2048": {
+          "temperature": 0.9,
+          "max_tokens": 2048,
+          "avg_score": 2.25,
+          "avg_response_time": 31.6,
+          "avg_output_length": 1595.0
+        },
+        "t0.9_tokens4096": {
+          "temperature": 0.9,
+          "max_tokens": 4096,
+          "avg_score": 2.0,
+          "avg_response_time": 34.1,
+          "avg_output_length": 2134.0
+        }
+      },
+      "temp_analysis": {
+        "t_0.5": {
+          "avg_score": 1.5,
+          "avg_time": 39.5
+        },
+        "t_0.7": {
+          "avg_score": 1.42,
+          "avg_time": 40.1
+        },
+        "t_0.9": {
+          "avg_score": 1.92,
+          "avg_time": 32.6
+        }
+      },
+      "tokens_analysis": {
+        "tokens_1024": {
+          "avg_score": 1.42,
+          "avg_time": 35.9
+        },
+        "tokens_2048": {
+          "avg_score": 1.58,
+          "avg_time": 38.0
+        },
+        "tokens_4096": {
+          "avg_score": 1.83,
+          "avg_time": 38.3
+        }
+      }
+    },
+    "scene_desc": {
+      "total_tests": 9,
+      "successful": 9,
+      "default_temp": 0.7,
+      "default_tokens": 8192,
+      "current_score": 0,
+      "best_config": "t0.9_tokens1024",
+      "best_score": 4.5,
+      "config_scores": {
+        "t0.5_tokens1024": {
+          "temperature": 0.5,
+          "max_tokens": 1024,
+          "avg_score": 2.75,
+          "avg_response_time": 21.2,
+          "avg_output_length": 920.0
+        },
+        "t0.5_tokens2048": {
+          "temperature": 0.5,
+          "max_tokens": 2048,
+          "avg_score": 2.0,
+          "avg_response_time": 16.6,
+          "avg_output_length": 819.0
+        },
+        "t0.5_tokens4096": {
+          "temperature": 0.5,
+          "max_tokens": 4096,
+          "avg_score": 2.0,
+          "avg_response_time": 16.1,
+          "avg_output_length": 809.0
+        },
+        "t0.7_tokens1024": {
+          "temperature": 0.7,
+          "max_tokens": 1024,
+          "avg_score": 2.5,
+          "avg_response_time": 12.0,
+          "avg_output_length": 578.0
+        },
+        "t0.7_tokens2048": {
+          "temperature": 0.7,
+          "max_tokens": 2048,
+          "avg_score": 2.25,
+          "avg_response_time": 12.3,
+          "avg_output_length": 631.0
+        },
+        "t0.7_tokens4096": {
+          "temperature": 0.7,
+          "max_tokens": 4096,
+          "avg_score": 2.25,
+          "avg_response_time": 11.9,
+          "avg_output_length": 486.0
+        },
+        "t0.9_tokens1024": {
+          "temperature": 0.9,
+          "max_tokens": 1024,
+          "avg_score": 4.5,
+          "avg_response_time": 9.6,
+          "avg_output_length": 479.0
+        },
+        "t0.9_tokens2048": {
+          "temperature": 0.9,
+          "max_tokens": 2048,
+          "avg_score": 2.25,
+          "avg_response_time": 11.8,
+          "avg_output_length": 642.0
+        },
+        "t0.9_tokens4096": {
+          "temperature": 0.9,
+          "max_tokens": 4096,
+          "avg_score": 2.25,
+          "avg_response_time": 13.2,
+          "avg_output_length": 686.0
+        }
+      },
+      "temp_analysis": {
+        "t_0.5": {
+          "avg_score": 2.25,
+          "avg_time": 18.0
+        },
+        "t_0.7": {
+          "avg_score": 2.33,
+          "avg_time": 12.1
+        },
+        "t_0.9": {
+          "avg_score": 3.0,
+          "avg_time": 11.5
+        }
+      },
+      "tokens_analysis": {
+        "tokens_1024": {
+          "avg_score": 3.25,
+          "avg_time": 14.3
+        },
+        "tokens_2048": {
+          "avg_score": 2.17,
+          "avg_time": 13.6
+        },
+        "tokens_4096": {
+          "avg_score": 2.17,
+          "avg_time": 13.7
+        }
+      }
+    }
+  }
+}

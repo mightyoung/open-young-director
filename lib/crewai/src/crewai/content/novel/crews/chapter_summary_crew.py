@@ -141,3 +141,77 @@ class ChapterSummaryCrew(BaseContentCrew):
         # Sort by volume_num then chapter_num
         all_summaries.sort(key=lambda s: (s.get("volume_num", 0), s.get("chapter_num", 0)))
         return all_summaries
+
+    def generate_with_feedback(
+        self,
+        volume_outlines: list[dict],
+        world_data: dict,
+        original_summaries: list,
+        feedback: dict,
+        feedback_applier: Any = None,
+        bible: "ProductionBible | None" = None,
+        target_chapter: int | None = None,
+    ) -> list[dict]:
+        """根据反馈生成调整后的章节概要（顺序模式）
+
+        Args:
+            volume_outlines: 分卷大纲列表
+            world_data: 世界观数据
+            original_summaries: 原始章节概要
+            feedback: 结构化反馈
+            feedback_applier: FeedbackApplier 实例
+            bible: Production Bible
+            target_chapter: 可选，指定修改的章节号
+
+        Returns:
+            调整后的章节概要
+        """
+        if feedback_applier is None:
+            from crewai.content.novel.feedback_applier import FeedbackApplier
+            feedback_applier = FeedbackApplier(llm=self.config.get("llm"))
+
+        return feedback_applier.apply_chapter_summary_feedback(
+            original_summaries, feedback, target_chapter
+        )
+
+    def generate_parallel_with_feedback(
+        self,
+        volume_outlines: list[dict],
+        world_data: dict,
+        original_summaries: list,
+        feedback: dict,
+        feedback_applier: Any = None,
+        max_concurrency: int = 3,
+        bible: "ProductionBible | None" = None,
+        target_chapter: int | None = None,
+    ) -> list[dict]:
+        """根据反馈生成调整后的章节概要（并行模式）
+
+        Args:
+            volume_outlines: 分卷大纲列表
+            world_data: 世界观数据
+            original_summaries: 原始章节概要
+            feedback: 结构化反馈
+            feedback_applier: FeedbackApplier 实例
+            max_concurrency: 最大并发数
+            bible: Production Bible
+            target_chapter: 可选，指定修改的章节号
+
+        Returns:
+            调整后的章节概要
+        """
+        if feedback_applier is None:
+            from crewai.content.novel.feedback_applier import FeedbackApplier
+            feedback_applier = FeedbackApplier(llm=self.config.get("llm"))
+
+        adjusted = feedback_applier.apply_chapter_summary_feedback(
+            original_summaries, feedback, target_chapter
+        )
+        if adjusted == original_summaries:
+            # 没有变化，直接重新生成
+            return self.generate_parallel(
+                volume_outlines, world_data,
+                bible=bible,
+                max_concurrency=max_concurrency,
+            )
+        return adjusted

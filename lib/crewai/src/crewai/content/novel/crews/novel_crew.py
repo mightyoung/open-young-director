@@ -34,6 +34,7 @@ from crewai.content.novel.human_feedback import (
 )
 from crewai.content.novel.feedback_applier import FeedbackApplier
 from crewai.content.review.global_postpass import GlobalPostPass
+from crewai.content.review.per_chapter_postpass import PerChapterPostPass, PostPassResult
 from crewai.content.review.review_context import ReviewContext
 from crewai.content.exceptions import ValidationError
 
@@ -109,6 +110,8 @@ class NovelCrew(BaseContentCrew):
         self._pipeline_state: PipelineState | None = None
         # Production Bible for parallel generation consistency
         self._production_bible: Any = None
+        # Per-Chapter PostPass for consistency verification
+        self._per_chapter_postpass: PerChapterPostPass | None = None
 
     def _create_agents(self) -> dict[str, Any]:
         """创建Agents - 委托给子Crews"""
@@ -263,6 +266,13 @@ class NovelCrew(BaseContentCrew):
         if self._continuity_tracker is None:
             self._continuity_tracker = ContinuityTracker()
         return self._continuity_tracker
+
+    @property
+    def per_chapter_postpass(self) -> PerChapterPostPass:
+        """获取每章 PostPass"""
+        if self._per_chapter_postpass is None:
+            self._per_chapter_postpass = PerChapterPostPass()
+        return self._per_chapter_postpass
 
     def save_artifact(self, chapter_num: int, phase: str, content: Any) -> None:
         """Save chapter artifact for a specific phase.
@@ -509,6 +519,7 @@ word_count: {word_count}
         pipeline_state_path: str | None = None,
         review_each_chapter: bool = False,
         approval_mode: bool = False,
+        seed: str | None = None,
     ) -> BaseCrewOutput:
         """执行完整的小说创作流程
 
@@ -519,6 +530,9 @@ word_count: {word_count}
             review_each_chapter: 可选，是否在每章写完后暂停等待确认（逐章审核模式）。
             approval_mode: 可选，是否开启审批模式。开启后，每个阶段（outline, volume, summary）
                           完成后会暂停等待用户审批。
+            seed: 可选，用于确定性重放的 seed。如果提供，会验证与已保存状态的 seed 匹配。
+                  不匹配时，不加载已有状态，从头开始生成核心内容（世界观、大纲等）。
+                  如果未提供但配置中有 seed，会自动使用配置的 seed。
 
         Returns:
             BaseCrewOutput: 包含NovelOutput的crew输出，或PipelineState
@@ -526,9 +540,41 @@ word_count: {word_count}
         import time
         start = time.time()
 
+        # 自动生成 seed（如果配置中提供了 topic, genre, style）
+        if seed is None:
+            seed = self.config.get("seed")
+        if seed is None:
+            topic = self.config.get("topic", "")
+            genre = self.config.get("genre", "")
+            style = self.config.get("style", "")
+            if topic:
+                seed = PipelineState.generate_seed(topic, genre, style)
+
+        # 设置 seed 到 pipeline_state（用于保存时记录）
+        if seed:
+            self.pipeline_state.seed = seed
+            # 将 seed 传递给 LLM，使其真正影响 LLM 输出
+            # 将 32 字符 hex seed 转换为 int（取模 2^32 以适应 API 要求）
+            llm = self.config.get("llm")
+            if llm and hasattr(llm, 'seed'):
+                llm_seed = int(seed, 16) % (2**32)
+                llm.seed = llm_seed
+                logger.info(f"LLM seed set to {llm_seed} (from hex: {seed})")
+
         # 如果提供了状态路径，加载已有状态以支持断点续跑
         if pipeline_state_path:
-            self.load_pipeline_state(pipeline_state_path)
+            loaded_state = PipelineState.load(pipeline_state_path)
+            # Seed 验证：seed 不匹配时不加载已有状态，从头开始生成
+            if seed and not loaded_state.seed_valid(seed):
+                logger.warning(
+                    f"Seed mismatch: expected '{seed}', got '{loaded_state.seed}'. "
+                    f"Will regenerate core content (world, outline, etc.)"
+                )
+                # 重置状态，只保留 seed
+                self._pipeline_state = PipelineState(config=dict(self.config) if hasattr(self.config, "keys") else {})
+                self._pipeline_state.seed = seed
+            else:
+                self._pipeline_state = loaded_state
 
         # 获取当前流水线阶段
         current_stage = self.pipeline_state.current_stage
@@ -871,7 +917,20 @@ word_count: {word_count}
             )
 
         # PHASE 5: 撰写章节（使用章节概要）
-        chapters = self._write_all_chapters_from_summaries(world_data, chapter_summaries, review_each_chapter=review_each_chapter)
+        try:
+            chapters = self._write_all_chapters_from_summaries(world_data, chapter_summaries, review_each_chapter=review_each_chapter)
+        except PendingChapterApproval as e:
+            # 保存状态并返回待审批结果
+            self.pipeline_state.set_stage("writing")
+            return self._pack_approval_output(
+                stage="chapter",
+                content={
+                    "chapter_num": e.chapter_num,
+                    "chapter_output": e.chapter_output,
+                    "pipeline_state_path": e.pipeline_state_path,
+                },
+                execution_time=time.time() - start,
+            )
 
         # Run Global PostPass
         postpass = GlobalPostPass(continuity_tracker=self._continuity_tracker)
@@ -1004,6 +1063,14 @@ word_count: {word_count}
             return {
                 "chapters_count": len(summaries),
                 "chapter_titles": [s.get("title", "") for s in summaries[:5]],
+            }
+        elif stage == "chapter":
+            chapter_output = content.get("chapter_output")
+            return {
+                "chapter_num": content.get("chapter_num"),
+                "chapter_title": getattr(chapter_output, "title", "") if chapter_output else "",
+                "word_count": getattr(chapter_output, "word_count", 0) if chapter_output else 0,
+                "key_events": getattr(chapter_output, "key_events", []) if chapter_output else [],
             }
         return {}
 
@@ -1524,6 +1591,23 @@ word_count: {word_count}
                 except Exception as e:
                     logger.warning(f"Expansion attempt {expansion_attempts} failed: {e}")
                     break
+
+            # Per-Chapter PostPass
+            postpass_result = self.per_chapter_postpass.process(
+                chapter_num=chapter_num,
+                chapter_content=polished_draft,
+                chapter_outline=chapter_outline,
+            )
+
+            if postpass_result.has_high_severity_issues:
+                logger.warning(f"Chapter {chapter_num} has high severity consistency issues:")
+                for issue in postpass_result.issues:
+                    if issue.severity == "high":
+                        logger.warning(f"  [{issue.issue_type}] {issue.description}")
+
+            # 保存 PostPass 结果
+            if postpass_result.snapshot:
+                self.save_artifact(chapter_num, 'postpass_snapshot', postpass_result.snapshot.to_dict())
 
             # 创建章节输出
             chapter_output = ChapterOutput(
