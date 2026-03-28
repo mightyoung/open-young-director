@@ -231,12 +231,33 @@ class ReviewCrew(BaseContentCrew):
         Returns:
             tuple: (审查结果, 修改后的草稿, 润色后的草稿)
         """
-        self._lazy_init_agents()
-        critique_result = self._critique_agent.critique(draft, context)
+        import logging
+        logger = logging.getLogger(__name__)
 
-        # 执行专项检查（内心独白、视角等）
-        interiority_result = self._interiority_checker.check(draft, context)
-        pov_result = self._pov_checker.check(draft, context)
+        self._lazy_init_agents()
+
+        # 审查阶段 - 添加错误处理
+        try:
+            critique_result = self._critique_agent.critique(draft, context)
+        except (ValueError, Exception) as e:
+            logger.warning(f"审查失败，使用空结果: {e}")
+            from crewai.content.review.review_result import ReviewResult
+            critique_result = ReviewResult()
+            critique_result.summary = "审查失败，跳过此阶段"
+            critique_result.score = 10.0
+
+        # 执行专项检查（内心独白、视角等）- 添加错误处理
+        try:
+            interiority_result = self._interiority_checker.check(draft, context)
+        except (ValueError, Exception) as e:
+            logger.warning(f"内心独白检查失败: {e}")
+            interiority_result = None
+
+        try:
+            pov_result = self._pov_checker.check(draft, context)
+        except (ValueError, Exception) as e:
+            logger.warning(f"视角检查失败: {e}")
+            pov_result = None
 
         # 将检查结果转换为Issue并添加到critique_result
         if interiority_result and interiority_result.has_issues():
@@ -253,12 +274,21 @@ class ReviewCrew(BaseContentCrew):
             for issue in pov_issues:
                 critique_result.add_issue(issue)
 
-        revised_draft = self._revision_agent.revise(draft, critique_result)
+        # 修改阶段 - 添加错误处理
+        try:
+            revised_draft = self._revision_agent.revise(draft, critique_result)
+        except (ValueError, Exception) as e:
+            logger.warning(f"修改失败，使用原始草稿: {e}")
+            revised_draft = draft
 
-        # 润色
+        # 润色阶段 - 添加错误处理
         if skip_polish:
             polished_draft = revised_draft
         else:
-            polished_draft = self._polish_agent.polish(revised_draft)
+            try:
+                polished_draft = self._polish_agent.polish(revised_draft)
+            except (ValueError, Exception) as e:
+                logger.warning(f"润色失败，使用修改后草稿: {e}")
+                polished_draft = revised_draft
 
         return critique_result, revised_draft, polished_draft

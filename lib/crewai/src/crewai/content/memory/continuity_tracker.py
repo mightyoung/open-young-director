@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from crewai.content.memory.memory_types import (
@@ -115,22 +116,50 @@ class ContinuityTracker:
         if not history:
             return True  # 首次出现，肯定一致
 
-        # 2. 找到最近的状态
+        # 2. 获取实体当前存储的位置
         last_state = history[-1]
-        current_location = event.description  # 从事件描述推断当前位置
+        last_location = last_state.location
 
-        # 3. 如果实体有已知位置，检查是否矛盾
-        if last_state.location and current_location:
-            # 如果两个位置不同，检查是否有转移关键词
-            if last_state.location != current_location:
-                # 检查事件描述是否包含位置转移关键词
-                transfer_keywords = ["离开", "前往", "到达", "进入", "回到", "穿越", "传送"]
+        # 3. 从事件描述中提取新位置
+        new_location = self._extract_location_from_text(event.description)
+
+        # 4. 如果实体有已知位置，检查是否矛盾
+        if last_location and new_location:
+            if last_location != new_location:
+                # 位置改变，检查是否有转移关键词
+                transfer_keywords = ["离开", "前往", "到达", "进入", "回到", "穿越", "传送", "来到", "去往"]
                 for keyword in transfer_keywords:
                     if keyword in event.description:
-                        return True  # 有转移，合理
+                        return True  # 有转移关键词，合理
                 return False  # 无转移却位置改变 = 不一致
 
         return True
+
+    def _extract_location_from_text(self, text: str) -> str | None:
+        """从文本中提取位置信息
+
+        简单的启发式提取：查找常见的位置标记词后面的地名
+        """
+        if not text:
+            return None
+
+        # 常见位置标记模式
+        patterns = [
+            r"在([^，。,，]+)",
+            r"来到?([^，。,，]+)",
+            r"前往([^，。,，]+)",
+            r"到达([^，。,，]+)",
+            r"进入([^，。,，]+)",
+            r"回到([^，。,，]+)",
+            r"位于([^，。,，]+)",
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, text)
+            if match:
+                return match.group(1).strip()
+
+        return None
 
     def _entity_appears_in_event(self, entity_id: str, event: Event) -> bool:
         """检查实体是否出现在事件中"""

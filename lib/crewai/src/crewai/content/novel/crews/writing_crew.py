@@ -73,8 +73,19 @@ class WritingCrew(BaseContentCrew):
         Returns:
             str: 润色后的章节内容
         """
+        import logging
+        logger = logging.getLogger(__name__)
+
         # 1. Generate draft (with optional bible constraint)
-        draft = self.agents["draft_writer"].write(context, chapter_outline, bible_section)
+        try:
+            draft = self.agents["draft_writer"].write(context, chapter_outline, bible_section)
+        except ValueError as e:
+            if "Invalid response from LLM call" in str(e) or "None or empty" in str(e):
+                logger.warning(f"LLM returned empty response for chapter {context.current_chapter_num}, using outline as draft: {e}")
+                # Fallback: generate draft from outline
+                draft = self._generate_fallback_draft(context, chapter_outline)
+            else:
+                raise
 
         # 2. Build review context
         review_context = self._build_review_context(context, chapter_outline)
@@ -87,6 +98,46 @@ class WritingCrew(BaseContentCrew):
             self._update_memory_from_draft(polished_draft, context)
 
         return polished_draft
+
+    def _generate_fallback_draft(self, context: WritingContext, chapter_outline: dict) -> str:
+        """Generate a basic draft from outline when LLM fails.
+
+        This is a fallback when the LLM returns empty response. It creates
+        a simple draft based on the chapter outline structure.
+
+        Args:
+            context: Writing context
+            chapter_outline: Chapter outline dict
+
+        Returns:
+            str: Basic draft content
+        """
+        title = chapter_outline.get("title", f"第{context.current_chapter_num}章")
+        hook = chapter_outline.get("hook", "")
+        main_events = chapter_outline.get("main_events", [])
+        climax = chapter_outline.get("climax", "")
+        ending_hook = chapter_outline.get("ending_hook", "")
+
+        lines = [f"# {title}\n"]
+        if hook:
+            lines.append(f"{hook}\n")
+        lines.append(f"\n引子：\n{context.previous_chapters_summary}\n")
+
+        if main_events:
+            lines.append("\n主要事件：\n")
+            for i, event in enumerate(main_events, 1):
+                lines.append(f"{i}. {event}\n")
+
+        if climax:
+            lines.append(f"\n高潮：\n{climax}\n")
+
+        if ending_hook:
+            lines.append(f"\n结尾悬念：\n{ending_hook}\n")
+
+        # Add a note that this is a fallback
+        lines.append("\n*注：此为自动生成草稿，LLM响应失败，请手动润色。*\n")
+
+        return "".join(lines)
 
     def _build_review_context(self, context: WritingContext, chapter_outline: dict):
         """Build ReviewContext for per-chapter PostPass."""

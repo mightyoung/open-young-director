@@ -187,3 +187,69 @@ class VolumeOutlineCrew(BaseContentCrew):
         """Get or create VolumeOutlineVerifier (lazy import to avoid circular deps)."""
         from crewai.content.novel.production_bible.outline_verifier import VolumeOutlineVerifier
         return VolumeOutlineVerifier(llm=self.config.get("llm"), verbose=self.verbose)
+
+    def generate_with_feedback(
+        self,
+        plot_data: dict,
+        world_data: dict,
+        original_volumes: list,
+        feedback: dict,
+        feedback_applier: Any = None,
+    ) -> list[dict]:
+        """根据反馈生成调整后的分卷大纲（顺序模式）
+
+        Args:
+            plot_data: 整体情节规划
+            world_data: 世界观数据
+            original_volumes: 原始分卷大纲
+            feedback: 结构化反馈
+            feedback_applier: FeedbackApplier 实例
+
+        Returns:
+            调整后的分卷大纲
+        """
+        if feedback_applier is None:
+            from crewai.content.novel.feedback_applier import FeedbackApplier
+            feedback_applier = FeedbackApplier(llm=self.config.get("llm"))
+
+        return feedback_applier.apply_volume_feedback(original_volumes, feedback)
+
+    def generate_parallel_with_feedback(
+        self,
+        plot_data: dict,
+        world_data: dict,
+        original_volumes: list,
+        feedback: dict,
+        feedback_applier: Any = None,
+        max_concurrency: int = 3,
+        bible: "ProductionBible | None" = None,
+        verify: bool = True,
+    ) -> list[dict]:
+        """根据反馈生成调整后的分卷大纲（并行模式）
+
+        Args:
+            plot_data: 整体情节规划
+            world_data: 世界观数据
+            original_volumes: 原始分卷大纲
+            feedback: 结构化反馈
+            feedback_applier: FeedbackApplier 实例
+            max_concurrency: 最大并发数
+            bible: Production Bible
+            verify: 是否验证
+
+        Returns:
+            调整后的分卷大纲
+        """
+        if feedback_applier is None:
+            from crewai.content.novel.feedback_applier import FeedbackApplier
+            feedback_applier = FeedbackApplier(llm=self.config.get("llm"))
+
+        adjusted = feedback_applier.apply_volume_feedback(original_volumes, feedback)
+        if adjusted == original_volumes:
+            # 没有变化，直接使用并行生成（重新验证）
+            return self.generate_parallel(
+                plot_data, world_data,
+                max_concurrency=max_concurrency,
+                bible=bible, verify=verify,
+            )
+        return adjusted

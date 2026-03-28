@@ -180,6 +180,7 @@ def _run_novel_creation(
     pipeline_state_path: str | None = None,
     interactive: bool = False,
     review_each_chapter: bool = False,
+    seed_variant: str | None = None,
 ):
     """Core novel creation logic — usable both from CLI and programmatic calls.
 
@@ -192,6 +193,7 @@ def _run_novel_creation(
         stop_at: 在指定阶段暂停 (outline/evaluation/volume/summary)
         resume_from: 从指定阶段恢复 (outline/evaluation/volume/summary)
         pipeline_state_path: 流水线状态文件路径（用于 resume）
+        seed_variant: 可选的 seed 变体，用于生成同一主题的不同变体
     """
     # Load .env from project root so API keys are available to litellm
     from pathlib import Path
@@ -224,8 +226,15 @@ def _run_novel_creation(
             "num_chapters": chapters if chapters > 0 else 10,
             "genre": style,
             "llm": llm,
+            "output_dir": output,  # Enable checkpoint saving
         }
         crew = NovelCrew(config=config)
+
+        # Compute seed with variant for deterministic variant generation
+        from crewai.content.novel.pipeline_state import PipelineState
+        seed = PipelineState.generate_seed(topic, style, style, seed_variant)
+        if seed_variant:
+            click.echo(f"   Seed变体: {seed_variant}")
 
         # Interactive mode: stage-by-stage with human confirmation
         if interactive:
@@ -255,7 +264,7 @@ def _run_novel_creation(
 
             # Use kickoff with state-caching to skip already-done phases
             state_path = pipeline_state_path if Path(pipeline_state_path).exists() else None
-            result = crew.kickoff(stop_at=resume_stop_at, pipeline_state_path=state_path, review_each_chapter=review_each_chapter)
+            result = crew.kickoff(stop_at=resume_stop_at, pipeline_state_path=state_path, review_each_chapter=review_each_chapter, seed=seed)
 
             # If stopped at a stage (not completed writing), return
             if result.metadata.get("stopped"):
@@ -267,7 +276,7 @@ def _run_novel_creation(
         else:
             # Normal (non-resume) mode
             state_path = pipeline_state_path if pipeline_state_path and Path(pipeline_state_path).exists() else None
-            result = crew.kickoff(stop_at=stop_at, pipeline_state_path=state_path, review_each_chapter=review_each_chapter)
+            result = crew.kickoff(stop_at=stop_at, pipeline_state_path=state_path, review_each_chapter=review_each_chapter, seed=seed)
 
             # 检查是否停止在某个阶段（没有完整内容）
             if result.metadata.get("stopped"):
@@ -327,27 +336,34 @@ def _run_novel_creation(
 @click.command()
 @click.argument("topic")
 @click.option("--words", default=100000, help="目标字数")
+@click.option("--chapters", default=0, help="章节数量 (0=自动根据字数计算)")
 @click.option("--style", default="urban", help="小说风格 (urban/xianxia/doushi/modern)")
 @click.option("--output", default="./novel_output", help="输出目录")
 @click.option("--stop-at", default=None, help="在指定阶段暂停 (outline/evaluation/volume/summary)")
 @click.option("--resume-from", default=None, help="从指定阶段恢复 (evaluation/volume/summary/writing)")
 @click.option("--interactive", is_flag=True, help="交互模式：每阶段完成后等待确认再继续")
 @click.option("--review-each-chapter", is_flag=True, help="逐章审核：每章写完后等待确认再继续")
+@click.option("--seed-variant", default=None, help="Seed变体：用于生成同一主题的不同变体")
 def create_novel(
     topic: str,
     words: int,
+    chapters: int,
     style: str,
     output: str,
     stop_at: str | None,
     resume_from: str | None,
     interactive: bool,
     review_each_chapter: bool,
+    seed_variant: str | None,
 ):
     """创建小说项目 (Create a new novel project).
 
     Examples:
-        # 完整生成
-        crewai create novel "都市修仙" --words 100000 --style xianxia
+        # 完整生成 100万字，100章节
+        crewai create novel "都市修仙" --words 1000000 --chapters 100 --style xianxia
+
+        # 完整生成 200万字，自动计算章节数 (每章约1万字)
+        crewai create novel "都市修仙" --words 2000000
 
         # 在大纲阶段暂停（查看大纲）
         crewai create novel "都市修仙" --stop-at outline
@@ -375,12 +391,13 @@ def create_novel(
         words=words,
         style=style,
         output=output,
-        chapters=0,
+        chapters=chapters,
         stop_at=stop_at,
         resume_from=resume_from,
         pipeline_state_path=str(Path(output) / "pipeline_state.json") if (stop_at or resume_from or interactive) else None,
         interactive=interactive,
         review_each_chapter=review_each_chapter,
+        seed_variant=seed_variant,
     )
 
 

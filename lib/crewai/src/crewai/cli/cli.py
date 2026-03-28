@@ -85,19 +85,20 @@ def uv(uv_args):
 @click.option("--provider", type=str, help="The provider to use for the crew")
 @click.option("--skip_provider", is_flag=True, help="Skip provider validation")
 @click.option("--words", default=100000, help="Target word count (for novel)")
+@click.option("--chapters", default=0, help="Number of chapters for novel (0=auto)")
 @click.option("--style", default="urban", help="Content style (for novel/script)")
 @click.option("--platforms", default="medium", help="Target platforms (for blog, comma-separated)")
 @click.option("--keywords", default="", help="SEO keywords (for blog, comma-separated)")
 @click.option("--duration", default=30, help="Duration in minutes (for podcast/script)")
 @click.option("--hosts", default=2, help="Number of hosts (for podcast)")
-def create(type, name, provider, skip_provider, words, style, platforms, keywords, duration, hosts):
+def create(type, name, provider, skip_provider, words, chapters, style, platforms, keywords, duration, hosts):
     """Create a new crew, flow, or content project (novel/script/blog/podcast)."""
     if type == "crew":
         create_crew(name, provider, skip_provider)
     elif type == "flow":
         create_flow(name)
     elif type == "novel":
-        _run_novel_creation(topic=name, words=words, style=style, output=f"./{name}_novel", chapters=0)
+        _run_novel_creation(topic=name, words=words, style=style, output=f"./{name}_novel", chapters=chapters)
     elif type == "script":
         create_script(topic=name, format="film", duration=duration, output=f"./{name}_script", acts=3)
     elif type == "blog":
