@@ -1,7 +1,8 @@
 """NovelCrew - 主编排"""
 
 import logging
-from typing import TYPE_CHECKING, Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Dict
 
 
 logger = logging.getLogger(__name__)
@@ -24,12 +25,46 @@ from crewai.content.novel.crews.world_crew import WorldCrew
 from crewai.content.novel.crews.writing_crew import WritingCrew
 from crewai.content.novel.novel_types import ChapterOutput, NovelOutput, WritingContext
 from crewai.content.novel.pipeline_state import PipelineState
+from crewai.content.novel.human_feedback import (
+    HumanFeedback,
+    FeedbackParser,
+    ApprovalDecision,
+    ApprovalWorkflow,
+    create_approval_feedback,
+)
+from crewai.content.novel.feedback_applier import FeedbackApplier
 from crewai.content.review.global_postpass import GlobalPostPass
 from crewai.content.review.review_context import ReviewContext
+from crewai.content.exceptions import ValidationError
 
 
 if TYPE_CHECKING:
     pass
+
+
+class PendingChapterApproval(Exception):
+    """章节待审批异常
+
+    当 review_each_chapter=True 时，章节完成后会抛出此异常，
+    表示需要用户审批后才能继续下一章。
+
+    Attributes:
+        chapter_num: 章节号
+        chapter_output: 章节输出
+        pipeline_state_path: 流水线状态保存路径
+    """
+
+    def __init__(
+        self,
+        message: str,
+        chapter_num: int,
+        chapter_output: ChapterOutput,
+        pipeline_state_path: str,
+    ):
+        super().__init__(message)
+        self.chapter_num = chapter_num
+        self.chapter_output = chapter_output
+        self.pipeline_state_path = pipeline_state_path
 
 
 class NovelCrew(BaseContentCrew):
@@ -249,7 +284,232 @@ class NovelCrew(BaseContentCrew):
         """Check if artifact exists for chapter and phase."""
         return chapter_num in self._chapter_artifacts and phase in self._chapter_artifacts[chapter_num]
 
-    def kickoff(self, stop_at: str | None = None, pipeline_state_path: str | None = None, review_each_chapter: bool = False) -> BaseCrewOutput:
+    def _get_novel_output_dir(self) -> str:
+        """Get the output directory for the novel: novels/{novel_name}_{timestamp}/
+
+        Uses timestamp to isolate different runs of the same novel topic.
+        Cached after first call to ensure consistent directory throughout a run.
+        """
+        # Cache the output directory to ensure consistency within a single run
+        if not hasattr(self, '_cached_output_dir'):
+            topic = self.config.get("topic", "未命名小说")
+            # Sanitize topic for filesystem
+            safe_topic = "".join(c if c.isalnum() or c in "_- " else "_" for c in topic)
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            self._cached_output_dir = f"novels/{safe_topic}_{timestamp}"
+        return self._cached_output_dir
+
+    def _save_chapter_checkpoint(self, chapter_output: ChapterOutput) -> None:
+        """Save chapter content to disk immediately as checkpoint.
+
+        Uses atomic write (temp file + rename) to ensure version always works.
+        Directory: novels/{novel_name}/chapters/
+        Filename: {chapter_num:03d}.{title}.md
+
+        Args:
+            chapter_output: The completed chapter output
+        """
+        import json
+        import os
+        import tempfile
+        from pathlib import Path
+        from datetime import datetime
+
+        output_dir = self._get_novel_output_dir()
+        topic = self.config.get("topic", "未命名小说")
+
+        # Create chapters directory
+        chapters_dir = Path(output_dir) / "chapters"
+        chapters_dir.mkdir(parents=True, exist_ok=True)
+
+        # Build filename: 001.第一章标题.md
+        chapter_num = chapter_output.chapter_num
+        # Ensure chapter_num is integer for formatting
+        try:
+            chapter_num_int = int(chapter_num)
+        except (ValueError, TypeError):
+            chapter_num_int = 1
+        title = getattr(chapter_output, "title", f"第{chapter_num}章")
+        # Sanitize title for filename
+        safe_title = "".join(c if c.isalnum() or c in "_- " else "_" for c in title)[:50]
+        chapter_filename = f"{chapter_num_int:03d}.{safe_title}.md"
+        chapter_file = chapters_dir / chapter_filename
+
+        # Build markdown content with frontmatter
+        content = chapter_output.content if hasattr(chapter_output, "content") else str(chapter_output)
+        word_count = chapter_output.word_count or len(content) // 2
+
+        markdown_content = f"""---
+title: "{title}"
+chapter: {chapter_num}
+novel: "{topic}"
+generated_at: "{datetime.now().isoformat()}"
+word_count: {word_count}
+---
+
+# {title}
+
+{content}
+"""
+
+        # Atomic write: write to temp file, then rename
+        temp_fd, temp_path = tempfile.mkstemp(suffix=".md", dir=str(chapters_dir))
+        try:
+            with os.fdopen(temp_fd, "w", encoding="utf-8") as f:
+                f.write(markdown_content)
+            # Atomic rename (on POSIX this is atomic if within same filesystem)
+            os.replace(temp_path, chapter_file)
+            logger.info(f"Checkpoint saved: {chapter_file} ({word_count} words)")
+        except Exception as e:
+            logger.warning(f"Failed to save checkpoint for chapter {chapter_num}: {e}")
+            # Clean up temp file on failure
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+
+        # Update result.json with current progress (also atomic)
+        result_file = Path(output_dir) / "result.json"
+        result_temp_fd, result_temp_path = tempfile.mkstemp(suffix=".json", dir=str(chapters_dir))
+        try:
+            # Read existing result or create new
+            if result_file.exists():
+                with open(result_file, "r", encoding="utf-8") as f:
+                    result_data = json.load(f)
+            else:
+                result_data = {
+                    "topic": topic,
+                    "target_words": self.config.get("target_words", 0),
+                    "style": self.config.get("style", ""),
+                    "title": topic,
+                    "chapters_count": 0,
+                    "word_count": 0,
+                }
+
+            # Update with current chapter (take max to avoid double-counting on retries)
+            result_data["chapters_count"] = max(result_data.get("chapters_count", 0), chapter_num)
+            result_data["word_count"] = (result_data.get("word_count", 0) or 0) + word_count
+            result_data["last_updated"] = datetime.now().isoformat()
+            result_data["last_chapter"] = chapter_num
+
+            # Write atomically
+            with os.fdopen(result_temp_fd, "w", encoding="utf-8") as f:
+                json.dump(result_data, f, ensure_ascii=False, indent=2)
+            os.replace(result_temp_path, result_file)
+        except Exception as e:
+            logger.warning(f"Failed to update result.json: {e}")
+            if os.path.exists(result_temp_path):
+                os.unlink(result_temp_path)
+
+    def _save_outline_checkpoint(self, world_data: dict, plot_data: dict, stage: str) -> None:
+        """Save outline/evaluation artifacts to disk atomically.
+
+        Saves: world.md, outline.md, evaluation.json to novels/{novel_name}/outline/
+
+        Args:
+            world_data: World-building data
+            plot_data: Plot planning data
+            stage: Current pipeline stage name
+        """
+        import json
+        import os
+        import tempfile
+        from pathlib import Path
+        from datetime import datetime
+
+        output_dir = self._get_novel_output_dir()
+        topic = self.config.get("topic", "未命名小说")
+
+        # Create outline directory
+        outline_dir = Path(output_dir) / "outline"
+        outline_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save world.md
+        world_content = f"""# 世界观: {world_data.get('name', topic)}
+
+## 简介
+{world_data.get('description', '待补充')}
+
+## 势力
+{world_data.get('factions', '待补充')}
+
+## 地点
+{world_data.get('locations', '待补充')}
+
+## 力量体系
+{world_data.get('power_system', '待补充')}
+
+---
+生成时间: {datetime.now().isoformat()}
+阶段: {stage}
+"""
+        self._atomic_write(outline_dir / "world.md", world_content)
+
+        # Save outline.md
+        outline_content = f"""# 情节大纲: {topic}
+
+## 主线
+{plot_data.get('main_strand', {}).get('description', '待补充')}
+
+## 卷结构
+{json.dumps(plot_data.get('volumes', []), ensure_ascii=False, indent=2)}
+
+## 高潮点
+{json.dumps(plot_data.get('high_points', []), ensure_ascii=False, indent=2)}
+
+---
+生成时间: {datetime.now().isoformat()}
+阶段: {stage}
+"""
+        self._atomic_write(outline_dir / "outline.md", outline_content)
+
+        # Save metadata.json
+        metadata = {
+            "topic": topic,
+            "stage": stage,
+            "generated_at": datetime.now().isoformat(),
+            "world_name": world_data.get('name', '未知'),
+            "chapter_count": len(plot_data.get('volumes', [])) * 10,
+        }
+        self._atomic_write_json(outline_dir / "metadata.json", metadata)
+
+        logger.info(f"Outline checkpoint saved: {outline_dir}")
+
+    def _atomic_write(self, path: Path, content: str) -> None:
+        """Atomically write content to file (temp file + rename)."""
+        import os
+        import tempfile
+        try:
+            temp_fd, temp_path = tempfile.mkstemp(dir=str(path.parent))
+            with os.fdopen(temp_fd, "w", encoding="utf-8") as f:
+                f.write(content)
+            os.replace(temp_path, path)
+        except Exception as e:
+            logger.warning(f"Failed to write {path}: {e}")
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+
+    def _atomic_write_json(self, path: Path, data: dict) -> None:
+        """Atomically write JSON to file (temp file + rename)."""
+        import json
+        import os
+        import tempfile
+        try:
+            temp_fd, temp_path = tempfile.mkstemp(suffix=".json", dir=str(path.parent))
+            with os.fdopen(temp_fd, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            os.replace(temp_path, path)
+        except Exception as e:
+            logger.warning(f"Failed to write JSON {path}: {e}")
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+
+    def kickoff(
+        self,
+        stop_at: str | None = None,
+        pipeline_state_path: str | None = None,
+        review_each_chapter: bool = False,
+        approval_mode: bool = False,
+    ) -> BaseCrewOutput:
         """执行完整的小说创作流程
 
         Args:
@@ -257,6 +517,8 @@ class NovelCrew(BaseContentCrew):
                       支持的值：None (完整流程), "outline", "evaluation", "volume", "summary"
             pipeline_state_path: 可选，从指定路径加载流水线状态，实现断点续跑。
             review_each_chapter: 可选，是否在每章写完后暂停等待确认（逐章审核模式）。
+            approval_mode: 可选，是否开启审批模式。开启后，每个阶段（outline, volume, summary）
+                          完成后会暂停等待用户审批。
 
         Returns:
             BaseCrewOutput: 包含NovelOutput的crew输出，或PipelineState
@@ -287,6 +549,18 @@ class NovelCrew(BaseContentCrew):
         except ValueError:
             current_idx = 0
 
+        # 审批模式初始化
+        self._approval_mode = approval_mode
+        if approval_mode:
+            self.pipeline_state.enable_approval_mode()
+            self._approval_workflow = ApprovalWorkflow(self.pipeline_state, llm=self.config.get("llm"))
+            logger.info("Approval mode enabled")
+
+            # 检查是否有待处理的反馈
+            pending = self.pipeline_state.get_pending_feedback()
+            if pending:
+                logger.info(f"Found pending feedback for stage '{pending.get('stage')}'")
+
         # PHASE 1: 生成大纲（包含世界观构建）
         # 条件：当前阶段在outline之前 且 目标阶段在outline或之后
         outline_idx = stage_order.index("outline")
@@ -298,11 +572,67 @@ class NovelCrew(BaseContentCrew):
             # 保存大纲数据到流水线状态
             self.pipeline_state.set_outline_data(outline_data)
             self.pipeline_state.set_stage("outline")
+
+            # 审批模式：暂停等待用户审批
+            if approval_mode and self._approval_workflow:
+                self.pipeline_state.set_stage_status("outline", "pending")
+                return self._pack_approval_output(
+                    stage="outline",
+                    content={
+                        "world_data": world_data,
+                        "plot_data": plot_data,
+                        "evaluation": None,  # evaluation 还未运行
+                    },
+                    execution_time=time.time() - start,
+                )
         else:
             # 从状态恢复
             outline_data = self.pipeline_state.outline_data or {}
             world_data = outline_data.get("world", {})
             plot_data = outline_data.get("plot", {})
+
+            # 审批模式：检查是否有针对 outline 的反馈需要处理
+            if approval_mode:
+                pending = self.pipeline_state.get_pending_feedback()
+                if pending and pending.get("stage") == "outline":
+                    # 处理用户反馈
+                    feedback = HumanFeedback.from_dict(pending)
+                    if feedback.decision == ApprovalDecision.APPROVE:
+                        self.pipeline_state.set_stage_status("outline", "approve")
+                        logger.info("Outline approved by user")
+                    elif feedback.decision == ApprovalDecision.REVISE:
+                        # 需要基于反馈重新生成 outline
+                        logger.info("User requested outline revision")
+                        feedback_applier = FeedbackApplier(llm=self.config.get("llm"))
+                        # 重新生成大纲
+                        outline_data = self.outline_crew.generate_outline_with_feedback(
+                            original_outline=outline_data,
+                            feedback=feedback.structured,
+                            feedback_applier=feedback_applier,
+                        )
+                        world_data = outline_data.get("world", {})
+                        plot_data = outline_data.get("plot", {})
+                        self.pipeline_state.set_outline_data(outline_data)
+                        self.pipeline_state.clear_pending_feedback()
+                        # 重新进入 outline 完成后的流程
+                        if stop_at == "outline":
+                            return self._pack_state_output(
+                                pipeline_summary={"stage": "outline", "world_name": world_data.get("name", ""), "plot_ready": bool(plot_data), "regenerated": True},
+                                execution_time=time.time() - start,
+                            )
+                    elif feedback.decision == ApprovalDecision.REJECT:
+                        # 拒绝，完全重新生成（忽略原大纲）
+                        logger.info("User rejected outline, regenerating from scratch...")
+                        outline_data = self.outline_crew.generate_outline()
+                        world_data = outline_data.get("world", {})
+                        plot_data = outline_data.get("plot", {})
+                        self.pipeline_state.set_outline_data(outline_data)
+                        self.pipeline_state.clear_pending_feedback()
+                        if stop_at == "outline":
+                            return self._pack_state_output(
+                                pipeline_summary={"stage": "outline", "world_name": world_data.get("name", ""), "plot_ready": bool(plot_data), "regenerated": True},
+                                execution_time=time.time() - start,
+                            )
 
         if stop_at == "outline":
             return self._pack_state_output(
@@ -340,6 +670,9 @@ class NovelCrew(BaseContentCrew):
                 plot_data = revised_plot
 
             self.pipeline_state.set_stage("evaluation")
+
+            # 保存大纲检查点（原子写入）
+            self._save_outline_checkpoint(world_data, plot_data, "evaluation")
 
         # Build ProductionBible after evaluation (before parallel volume generation)
         # This bible is the single source of truth for all parallel generation
@@ -406,9 +739,53 @@ class NovelCrew(BaseContentCrew):
                 volume_outlines = self.volume_outline_crew.generate(plot_data, world_data)
             self.pipeline_state.set_volume_outlines(volume_outlines)
             self.pipeline_state.set_stage("volume")
+
+            # 审批模式：暂停等待用户审批
+            if approval_mode and self._approval_workflow:
+                self.pipeline_state.set_stage_status("volume", "pending")
+                return self._pack_approval_output(
+                    stage="volume",
+                    content={
+                        "volume_outlines": volume_outlines,
+                    },
+                    execution_time=time.time() - start,
+                )
         else:
             # 从状态恢复
             volume_outlines = self.pipeline_state.volume_outlines
+
+            # 审批模式：检查是否有针对 volume 的反馈需要处理
+            if approval_mode:
+                pending = self.pipeline_state.get_pending_feedback()
+                if pending and pending.get("stage") == "volume":
+                    feedback = HumanFeedback.from_dict(pending)
+                    if feedback.decision == ApprovalDecision.APPROVE:
+                        self.pipeline_state.set_stage_status("volume", "approve")
+                        logger.info("Volume approved by user")
+                    elif feedback.decision in (ApprovalDecision.REVISE, ApprovalDecision.REJECT):
+                        # 需要基于反馈重新生成分卷大纲
+                        logger.info(f"User requested volume {feedback.decision.value}, regenerating...")
+                        feedback_applier = FeedbackApplier(llm=self.config.get("llm"))
+                        num_volumes = self.config.get("num_volumes", 3)
+                        max_conc = self.config.get("max_concurrent_volumes", 3)
+                        if num_volumes >= 2:
+                            volume_outlines = self.volume_outline_crew.generate_parallel_with_feedback(
+                                plot_data, world_data,
+                                original_volumes=volume_outlines,
+                                feedback=feedback.structured,
+                                feedback_applier=feedback_applier,
+                                max_concurrency=max_conc,
+                                bible=bible, verify=True
+                            )
+                        else:
+                            volume_outlines = self.volume_outline_crew.generate_with_feedback(
+                                plot_data, world_data,
+                                original_volumes=volume_outlines,
+                                feedback=feedback.structured,
+                                feedback_applier=feedback_applier,
+                            )
+                        self.pipeline_state.set_volume_outlines(volume_outlines)
+                        self.pipeline_state.clear_pending_feedback()
 
         if stop_at == "volume":
             return self._pack_state_output(
@@ -435,9 +812,54 @@ class NovelCrew(BaseContentCrew):
                 chapter_summaries = self.chapter_summary_crew.generate(volume_outlines, world_data, bible=bible)
             self.pipeline_state.set_chapter_summaries(chapter_summaries)
             self.pipeline_state.set_stage("summary")
+
+            # 审批模式：暂停等待用户审批
+            if approval_mode and self._approval_workflow:
+                self.pipeline_state.set_stage_status("summary", "pending")
+                return self._pack_approval_output(
+                    stage="summary",
+                    content={
+                        "chapter_summaries": chapter_summaries,
+                    },
+                    execution_time=time.time() - start,
+                )
         else:
             # 从状态恢复
             chapter_summaries = self.pipeline_state.chapter_summaries
+
+            # 审批模式：检查是否有针对 summary 的反馈需要处理
+            if approval_mode:
+                pending = self.pipeline_state.get_pending_feedback()
+                if pending and pending.get("stage") == "summary":
+                    feedback = HumanFeedback.from_dict(pending)
+                    if feedback.decision == ApprovalDecision.APPROVE:
+                        self.pipeline_state.set_stage_status("summary", "approve")
+                        logger.info("Summary approved by user")
+                    elif feedback.decision in (ApprovalDecision.REVISE, ApprovalDecision.REJECT):
+                        logger.info(f"User requested summary {feedback.decision.value}, regenerating...")
+                        feedback_applier = FeedbackApplier(llm=self.config.get("llm"))
+                        chapter_num = feedback.chapter_num  # 可以指定修改特定章节
+                        if num_volumes >= 2:
+                            chapter_summaries = self.chapter_summary_crew.generate_parallel_with_feedback(
+                                volume_outlines, world_data,
+                                original_summaries=chapter_summaries,
+                                feedback=feedback.structured,
+                                feedback_applier=feedback_applier,
+                                max_concurrency=self.config.get("max_concurrent_volumes", 3),
+                                bible=bible,
+                                target_chapter=chapter_num,
+                            )
+                        else:
+                            chapter_summaries = self.chapter_summary_crew.generate_with_feedback(
+                                volume_outlines, world_data,
+                                original_summaries=chapter_summaries,
+                                feedback=feedback.structured,
+                                feedback_applier=feedback_applier,
+                                bible=bible,
+                                target_chapter=chapter_num,
+                            )
+                        self.pipeline_state.set_chapter_summaries(chapter_summaries)
+                        self.pipeline_state.clear_pending_feedback()
 
         if stop_at == "summary":
             return self._pack_state_output(
@@ -514,6 +936,216 @@ class NovelCrew(BaseContentCrew):
             },
         )
 
+    def _pack_approval_output(
+        self,
+        stage: str,
+        content: dict,
+        execution_time: float,
+    ) -> BaseCrewOutput:
+        """打包审批状态为输出（用于 approval_mode 暂停点）
+
+        Args:
+            stage: 当前阶段名
+            content: 该阶段的生成内容
+            execution_time: 执行时间
+
+        Returns:
+            BaseCrewOutput: 包含待审批内容的输出
+        """
+        # 保存当前状态以便恢复
+        state_path = f".novel_pipeline_{stage}_pending.json"
+        self.pipeline_state.save(state_path)
+        logger.info(f"Pipeline state saved to {state_path} for approval")
+
+        return BaseCrewOutput(
+            content=None,
+            tasks_completed=[f"等待审批: {stage}"],
+            execution_time=execution_time,
+            metadata={
+                "approval_required": True,
+                "stage": stage,
+                "stage_status": "pending_approval",
+                "pipeline_state_path": state_path,
+                "content_summary": self._summarize_stage_content(stage, content),
+                "feedback_options": {
+                    "approve": "通过当前内容，继续下一阶段",
+                    "revise": "需要修改，请提供修改意见",
+                    "reject": "拒绝，重新生成",
+                    "reinstruct": "重新指令，大幅修改",
+                    "skip": "跳过此阶段",
+                },
+            },
+        )
+
+    def _summarize_stage_content(self, stage: str, content: dict) -> dict:
+        """生成阶段内容的摘要（用于显示给用户）
+
+        Args:
+            stage: 阶段名
+            content: 阶段内容
+
+        Returns:
+            摘要字典
+        """
+        if stage == "outline":
+            return {
+                "world_name": content.get("world_data", {}).get("name", ""),
+                "world_summary": str(content.get("world_data", {}))[:200] + "...",
+                "plot_summary": str(content.get("plot_data", {}))[:200] + "...",
+            }
+        elif stage == "volume":
+            volumes = content.get("volume_outlines", [])
+            return {
+                "volumes_count": len(volumes),
+                "volume_titles": [v.get("title", "") for v in volumes[:3]],
+            }
+        elif stage == "summary":
+            summaries = content.get("chapter_summaries", [])
+            return {
+                "chapters_count": len(summaries),
+                "chapter_titles": [s.get("title", "") for s in summaries[:5]],
+            }
+        return {}
+
+    def submit_feedback(
+        self,
+        feedback: HumanFeedback | dict,
+        pipeline_state_path: str | None = None,
+    ) -> BaseCrewOutput:
+        """提交用户反馈并继续生成
+
+        Args:
+            feedback: 用户反馈（HumanFeedback 对象或字典）
+            pipeline_state_path: 可选，流水线状态路径
+
+        Returns:
+            BaseCrewOutput: 继续执行的结果
+        """
+        # 解析反馈
+        if isinstance(feedback, dict):
+            feedback = HumanFeedback.from_dict(feedback)
+
+        # 解析自然语言
+        if feedback.natural_language and not feedback.structured:
+            parser = FeedbackParser(llm=self.config.get("llm"))
+            feedback.structured = parser.parse(feedback)
+
+        # 加载流水线状态
+        if pipeline_state_path:
+            self.load_pipeline_state(pipeline_state_path)
+        elif self.pipeline_state.pending_feedback:
+            # 使用内存中的状态
+            pass
+        else:
+            raise ValueError("No pipeline state found. Please provide pipeline_state_path.")
+
+        # 设置待处理反馈
+        self.pipeline_state.set_pending_feedback(feedback.to_dict())
+
+        # 记录审批历史
+        self.pipeline_state.add_approval_record({
+            "stage": feedback.stage,
+            "decision": feedback.decision.value,
+            "natural_language": feedback.natural_language,
+            "structured": feedback.structured,
+        })
+
+        # 继续执行
+        return self.kickoff(
+            stop_at=None,
+            approval_mode=True,  # 保持审批模式
+        )
+
+    def approve(
+        self,
+        stage: str,
+        pipeline_state_path: str | None = None,
+    ) -> BaseCrewOutput:
+        """快速通过当前阶段（无修改意见）
+
+        Args:
+            stage: 阶段名 (outline, volume, summary)
+            pipeline_state_path: 可选，流水线状态路径
+
+        Returns:
+            BaseCrewOutput: 继续执行的结果
+        """
+        feedback = create_approval_feedback(
+            stage=stage,
+            decision="approve",
+            natural_language="",
+        )
+        return self.submit_feedback(feedback, pipeline_state_path)
+
+    def revise(
+        self,
+        stage: str,
+        feedback_text: str,
+        pipeline_state_path: str | None = None,
+    ) -> BaseCrewOutput:
+        """请求修改（带自然语言反馈）
+
+        Args:
+            stage: 阶段名
+            feedback_text: 自然语言修改意见
+            pipeline_state_path: 可选，流水线状态路径
+
+        Returns:
+            BaseCrewOutput: 继续执行的结果
+        """
+        feedback = create_approval_feedback(
+            stage=stage,
+            decision="revise",
+            natural_language=feedback_text,
+        )
+        return self.submit_feedback(feedback, pipeline_state_path)
+
+    def approve_chapter(
+        self,
+        chapter_num: int,
+        pipeline_state_path: str | None = None,
+    ) -> BaseCrewOutput:
+        """快速通过章节（无修改意见）
+
+        Args:
+            chapter_num: 章节号
+            pipeline_state_path: 可选，流水线状态路径
+
+        Returns:
+            BaseCrewOutput: 继续执行的结果
+        """
+        feedback = HumanFeedback(
+            stage=f"chapter_{chapter_num}",
+            decision=ApprovalDecision.APPROVE,
+            natural_language="",
+            chapter_num=chapter_num,
+        )
+        return self.submit_feedback(feedback, pipeline_state_path)
+
+    def revise_chapter(
+        self,
+        chapter_num: int,
+        feedback_text: str,
+        pipeline_state_path: str | None = None,
+    ) -> BaseCrewOutput:
+        """请求修改章节（带自然语言反馈）
+
+        Args:
+            chapter_num: 章节号
+            feedback_text: 自然语言修改意见
+            pipeline_state_path: 可选，流水线状态路径
+
+        Returns:
+            BaseCrewOutput: 继续执行的结果
+        """
+        feedback = HumanFeedback(
+            stage=f"chapter_{chapter_num}",
+            decision=ApprovalDecision.REVISE,
+            natural_language=feedback_text,
+            chapter_num=chapter_num,
+        )
+        return self.submit_feedback(feedback, pipeline_state_path)
+
     def _write_all_chapters(
         self,
         world_data: dict,
@@ -533,6 +1165,22 @@ class NovelCrew(BaseContentCrew):
 
         chapters = []
         previous_summary = ""
+
+        # Build BibleSection per volume for bible-constrained writing (P1-4)
+        bible_section_builder = None
+        bible_volume_map: dict[int, Any] = {}  # volume_num -> BibleSection cache
+        if self._production_bible is not None:
+            try:
+                from crewai.content.novel.production_bible.section_builder import (
+                    BibleSectionBuilder,
+                )
+                bible_section_builder = BibleSectionBuilder()
+                # For sequential writing, we use volume 1 as default since there's no volume structure
+                bible_volume_map[1] = bible_section_builder.build_section(self._production_bible, 1)
+                logger.info("BibleSection pre-built for sequential writing (volume 1)")
+            except Exception as e:
+                logger.warning(f"Failed to build BibleSections for writing: {e}")
+                bible_section_builder = None
 
         # 获取主线信息
         main_strand = plot_data.get("main_strand", {})
@@ -565,16 +1213,47 @@ class NovelCrew(BaseContentCrew):
 
             # 根据配置选择写作引擎
             use_orchestrator = self.config.get("use_orchestrator", True)
+
+            # 获取本章对应的 BibleSection（P1-4: bible 约束写作）
+            bible_section = bible_volume_map.get(1) if bible_section_builder else None
+
+            # 用于存储 orchestrator 返回的记忆（用于跨章节连续性）
+            chapter_memory = None
+
             if use_orchestrator:
                 try:
                     # 使用知识库的 NovelOrchestrator 进行多智能体写作
-                    draft = self.orchestrator_crew.write_chapter(context, chapter_outline)
+                    draft, chapter_memory = self.orchestrator_crew.write_chapter(context, chapter_outline, bible_section)
+                except TimeoutError as e:
+                    # LLM 超时，重试3次
+                    for attempt in range(3):
+                        try:
+                            draft, chapter_memory = self.orchestrator_crew.write_chapter(context, chapter_outline, bible_section)
+                            break
+                        except TimeoutError:
+                            if attempt == 2:
+                                logger.error(f"LLM timeout after 3 retries: {e}, falling back to WritingCrew")
+                                draft = self.writing_crew.write_chapter(context, chapter_outline, bible_section)
+                                chapter_memory = None
+                except ValidationError as e:
+                    # 格式/验证错误，阻止并报告
+                    logger.error(f"Orchestrator validation error (not falling back): {e}")
+                    raise
                 except Exception as e:
+                    # 其他异常，fallback
                     logger.warning(f"Orchestrator failed: {e}, falling back to WritingCrew")
-                    draft = self.writing_crew.write_chapter(context, chapter_outline)
+                    draft = self.writing_crew.write_chapter(context, chapter_outline, bible_section)
+                    chapter_memory = None
             else:
                 # 使用标准的单 Agent 写作
-                draft = self.writing_crew.write_chapter(context, chapter_outline)
+                draft = self.writing_crew.write_chapter(context, chapter_outline, bible_section)
+
+            # 如果从 orchestrator 获取了记忆，更新 context 的 previous_chapters_summary
+            # 这样下一章就能利用本章的角色状态和关键事件
+            if chapter_memory:
+                context.previous_chapters_summary = self._update_context_from_memory(
+                    context.previous_chapters_summary, chapter_memory
+                )
 
             # Save draft artifact
             self.save_artifact(chapter_num, 'draft', draft)
@@ -593,6 +1272,49 @@ class NovelCrew(BaseContentCrew):
             # 计算字数（使用润色后的草稿）
             word_count = len(polished_draft) // 2  # 粗略估计中文字数
 
+            # 如果字数低于目标的50%，尝试扩展章节
+            min_word_count = target_words_per_chapter * 0.5
+            expansion_attempts = 0
+            max_expansion_attempts = 2
+            while word_count < min_word_count and expansion_attempts < max_expansion_attempts:
+                expansion_attempts += 1
+                logger.info(f"Chapter {chapter_num} word count ({word_count}) below target ({min_word_count:.0f}), expanding (attempt {expansion_attempts})...")
+
+                # 请求LLM扩展章节
+                expansion_prompt = f"""请扩展以下章节，增加细节描写和情节发展，使字数达到约{target_words_per_chapter}字。
+
+现有章节:
+{polished_draft[:500]}...
+
+请续写并扩展这个章节，增加:
+1. 更详细的环境/场景描写
+2. 更多的对话和互动
+3. 更深入的内心描写
+4. 更多的情节细节
+
+直接输出扩展后的完整章节内容。"""
+
+                try:
+                    from crewai.agent import Agent
+                    expand_agent = Agent(
+                        role="小说写作专家",
+                        goal="扩展章节内容",
+                        backstory="你是一个擅长扩展情节的小说作家",
+                        verbose=False,
+                    )
+                    expanded = expand_agent.kickoff(messages=expansion_prompt)
+                    if hasattr(expanded, 'raw'):
+                        expanded = expanded.raw
+                    expanded = str(expanded).strip()
+
+                    # 用扩展内容替换原内容（取较长的）
+                    if len(expanded) > len(polished_draft):
+                        polished_draft = expanded
+                        word_count = len(polished_draft) // 2
+                except Exception as e:
+                    logger.warning(f"Expansion attempt {expansion_attempts} failed: {e}")
+                    break
+
             # 创建章节输出
             chapter_output = ChapterOutput(
                 chapter_num=chapter_num,
@@ -605,6 +1327,9 @@ class NovelCrew(BaseContentCrew):
             )
 
             chapters.append(chapter_output)
+
+            # Save checkpoint immediately to disk (enables recovery on crash)
+            self._save_chapter_checkpoint(chapter_output)
 
             # Update entity memory with characters from this chapter
             character_names = chapter_output.character_appearances or []
@@ -660,6 +1385,10 @@ class NovelCrew(BaseContentCrew):
         chapters = []
         previous_summary = ""
 
+        # 计算每章目标字数
+        num_chapters = len(chapter_summaries) if chapter_summaries else self.config.get("num_chapters", 10)
+        target_words_per_chapter = self.config.get("target_words", 10000) // num_chapters
+
         # Build BibleSection per volume for bible-constrained writing (P1-4)
         bible_section_builder = None
         bible_volume_map: dict[int, Any] = {}  # volume_num -> BibleSection cache
@@ -703,7 +1432,7 @@ class NovelCrew(BaseContentCrew):
                 world_data,
                 previous_summary,
                 chapter_outline,
-                chapter_summary.get("word_target", 3000),
+                chapter_summary.get("word_target", target_words_per_chapter),
             )
 
             # 获取本章对应的 BibleSection（P1-4: bible 约束写作）
@@ -711,25 +1440,30 @@ class NovelCrew(BaseContentCrew):
             if bible_section_builder is not None:
                 vol_num = chapter_summary.get("volume_num") or chapter_to_volume.get(chapter_num, 1)
                 bible_section = bible_volume_map.get(vol_num)
-                if bible_section:
-                    context.bible_section = bible_section
 
             # 根据配置选择写作引擎
-            # 注意：当 bible_section 可用时，orchestrator 不支持 bible 约束，
-            # 为保证 bible 约束生效，优先使用 WritingCrew
+            # 混合模式(hybrid): orchestrator 支持 bible 约束，通过 bible_constraint 参数传递
             use_orchestrator = self.config.get("use_orchestrator", True)
-            if bible_section is not None:
-                use_orchestrator = False
-                logger.debug(f"Chapter {chapter_num}: bible available, bypassing orchestrator")
+
+            # 用于存储 orchestrator 返回的记忆（用于跨章节连续性）
+            chapter_memory = None
 
             if use_orchestrator:
                 try:
-                    draft = self.orchestrator_crew.write_chapter(context, chapter_outline)
+                    # Hybrid mode: pass bible_section to orchestrator for FILM_DRAMA + Bible constraints
+                    draft, chapter_memory = self.orchestrator_crew.write_chapter(context, chapter_outline, bible_section)
                 except Exception as e:
                     logger.warning(f"Orchestrator failed: {e}, falling back to WritingCrew")
                     draft = self.writing_crew.write_chapter(context, chapter_outline, bible_section)
             else:
                 draft = self.writing_crew.write_chapter(context, chapter_outline, bible_section)
+
+            # 如果从 orchestrator 获取了记忆，更新 context 的 previous_chapters_summary
+            # 这样下一章就能利用本章的角色状态和关键事件
+            if chapter_memory:
+                context.previous_chapters_summary = self._update_context_from_memory(
+                    context.previous_chapters_summary, chapter_memory
+                )
 
             # Save draft artifact
             self.save_artifact(chapter_num, 'draft', draft)
@@ -748,6 +1482,49 @@ class NovelCrew(BaseContentCrew):
             # 计算字数
             word_count = len(polished_draft) // 2
 
+            # 如果字数低于目标的50%，尝试扩展章节
+            min_word_count = target_words_per_chapter * 0.5
+            expansion_attempts = 0
+            max_expansion_attempts = 2
+            while word_count < min_word_count and expansion_attempts < max_expansion_attempts:
+                expansion_attempts += 1
+                logger.info(f"Chapter {chapter_num} word count ({word_count}) below target ({min_word_count:.0f}), expanding (attempt {expansion_attempts})...")
+
+                # 请求LLM扩展章节
+                expansion_prompt = f"""请扩展以下章节，增加细节描写和情节发展，使字数达到约{target_words_per_chapter}字。
+
+现有章节:
+{polished_draft[:500]}...
+
+请续写并扩展这个章节，增加:
+1. 更详细的环境/场景描写
+2. 更多的对话和互动
+3. 更深入的内心描写
+4. 更多的情节细节
+
+直接输出扩展后的完整章节内容。"""
+
+                try:
+                    from crewai.agent import Agent
+                    expand_agent = Agent(
+                        role="小说写作专家",
+                        goal="扩展章节内容",
+                        backstory="你是一个擅长扩展情节的小说作家",
+                        verbose=False,
+                    )
+                    expanded = expand_agent.kickoff(messages=expansion_prompt)
+                    if hasattr(expanded, 'raw'):
+                        expanded = expanded.raw
+                    expanded = str(expanded).strip()
+
+                    # 用扩展内容替换原内容（取较长的）
+                    if len(expanded) > len(polished_draft):
+                        polished_draft = expanded
+                        word_count = len(polished_draft) // 2
+                except Exception as e:
+                    logger.warning(f"Expansion attempt {expansion_attempts} failed: {e}")
+                    break
+
             # 创建章节输出
             chapter_output = ChapterOutput(
                 chapter_num=chapter_num,
@@ -760,6 +1537,9 @@ class NovelCrew(BaseContentCrew):
             )
 
             chapters.append(chapter_output)
+
+            # Save checkpoint immediately to disk (enables recovery on crash)
+            self._save_chapter_checkpoint(chapter_output)
 
             # Update entity memory
             character_names = chapter_output.character_appearances or []
@@ -795,7 +1575,83 @@ class NovelCrew(BaseContentCrew):
                 logger.info(f"  Words: {chapter_output.word_count}")
                 logger.info(f"  Key events: {', '.join(str(e) for e in chapter_output.key_events[:3]) if chapter_output.key_events else 'none'}")
 
+                # 检查是否有针对本章的待处理反馈
+                pending = self.pipeline_state.get_pending_feedback()
+                if pending and pending.get("chapter_num") == chapter_num:
+                    feedback = HumanFeedback.from_dict(pending)
+                    if feedback.decision == ApprovalDecision.REVISE:
+                        logger.info(f"Chapter {chapter_num}: user requested revision")
+                        # 基于反馈修改章节内容
+                        feedback_applier = FeedbackApplier(llm=self.config.get("llm"))
+                        revised_content = feedback_applier.revise_chapter_content(
+                            original_content=polished_draft,
+                            chapter_outline=chapter_outline,
+                            feedback=feedback.structured or {"summary": feedback.natural_language},
+                            world_data=world_data,
+                        )
+                        # 重新审查修改后的内容
+                        critique_result, revised_draft, polished_draft = self.review_crew.critique_and_revise(
+                            revised_content, review_context
+                        )
+                        chapter_output.content = polished_draft
+                        chapter_output.word_count = len(polished_draft) // 2
+                        self.pipeline_state.clear_pending_feedback()
+                    elif feedback.decision == ApprovalDecision.REJECT:
+                        logger.info(f"Chapter {chapter_num}: user rejected, regenerating...")
+                        # 重新生成本章
+                        draft = self._regenerate_chapter(context, chapter_outline, bible_section)
+                        polished_draft = draft
+                        # 重新审查
+                        critique_result, revised_draft, polished_draft = self.review_crew.critique_and_revise(
+                            draft, review_context
+                        )
+                        chapter_output.content = polished_draft
+                        chapter_output.word_count = len(polished_draft) // 2
+                        self.pipeline_state.clear_pending_feedback()
+                    elif feedback.decision == ApprovalDecision.APPROVE:
+                        logger.info(f"Chapter {chapter_num}: approved")
+                        self.pipeline_state.clear_pending_feedback()
+                else:
+                    # 没有反馈，保存状态并暂停
+                    self.pipeline_state.set_stage_status(f"chapter_{chapter_num}", "pending")
+                    # 保存当前章节状态供恢复
+                    self._save_chapter_checkpoint(chapter_output)
+                    raise PendingChapterApproval(
+                        f"Chapter {chapter_num} pending approval",
+                        chapter_num=chapter_num,
+                        chapter_output=chapter_output,
+                        pipeline_state_path=self.pipeline_state.save(".pending_chapter.json"),
+                    )
+
         return chapters
+
+    def _regenerate_chapter(
+        self,
+        context: WritingContext,
+        chapter_outline: dict,
+        bible_section: Any = None,
+    ) -> str:
+        """重新生成单个章节
+
+        Args:
+            context: 写作上下文
+            chapter_outline: 章节大纲
+            bible_section: BibleSection
+
+        Returns:
+            重新生成的章节内容
+        """
+        use_orchestrator = self.config.get("use_orchestrator", True)
+
+        if use_orchestrator:
+            try:
+                draft, _ = self.orchestrator_crew.write_chapter(context, chapter_outline, bible_section)
+                return draft
+            except Exception as e:
+                logger.warning(f"Orchestrator failed: {e}, falling back to WritingCrew")
+                return self.writing_crew.write_chapter(context, chapter_outline, bible_section)
+        else:
+            return self.writing_crew.write_chapter(context, chapter_outline, bible_section)
 
     def _build_outline_from_summary(self, chapter_summary: dict) -> dict:
         """从章节概要构建章节大纲
@@ -1310,3 +2166,44 @@ class NovelCrew(BaseContentCrew):
             "大小", "长短", "好坏", "多少", "远近", "快慢",
         }
         return name in common_non_names
+
+    def _update_context_from_memory(
+        self,
+        current_summary: str,
+        chapter_memory: Dict[str, Any],
+    ) -> str:
+        """从章节记忆更新写作上下文的高潮点摘要.
+
+        将 knowledge_base 的 ChapterMemory 转换为 crewai 的 previous_chapters_summary 格式，
+        包含角色状态、关系变化和关键事件。
+
+        Args:
+            current_summary: 当前的高潮点摘要
+            chapter_memory: 来自 KnowledgeBaseAdapter 的章节记忆字典
+
+        Returns:
+            更新后的高潮点摘要字符串
+        """
+        from crewai.content.adapters.data_converters import (
+            convert_chapter_memory_to_summary,
+        )
+
+        character_states = chapter_memory.get("character_states", {})
+        relationship_states = chapter_memory.get("relationship_states", {})
+        key_events = chapter_memory.get("key_events", [])
+
+        # 如果没有有效记忆内容，直接返回当前摘要
+        if not character_states and not relationship_states and not key_events:
+            return current_summary
+
+        # 转换记忆为摘要格式
+        memory_summary = convert_chapter_memory_to_summary(
+            character_states=character_states,
+            relationship_states=relationship_states,
+            key_events=key_events,
+        )
+
+        # 追加到现有摘要
+        if current_summary:
+            return f"{current_summary}\n\n{memory_summary}"
+        return memory_summary

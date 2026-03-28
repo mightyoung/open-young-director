@@ -87,6 +87,21 @@ class NovelOrchestratorCrew(BaseContentCrew):
             llm = self.config.get("llm")
             if llm is None:
                 raise ValueError("llm must be provided in config")
+
+            # Read new config items from self.config and apply to adapter_config
+            if self._adapter_config is None:
+                self._adapter_config = NovelOrchestratorAdapterConfig()
+
+            # Apply config values if present in self.config
+            if "mode" in self.config:
+                self._adapter_config.mode = self.config["mode"]
+            if "enable_npc_simulation" in self.config:
+                self._adapter_config.enable_npc_simulation = self.config["enable_npc_simulation"]
+            if "enable_reality_checker" in self.config:
+                self._adapter_config.enable_reality_checker = self.config["enable_reality_checker"]
+            if "reality_checker_config" in self.config:
+                self._adapter_config.reality_checker_config = self.config["reality_checker_config"]
+
             self._adapter = KnowledgeBaseAdapter(
                 llm=llm,
                 config=self._adapter_config,
@@ -97,7 +112,8 @@ class NovelOrchestratorCrew(BaseContentCrew):
         self,
         context: WritingContext,
         chapter_outline: Dict[str, Any],
-    ) -> str:
+        bible_section: Any = None,
+    ) -> tuple[str, Dict[str, Any]]:
         """Write a chapter using knowledge_base's NovelOrchestrator.
 
         This method adapts crewai's WritingContext to knowledge_base's format
@@ -106,24 +122,28 @@ class NovelOrchestratorCrew(BaseContentCrew):
         Args:
             context: WritingContext from NovelCrew
             chapter_outline: Chapter outline dict
+            bible_section: Optional BibleSection with world rules and constraints
 
         Returns:
-            Generated chapter draft as string
+            tuple: (generated_draft, memory_dict)
+                - generated_draft: The chapter content as string
+                - memory_dict: Dict representation of ChapterMemory for next chapter
         """
         # Extract world_data and character_profiles from context
         # In the typical flow, these come from previous steps
         world_data = self._extract_world_data_from_context(context)
         character_profiles = context.character_profiles
 
-        # Generate chapter
+        # Generate chapter with bible_section (hybrid mode - FILM_DRAMA + Bible constraints)
         result = self.adapter.generate_chapter_with_memory(
             chapter=context.current_chapter_num,
             chapter_outline=chapter_outline,
             world_data=world_data,
             character_profiles=character_profiles,
+            bible_section=bible_section,  # Pass bible_section for Hybrid mode
         )
 
-        return result["draft"]
+        return result["draft"], result["memory"]
 
     def _extract_world_data_from_context(self, context: WritingContext) -> Dict[str, Any]:
         """Extract world_data from WritingContext.
