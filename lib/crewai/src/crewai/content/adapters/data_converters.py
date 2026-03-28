@@ -160,20 +160,28 @@ def convert_character_profiles_to_bibles(
     """
     bibles = []
 
+    # Extract complete character info from world_data
+    world_chars = {}
+    if world_data and isinstance(world_data, dict):
+        world_chars = world_data.get("characters", {})
+
     from knowledge_base.agents.data_structures import CharacterBible
     for name, profile in character_profiles.items():
+        # Get additional info from world_data if available
+        char_info = world_chars.get(name, {}) if isinstance(world_chars, dict) else {}
+
         bible = CharacterBible(
             name=name,
-            identity=profile,
-            realm=_infer_realm_from_profile(profile),
-            personality="",  # Not available in crewai format
-            speaking_style="",
-            speaking_examples=[],
-            backstory="",
+            identity=char_info.get("identity", profile),
+            realm=char_info.get("cultivation_realm", _infer_realm_from_profile(profile)),
+            personality=char_info.get("personality", ""),
+            speaking_style=char_info.get("speaking_style", ""),
+            speaking_examples=char_info.get("speaking_examples", []),
+            backstory=char_info.get("backstory", ""),
             objective_this_chapter="",
             key_moments_this_chapter=[],
-            relationships={},
-            forbidden_actions=[],
+            relationships=char_info.get("relationships", {}),
+            forbidden_actions=char_info.get("forbidden_actions", []),
         )
         bibles.append(bible)
 

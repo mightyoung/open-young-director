@@ -36,6 +36,10 @@ class NovelOrchestratorAdapterConfig:
     max_verification_retries: int = 3
     project_dir: str = "./novels"
     use_knowledge_base_storage: bool = False  # If True, use KB's ChapterManager
+    mode: str = "FILM_DRAMA"  # Orchestration mode
+    enable_npc_simulation: bool = False  # Enable NPC simulation
+    enable_reality_checker: bool = False  # Enable reality checker
+    reality_checker_config: Optional[Dict[str, Any]] = None  # Reality checker config
 
 
 class KnowledgeBaseAdapter:
@@ -96,6 +100,10 @@ class KnowledgeBaseAdapter:
                 enable_evolution=self._config.enable_evolution,
                 max_retry=self._config.max_retry,
                 max_verification_retries=self._config.max_verification_retries,
+                mode=self._config.mode,
+                enable_npc_simulation=self._config.enable_npc_simulation,
+                enable_reality_checker=self._config.enable_reality_checker,
+                reality_checker_config=self._config.reality_checker_config,
             )
 
             self._orchestrator = NovelOrchestrator(
@@ -112,10 +120,11 @@ class KnowledgeBaseAdapter:
         world_data: Dict[str, Any],
         character_profiles: Dict[str, str],
         previous_summary: Optional[str] = None,
+        bible_section: Any = None,
     ) -> tuple[str, Dict[str, Any]]:
         """Generate a chapter using knowledge_base's NovelOrchestrator.
 
-        This is a synchronous wrapper around the async NovelOrchestrator.generate().
+        This uses orchestrate_chapter() which handles FILM_DRAMA mode properly.
 
         Args:
             chapter: Chapter number
@@ -123,6 +132,7 @@ class KnowledgeBaseAdapter:
             world_data: World data from WorldCrew
             character_profiles: Character profiles dict
             previous_summary: Optional previous chapters summary
+            bible_section: Optional BibleSection for Production Bible constraints
 
         Returns:
             tuple: (generated_draft, memory_dict)
@@ -143,45 +153,24 @@ class KnowledgeBaseAdapter:
             logger.info(f"Using evolved outline for chapter {chapter} (version {evolved_outline.version})")
             kb_outline = evolved_outline
 
-        # Prepare available characters list
-        available_characters = list(character_profiles.keys())
+        # Build context for orchestrator
+        context = {
+            "characters": character_profiles,
+            "location": world_data.get("name", "太虚宗"),
+            "time_of_day": "morning",
+            "previous_summary": previous_summary or "",
+        }
 
-        # Run async generation in sync context
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # If we're already in an async context, run in thread pool with new event loop
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    coro = self._generate_async(
-                        orchestrator,
-                        chapter,
-                        kb_outline,
-                        world_context,
-                        available_characters,
-                    )
-                    draft = loop.run_in_executor(executor, lambda: asyncio.run(coro))
-            else:
-                draft = loop.run_until_complete(
-                    self._generate_async(
-                        orchestrator,
-                        chapter,
-                        kb_outline,
-                        world_context,
-                        available_characters,
-                    )
-                )
-        except RuntimeError:
-            # No event loop, create one
-            draft = asyncio.run(
-                self._generate_async(
-                    orchestrator,
-                    chapter,
-                    kb_outline,
-                    world_context,
-                    available_characters,
-                )
-            )
+        # Use orchestrate_chapter (synchronous, handles FILM_DRAMA properly)
+        result = orchestrator.orchestrate_chapter(
+            chapter_number=chapter,
+            chapter_outline=str(kb_outline),
+            context=context,
+            bible_section=bible_section,
+        )
+
+        # Extract content from result
+        draft = result.get("content", "")
 
         # Update chapter memory for next chapter
         memory_dict = self._update_memory(orchestrator, chapter)
@@ -306,6 +295,7 @@ class KnowledgeBaseAdapter:
         chapter_outline: Dict[str, Any],
         world_data: Dict[str, Any],
         character_profiles: Dict[str, str],
+        bible_section: Any = None,
     ) -> Dict[str, Any]:
         """Generate chapter and return full result with memory.
 
@@ -317,6 +307,7 @@ class KnowledgeBaseAdapter:
             chapter_outline: Chapter outline dict
             world_data: World data dict
             character_profiles: Character profiles dict
+            bible_section: Optional BibleSection with world rules and constraints
 
         Returns:
             Dict with keys:
@@ -329,6 +320,7 @@ class KnowledgeBaseAdapter:
             chapter_outline=chapter_outline,
             world_data=world_data,
             character_profiles=character_profiles,
+            bible_section=bible_section,
         )
 
         output = convert_novel_output(
