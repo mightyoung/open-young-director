@@ -1,7 +1,7 @@
 # 《穿越古代修仙》第1集场景Prompt
 
-> 五维坐标Prompt模板
-> 维度：主体维度 | 环境维度 | 光线维度 | 情绪维度 | 构图维度
+> 格式：AI绘图提示词（场景写实风格）
+> 参考：video-prompt-templates.md
 
 ---
 
@@ -18,69 +18,36 @@
 
 ---
 
-### 场景视觉Prompt - 整体环境
+### 场景提示词 - 整体环境
 
-**【主体维度】**
-矿工宿舍内景全景，破旧简陋的木结构房屋，斑驳的石墙有水渍和裂缝。
-
-**【环境维度】**
-一张破旧木床，草垫铺就，墙角堆放劳作工具，窗外透入微弱晨光。
-
-**【光线维度】**
-幽暗蓝色微光为主，窗外透入微弱晨光
-
-**【情绪维度】**
-压抑、恐惧、紧张
-
-**【构图维度】**
-全景，水平构图，主体在画面下方
-
-**【画面描述】**
+**正向提示词：**
 ```
-写实摄影，超高清，矿工宿舍内景全景
-简陋破旧的木结构房屋
-斑驳的石墙，有水渍和裂缝
-潮湿阴冷，空气中弥漫着尘土味
-一张破旧木床，草垫铺就
-墙角堆放劳作工具
-窗外透入微弱晨光
-幽暗压抑氛围
-负面：动漫，干净明亮，现代设施
+RAW landscape photo, cinematic interior shot, shot on ARRI Alexa, 35mm anamorphic lens, 8k resolution,
+
+location: collapsed mine dormitory as real rural Chinese mountain cave dwelling,
+
+environment details:
+- rough hewn stone walls with water stains and mineral deposits,
+- crude wooden bed frame with rope lashing, thin straw mattress,
+- single oil lamp on rough wooden table providing warm flicker,
+- mining tools piled in corner, pickaxes and baskets,
+- small window letting in faint grey dawn light,
+
+the space: cramped underground shelter, roughly 15 square meters, earthen floor,
+
+lighting & atmosphere:
+- dim oil lamp providing warm orange point source,
+- cold blue pre-dawn light seeping through cracks,
+- high contrast between lamp glow and dark corners,
+- visible dust motes in light beams,
+- oppressive damp atmosphere, smell of earth and sweat,
+
+composition: wide shot showing cramped living conditions, single figure lying on bed,
+
+technical: high dynamic range, film grain, dramatic chiaroscuro lighting, photorealistic textures
+
+negative: 3d render, CGI, unreal engine, video game scenery, mobile game ad, fantasy illustration, digital painting, cartoon, anime style, magical glow, glowing runes, floating particles, sparkles, neon lights, text, watermark, signature, clean geometry, plastic textures, flat lighting, perfectly symmetrical, bright cheerful
 ```
-
-**【素材参考】** @图片S01
-
----
-
-### 场景视觉Prompt - 床铺细节
-
-**【主体维度】**
-破旧木床特写，粗糙木架结构，草垫床铺，破旧被褥颜色发灰。
-
-**【环境维度】**
-床头有小木桌放置油灯，远处石墙斑驳
-
-**【光线维度】**
-幽暗，只有一盏油灯摇曳
-
-**【情绪维度】**
-压抑、贫困
-
-**【构图维度】**
-中景，床铺占画面中心
-
-**【画面描述】**
-```
-写实摄影，超高清，破旧木床特写
-粗糙木架结构，草垫床铺
-破旧被褥，颜色发灰
-床头有小木桌，放置油灯
-远处石墙斑驳
-阴暗氛围
-负面：动漫，精美床铺，豪华装饰
-```
-
-**【素材参考】** @图片S01
 
 ---
 
@@ -97,69 +64,36 @@
 
 ---
 
-### 场景视觉Prompt - 整体街道
+### 场景提示词 - 整体街道
 
-**【主体维度】**
-临渊镇清晨街道全景，狭窄青石板路湿润有露水，两侧古朴石木建筑瓦片斑驳。
-
-**【环境维度】**
-清晨浓雾缭绕，远处矿山黑色剪影隐约可见，简朴小店陆续开门。
-
-**【光线维度】**
-晨曦金色散射光，穿透晨雾
-
-**【情绪维度】**
-平静、怀旧、古朴
-
-**【构图维度】**
-全景，街道延伸向画面深处，纵深感
-
-**【画面描述】**
+**正向提示词：**
 ```
-写实摄影，超高清，临渊镇清晨街道全景
-狭窄青石板路，湿润有露水
-两侧古朴石木建筑，瓦片斑驳
-清晨浓雾缭绕，能见度约20米
-远处矿山黑色剪影隐约可见
-简朴小店陆续开门
-鸡犬相闻
-古朴宁静氛围
-负面：动漫，现代建筑，人群拥挤，繁华
+RAW landscape photo, cinematic wide shot, shot on ARRI Alexa, 35mm anamorphic lens, 8k resolution,
+
+location: ancient Chinese mountain town street as real UNESCO heritage village,
+
+environment details:
+- narrow flagstone path covered in morning dew,
+- weathered wooden shop fronts with hand-painted signs,
+- crumbling stone walls with moss and lichen,
+- morning mist hanging low, limiting visibility to 20 meters,
+- distant mine entrance visible as dark silhouette on hillside,
+
+the street: cobblestone lane barely wide enough for two people,
+
+lighting & atmosphere:
+- soft golden morning sun filtering through mist,
+- cool blue shadows in shop doorways,
+- warm backlight creating silhouettes,
+- mist creating soft volumetric atmosphere,
+- early morning quiet, no people yet,
+
+composition: wide establishing shot looking down the misty street,
+
+technical: high dynamic range, film grain, misty atmosphere, soft focus background, photorealistic textures
+
+negative: 3d render, CGI, cartoon, anime, modern buildings, crowds, neon signs, bright daylight, clean new construction
 ```
-
-**【素材参考】** @图片S02
-
----
-
-### 场景视觉Prompt - 街道中景
-
-**【主体维度】**
-临渊镇街道中景，石板路延伸向远方，两侧旧式民居木门石墙。
-
-**【环境维度】**
-晨雾在地面流动，早期阳光从雾中透出金色光芒
-
-**【光线维度】**
-晨曦金色光芒，侧逆光
-
-**【情绪维度】**
-平静、温馨
-
-**【构图维度】**
-中景，人物身后背景
-
-**【画面描述】**
-```
-写实摄影，超高清，临渊镇街道中景
-石板路延伸向远方
-两侧旧式民居，木门石墙
-晨雾在地面流动
-早期阳光从雾中透出金色光芒
-古朴宁静
-负面：动漫，繁华热闹，霓虹灯，现代
-```
-
-**【素材参考】** @图片S02
 
 ---
 
@@ -176,81 +110,46 @@
 
 ---
 
-### 场景视觉Prompt - 整体环境
+### 场景提示词 - 整体环境
 
-**【主体维度】**
-矿山入口全景，黑色岩石山体，矿洞深邃黑暗，简陋木支架。
-
-**【环境维度】**
-地面是碎石和泥土，多名童工排队等候，管事穿黑色制服巡视。
-
-**【光线维度】**
-灰蒙蒙晨光，顶光照明，无方向感
-
-**【情绪维度】**
-紧张、压抑、命运转折
-
-**【构图维度】**
-全景，俯视角度，展示人群
-
-**【画面描述】**
+**正向提示词：**
 ```
-写实摄影，超高清，矿山入口全景
-黑色岩石山体，矿洞深邃黑暗
-矿道入口有简陋木支架
-地面是碎石和泥土
-多名童工排队等候，神情惶恐
-管事穿黑色制服巡视
-天空灰蒙蒙，晨雾缭绕
-压抑紧张氛围
-负面：动漫，明亮欢乐，绿色植被，现代
+RAW landscape photo, cinematic wide shot, shot on ARRI Alexa, 35mm anamorphic lens, 8k resolution,
+
+location: mine tunnel entrance as real historical mining site,
+
+environment details:
+- black granite mountain face with dark cave mouth,
+- rough timber support frame at entrance, weathered and ancient,
+- scattered ore carts on rusted tracks leading into darkness,
+- group of young boys in ragged clothes waiting in line,
+- adult overseer in black uniform watching with stern expression,
+
+the entrance: gaping dark opening 3 meters high, cold air flowing out,
+
+lighting & atmosphere:
+- flat grey overcast sky, no sun visible,
+- cold ambient light with no direction,
+- dark entrance creating ominous black void,
+- group of boys huddled together, scared faces,
+- oppressive atmosphere, sense of impending danger,
+
+composition: wide shot showing scale of entrance, overseer towering over boys,
+
+technical: high dynamic range, film grain, flat grey color grading, photorealistic textures
+
+negative: 3d render, CGI, cartoon, anime, bright sunshine, green grass, modern equipment, cheerful people, happy children
 ```
-
-**【素材参考】** @图片S03
-
----
-
-### 场景视觉Prompt - 人群特写
-
-**【主体维度】**
-矿山入口人群，多名少年矿工排队，穿着破旧矿工服，神情紧张惶恐。
-
-**【环境维度】**
-管事在旁巡视，黑色制服，冷漠表情
-
-**【光线维度】**
-灰蒙蒙天色，逆光剪影效果
-
-**【情绪维度】**
-紧张、压抑、不安
-
-**【构图维度】**
-中景，人群占画面三分之一
-
-**【画面描述】**
-```
-写实摄影，超高清，矿山入口人群
-多名少年矿工排队
-穿着破旧矿工服
-神情紧张惶恐
-低眉顺眼，不敢直视
-管事在旁巡视
-黑色制服，冷漠表情
-灰蒙蒙天色
-负面：动漫，开心表情，精致服装，欢乐
-```
-
-**【素材参考】** @图片S03
 
 ---
 
 ## 场景素材索引
 
-| 代码 | 场景 | 用于镜头 |
-|------|------|----------|
-| @图片S01 | 矿山宿舍内景 | 镜头1-2 |
-| @图片S02 | 临渊镇街道 | 镜头3 |
-| @图片S03 | 矿山入口 | 镜头4-5 |
+| 代码 | 场景 |
+|------|------|
+| @图片S01 | 矿山宿舍内景 |
+| @图片S02 | 临渊镇街道 |
+| @图片S03 | 矿山入口 |
 
 ---
 
@@ -258,9 +157,9 @@
 
 | 场景 | 主色调 | 光线类型 | 情绪 |
 |------|--------|----------|------|
-| 矿山宿舍 | 幽暗/蓝 | 幽蓝微光+晨光 | 恐惧压抑 |
-| 临渊镇街道 | 灰白/金 | 晨雾散射光 | 平静温馨 |
-| 矿山入口 | 灰黑 | 晨曦侧光 | 紧张压抑 |
+| 矿山宿舍 | 橙/蓝 | 油灯+晨光 | 恐惧压抑 |
+| 临渊镇街道 | 金/灰 | 晨雾散射 | 平静温馨 |
+| 矿山入口 | 灰 | 无方向顶光 | 紧张压抑 |
 
 ---
 

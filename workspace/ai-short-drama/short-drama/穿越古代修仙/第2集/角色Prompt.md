@@ -1,7 +1,7 @@
 # 《穿越古代修仙》第2集角色Prompt
 
-> 五维坐标Prompt模板
-> 维度：主体维度 | 环境维度 | 光线维度 | 情绪维度 | 构图维度
+> 格式：AI绘图提示词（英文单段落）
+> 参考：video-prompt-templates.md
 
 ---
 
@@ -14,147 +14,74 @@
 | 年龄 | 15岁 |
 | 外观 | 身材瘦削，眉目清秀，眼睛泛着幽蓝微光 |
 | 性格 | 坚韧、沉默、有担当 |
-| 变化 | 眼睛泛蓝光、伤口快速愈合、能看见"光点" |
+| 变化 | 眼睛泛蓝光、伤口快速愈合 |
 | 本集状态 | 刚从昏迷中醒来，发现自身异常 |
 
 ---
 
-### 角色视觉Prompt - 昏迷状态
+### 角色提示词 - 昏迷状态
 
-**【主体维度】**
-少年林逸，15岁，紧闭双眼，面色苍白瘦削。眉头微皱似在梦中挣扎，额头有细密汗珠。
-
-**【环境维度】**
-矿区医务室简单病床，阳光从窗户斜射在脸上
-
-**【光线维度】**
-阳光斜射，形成光斑
-
-**【情绪维度】**
-昏迷、平静
-
-**【构图维度】**
-全景，人物居中偏下
-
-**【画面描述】**
+**正向提示词：**
 ```
-写实摄影，超高清，少年林逸躺在病床上
-紧闭双眼，面色苍白，瘦削
-眉头微皱，似在梦中挣扎
-额头有细密汗珠
-医务室简单病床
-阳光从窗户斜射在脸上
-超写实，电影感
+35mm film photography, high ISO, grain texture, authentic RAW photo,
+character turnaround sheet for cinematic period film, four separate full body shots on a single white canvas,
+
+subject: a real 15-year-old East Asian male actor, 165cm height, thin pale build lying on simple cot, realistic human anatomy visible under thin blanket, unconscious state,
+
+facial features: slack features, slightly parted lips, eyes closed, forehead showing stress lines even in sleep, dark circles under eyes, pale complexion from blood loss,
+
+attire: simple white medical gown, visible bandaged forearm,
+
+views (from left to right):
+1. strict front view, lying flat on back,
+2. 3/4 view from right, showing bandaged arm,
+3. strict profile view from right, showing pale face,
+4. back view on pillow,
+
+technical details: shot on ARRI Alexa, 50mm lens, f/2.8, sharp focus on facial features, soft morning light from window, natural skin subsurface scattering,
+
+background: pure seamless white paper backdrop
 ```
 
-**【素材参考】** @图片01[C01]
-
-**【负面提示词】** 动漫，开心表情，站立，现代医院
+**负面提示词：**
+```
+3d render, CGI, unreal engine, video game character, avatar, doll, plastic skin, porcelain skin, smooth skin, airbrushed, over-retouched, glowing eyes, glowing effect, supernatural glow, magical particles, anime, illustration, drawing, painting, sketch, hyperrealistic, character reference sheet, turnaround sheet, text, watermark, logo, half body, cropped, duplicates, bad anatomy, deformed limbs, mutation, cross-eyed, sitting up, standing
+```
 
 ---
 
-### 角色视觉Prompt - 惊醒状态（蓝光）
+### 角色提示词 - 惊醒蓝光
 
-**【主体维度】**
-少年林逸，猛然坐起，眼睛睁大，瞳孔泛幽蓝微光。额头冷汗，表情震惊迷茫。
-
-**【环境维度】**
-医务室，阳光刺眼，灰尘在光线中漂浮
-
-**【光线维度】**
-明亮阳光，正面照明
-
-**【情绪维度】**
-震惊、迷茫、警惕
-
-**【构图维度】**
-中景，人物占画面三分之二
-
-**【画面描述】**
+**正向提示词：**
 ```
-写实摄影，超高清，少年林逸猛然坐起
-眼睛睁大，瞳孔泛幽蓝微光
-额头冷汗，表情震惊迷茫
-胸口剧烈起伏
-医务室，阳光刺眼
-灰尘在光线中漂浮
-超写实，电影感
+35mm film photography, high ISO, grain texture, authentic RAW photo,
+character closeup sheet for cinematic period film, extreme closeup face on white canvas,
+
+subject: a real 15-year-old East Asian male actor, eyes snapping open suddenly, pupils dilated, pale purple-blue bioluminescent glow emanating from eyes, startling awakening,
+
+facial features: wide open eyes with ethereal pale blue glow, pupils reflecting strange light, terrified expression, sweat on forehead, trembling lips, pale gaunt face,
+
+attire: simple medical gown, disheveled,
+
+views (from left to right):
+1. strict front view, glowing eyes directly at camera,
+2. 3/4 view from right, showing blue eye glow,
+3. strict profile from right, showing terrified expression,
+4. front view slightly below, showing trembling,
+
+technical details: shot on ARRI Alexa, 100mm macro lens, f/1.8, sharp focus on glowing eyes, dark blue rim lighting, natural skin subsurface scattering, blue color cast on skin,
+
+background: pure seamless white paper backdrop, darkened edges suggesting disorientation
 ```
 
-**【素材参考】** @图片01[C01-F1]
-
-**【负面提示词】** 动漫，平静表情，无蓝光，现代医院
+**负面提示词：**
+```
+3d render, CGI, cartoon, anime, illustration, drawing, sketch, text, watermark, logo, plastic skin, smooth skin, normal eyes, no glow, relaxed expression, happy face, bright cheerful
+```
 
 ---
 
-### 角色视觉Prompt - 蓝光眼睛特写
-
-**【主体维度】**
-少年林逸面部特写，双眼泛幽蓝光芒，瞳孔深邃。脸色苍白，表情紧绷。
-
-**【环境维度】**
-医务室，暗淡光线，镜子反射蓝光
-
-**【光线维度】**
-暗淡蓝光，侧逆光
-
-**【情绪维度】**
-恐惧、震惊
-
-**【构图维度】**
-面部大特写，眼睛占画面中心
-
-**【画面描述】**
-```
-写实摄影，超高清，少年林逸面部特写
-双眼泛幽蓝光芒，瞳孔深邃
-眼神恐惧又震惊
-脸色苍白，表情紧绷
-昏暗医务室，蓝光映照
-超写实，电影感
-```
-
-**【素材参考】** @图片01[C01-F3]
-
-**【负面提示词】** 动漫，普通眼睛，开心表情，明亮
-
----
-
-### 角色视觉Prompt - 愤怒状态
-
-**【主体维度】**
-少年林逸面部特写，眉头紧皱，眼神愤怒。眼中蓝光闪烁，下颌咬紧。
-
-**【环境维度】**
-矿区黄昏，逆光剪影效果
-
-**【光线维度】**
-夕阳橙色逆光
-
-**【情绪维度】**
-恐惧、愤怒交织
-
-**【构图维度】**
-面部特写，阴影占一半
-
-**【画面描述】**
-```
-写实摄影，超高清，少年林逸面部特写
-眉头紧皱，眼神愤怒
-眼中蓝光闪烁
-下颌咬紧，咬牙切齿
-表情恐惧与愤怒交织
-黄昏矿区，逆光剪影
-超写实，电影感
-```
-
-**【素材参考】** @图片01[C01-F4]
-
-**【负面提示词】** 动漫，平静表情，普通眼睛，开心
-
----
-
-## C06 老周（新增配角）
+## C06 老周（配角）
 
 ### 角色基础信息
 
@@ -164,86 +91,47 @@
 | 外观 | 中年汉子，神情疲惫、眉头紧锁 |
 | 身份 | 矿区安全主管 |
 | 性格 | 谨慎、关切、略带恐惧 |
-| 本集状态 | 告诉林逸矿难真相 |
 
 ---
 
-### 角色视觉Prompt - 全身（进门前）
+### 角色提示词 - 全身
 
-**【主体维度】**
-中年男性，45岁，身材壮实，面容疲惫。身穿油腻深色工装。
-
-**【环境维度】**
-医务室门口，准备推门
-
-**【光线维度】**
-走廊光线，逆光
-
-**【情绪维度】**
-惊讶、关切
-
-**【构图维度】**
-中近景，人物居中
-
-**【画面描述】**
+**正向提示词：**
 ```
-写实摄影，超高清，中年男性全身照
-身材壮实，面容疲惫
-身穿油腻深色工装
-站在医务室门口
-表情惊讶，准备推门
-超写实，电影感
+35mm film photography, high ISO, grain texture, authentic RAW photo,
+character turnaround sheet for cinematic period film, four separate full body shots on a single white canvas,
+
+subject: a real 45-year-old East Asian male worker, 175cm height, stocky muscular build from physical labor, weathered face showing exhaustion and worry, tired red-rimmed eyes,
+
+facial features: unkempt dark hair, heavy brow, tired bloodshot eyes, deep nasolabial folds, stubble beard, grim expression,
+
+attire: dirty dark blue worker's uniform, oil stains on fabric, work boots caked in mine dust,
+
+views (from left to right):
+1. strict front view, standing with hands clasped nervously,
+2. 3/4 front view showing work uniform,
+3. strict profile view showing tired face,
+4. back view showing dusty clothing,
+
+technical details: shot on ARRI Alexa, 50mm lens, f/2.8, sharp focus on facial expression, harsh overhead fluorescent lighting, natural skin subsurface scattering,
+
+background: pure seamless white paper backdrop
 ```
 
-**【素材参考】** @图片06[C06]
-
-**【负面提示词】** 动漫，年轻，干净服装，开心
-
----
-
-### 角色视觉Prompt - 半身（对话）
-
-**【主体维度】**
-中年男性老周，眉头紧锁，表情凝重。眼神复杂，似有不忍。
-
-**【环境维度】**
-医务室内，昏暗灯光
-
-**【光线维度】**
-昏暗顶光
-
-**【情绪维度】**
-凝重、关切、痛苦
-
-**【构图维度】**
-中景，上半身
-
-**【画面描述】**
+**负面提示词：**
 ```
-写实摄影，超高清，中年男性老周上半身
-眉头紧锁，表情凝重
-眼神复杂，似有不忍
-站在病床边
-昏暗医务室灯光
-超写实，电影感
+3d render, CGI, cartoon, anime, illustration, drawing, text, watermark, logo, plastic skin, clean uniform, happy expression, smiling face, young appearance
 ```
-
-**【素材参考】** @图片06[C06-F1]
-
-**【负面提示词】** 动漫，轻松表情，年轻面孔，开心
 
 ---
 
 ## 角色素材索引
 
-| 代码 | 角色 | 状态 | 用于场景 |
-|------|------|------|----------|
-| @图片01[C01] | 林逸 | 昏迷 | 镜头1 |
-| @图片01[C01-F1] | 林逸 | 惊醒蓝光 | 镜头2 |
-| @图片01[C01-F3] | 林逸 | 蓝光眼睛 | 镜头5 |
-| @图片01[C01-F4] | 林逸 | 愤怒蓝光 | 镜头9 |
-| @图片06[C06] | 老周 | 进门前 | 镜头3 |
-| @图片06[C06-F1] | 老周 | 对话 | 镜头3-4 |
+| 代码 | 角色 | 状态 |
+|------|------|------|
+| @图片01[C01] | 林逸 | 昏迷 |
+| @图片01[C01-F1] | 林逸 | 惊醒蓝光 |
+| @图片06[C06] | 老周 | 全身 |
 
 ---
 

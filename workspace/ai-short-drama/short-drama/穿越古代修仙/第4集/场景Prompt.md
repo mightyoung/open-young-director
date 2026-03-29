@@ -1,234 +1,121 @@
 # 《穿越古代修仙》第4集场景Prompt
 
-> 五维坐标Prompt模板
-> 维度：主体维度 | 环境维度 | 光线维度 | 情绪维度 | 构图维度
+> 格式：AI绘图提示词（场景写实风格）
 
 ---
 
-## S01 星辰学院主殿（日间）
+## S01 星辰学院主殿
 
-### 场景基础信息
+### 场景提示词
 
-| 属性 | 内容 |
-|------|------|
-| 场景类型 | 外景 |
-| 时间 | 日间 |
-| 情绪氛围 | 庄严肃穆、期待 |
-| 光线 | 晨曦阳光 |
+**正向提示词：**
+```
+RAW landscape photo, cinematic wide shot, shot on ARRI Alexa, 35mm anamorphic lens, 8k resolution,
+
+location: grand immortal sect main hall as real ancient Chinese palace,
+
+environment details:
+- massive wooden hall with curved roof,
+- white marble floor stretching expanse,
+- bronze incense burners flanking entrance,
+- silk banners hanging from ceiling,
+- disciples in rows practicing,
+
+the hall: imposing center of academy,
+
+lighting & atmosphere:
+- bright morning sun from windows,
+- long shadows from pillars,
+- warm golden light inside,
+- incense smoke visible in light beams,
+- serious disciplined atmosphere,
+
+composition: wide shot showing grand scale,
+
+technical: high dynamic range, film grain, epic atmosphere, photorealistic textures
+
+negative: 3d render, CGI, cartoon, anime, modern building, dirty, dark gloomy
+```
 
 ---
 
-### 场景视觉Prompt - 主殿广场
+## S02 东苑宿舍
 
-**【主体维度】**
-星辰学院主殿广场全景，主殿巍峨建筑气势恢宏，星图镌刻泛蓝光。
+### 场景提示词
 
-**【环境维度】**
-新生们陆续到来，广场石砖铺设
-
-**【光线维度】**
-晨曦阳光，正面光
-
-**【情绪维度】**
-庄严肃穆、期待
-
-**【构图维度】**
-全景，仰视角度
-
-**【画面描述】**
+**正向提示词：**
 ```
-写实摄影，超高清，星辰学院主殿广场全景
-主殿巍峨，建筑气势恢宏
-星图镌刻泛蓝光
-新生们陆续到来
-广场石砖铺设
-晨曦阳光照耀
-庄严肃穆氛围
-超写实，电影感，仙侠古风
+RAW landscape photo, cinematic medium shot, shot on ARRI Alexa, 35mm anamorphic lens, 8k resolution,
+
+location: sect disciple quarters as real traditional Chinese courtyard,
+
+environment details:
+- small courtyard with ancient scholar tree,
+- simple stone bench under tree,
+- white wall with grey tile roof,
+- bamboo groves in corner,
+- peaceful quiet setting,
+
+the quarters: humble simple dwelling,
+
+lighting & atmosphere:
+- afternoon golden sunlight,
+- tree shadows creating patterns,
+- warm peaceful atmosphere,
+- bamboo rustling in breeze,
+- solitude contemplation,
+
+composition: medium shot showing peaceful corner,
+
+technical: high dynamic range, film grain, warm atmosphere, photorealistic textures
+
+negative: 3d render, CGI, cartoon, anime, modern apartment, noisy busy, luxury mansion
 ```
-
-**【素材参考】** @图片08[S08]
-
-**【负面提示词】** 动漫，破旧，现代建筑，昏暗
 
 ---
 
-## S02 东苑宿舍（黄昏→夜间）
+## S03 灵竹林
 
-### 场景基础信息
+### 场景提示词
 
-| 属性 | 内容 |
-|------|------|
-| 场景类型 | 外景 |
-| 时间 | 黄昏→夜间 |
-| 情绪氛围 | 平静、沉思、神秘 |
-| 光线 | 夕阳→月光 |
-
----
-
-### 场景视觉Prompt - 小院黄昏
-
-**【主体维度】**
-东苑宿舍小院，青砖黛瓦古朴建筑，院中一株老槐树。
-
-**【环境维度】**
-夕阳西下，光影斑驳
-
-**【光线维度】**
-夕阳橙黄色，侧逆光
-
-**【情绪维度】**
-平静、沉思
-
-**【构图维度】**
-中景，建筑物占画面三分之二
-
-**【画面描述】**
+**正向提示词：**
 ```
-写实摄影，超高清，东苑宿舍小院
-青砖黛瓦，古朴建筑
-院中一株老槐树
-夕阳西下，光影斑驳
-古朴清幽雅致
-超写实，电影感
+RAW landscape photo, cinematic wide shot, shot on ARRI Alexa, 35mm anamorphic lens, 8k resolution,
+
+location: spirit bamboo grove as real ancient bamboo forest,
+
+environment details:
+- tall bamboo stalks 20 meters high,
+- pale blue-green luminescence on bamboo,
+- moonlight filtering through canopy,
+- fallen bamboo leaves on ground,
+- ancient stone marker half-hidden,
+
+the grove: cultivation sacred ground,
+
+lighting & atmosphere:
+- silver moonlight,
+- blue-green bioluminescent glow,
+- cool mysterious atmosphere,
+- silent except wind,
+- spiritual energy present,
+
+composition: wide shot showing towering bamboo,
+
+technical: high dynamic range, film grain, mysterious atmosphere, photorealistic textures
+
+negative: 3d render, CGI, cartoon, anime, bright daylight, new plantation, noisy busy
 ```
-
-**【素材参考】** @图片11[S11]
-
-**【负面提示词】** 动漫，现代建筑，豪华装修，喧嚣
-
----
-
-### 场景视觉Prompt - 月下石凳
-
-**【主体维度】**
-宿舍石凳特写，月光如水洒落，老槐树影婆娑。
-
-**【环境维度】**
-夜色静谧
-
-**【光线维度】**
-银色月光
-
-**【情绪维度】**
-沉思、神秘
-
-**【构图维度】**
-中景，凳子占画面中心
-
-**【画面描述】**
-```
-写实摄影，超高清，宿舍石凳特写
-月光如水洒落
-老槐树影婆娑
-夜色静谧
-氛围沉思神秘
-超写实，电影感
-```
-
-**【素材参考】** @图片11[S11]
-
-**【负面提示词】** 动漫，喧嚣，白天，热闹
-
----
-
-## S03 灵竹林深处（夜间）
-
-### 场景基础信息
-
-| 属性 | 内容 |
-|------|------|
-| 场景类型 | 外景 |
-| 时间 | 夜间 |
-| 情绪氛围 | 神秘、震撼、命运 |
-| 光线 | 月光、竹光荧光 |
-
----
-
-### 场景视觉Prompt - 灵竹夜景
-
-**【主体维度】**
-灵竹林深处，夜色深沉，月光如水。灵竹泛青碧荧光，竹影婆娑。
-
-**【环境维度】**
-如梦似幻
-
-**【光线维度】**
-月光+荧光，青白色
-
-**【情绪维度】**
-神秘、梦幻
-
-**【构图维度】**
-全景，仰视角度
-
-**【画面描述】**
-```
-写实摄影，超高清，灵竹林深处
-夜色深沉，月光如水
-灵竹泛青碧荧光
-竹影婆娑，光影交错
-如梦似幻，神秘氛围
-超写实，电影感，仙侠古风
-```
-
-**【素材参考】** @图片12[S12]
-
-**【负面提示词】** 动漫，白天，无光效果，清晰
-
----
-
-### 场景视觉Prompt - 石碑发现
-
-**【主体维度】**
-灵竹林中石碑特写，古朴石碑刻有"林渊"二字，泛微弱光芒。
-
-**【环境维度】**
-月光洒落，竹影环绕
-
-**【光线维度】**
-月光+石碑微光
-
-**【情绪维度】**
-悲痛、纪念、神秘
-
-**【构图维度】**
-中近景，石碑占画面中心
-
-**【画面描述】**
-```
-写实摄影，超高清，灵竹林中石碑特写
-古朴石碑，刻有"林渊"二字
-石碑泛微弱光芒
-月光洒落，竹影环绕
-幽暗神秘，纪念氛围
-超写实，电影感
-```
-
-**【素材参考】** @图片13[遗物01]
-
-**【负面提示词】** 动漫，崭新华丽，清晰明亮，无神秘感
 
 ---
 
 ## 场景素材索引
 
-| 代码 | 场景 | 用于镜头 |
-|------|------|----------|
-| @图片08[S08] | 星辰学院主殿 | 镜头1 |
-| @图片11[S11] | 东苑宿舍 | 镜头4-5 |
-| @图片12[S12] | 灵竹林 | 镜头7-9 |
-| @图片13[遗物01] | 父亲石碑 | 镜头8 |
-
----
-
-## 光线氛围指南
-
-| 场景 | 主色调 | 光线类型 | 情绪 |
-|------|--------|----------|------|
-| 主殿广场 | 金/蓝 | 晨曦阳光+星图 | 庄严期待 |
-| 东苑宿舍 | 暖橙/银 | 夕阳+月光 | 平静沉思 |
-| 灵竹林 | 银/青 | 月光+荧光 | 神秘命运 |
+| 代码 | 场景 |
+|------|------|
+| @图片08[S08] | 星辰学院主殿 |
+| @图片11[S11] | 东苑宿舍 |
+| @图片12[S12] | 灵竹林 |
 
 ---
 
