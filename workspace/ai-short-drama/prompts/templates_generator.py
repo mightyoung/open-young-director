@@ -129,6 +129,7 @@ class SceneData:
     environment: List[str] = field(default_factory=list)
     main_subject: str = ""
     subject_type: str = "monument"
+    # 场景模板中没有人物，人物在角色提示词中单独定义
     character_action: str = ""
     lighting: List[str] = field(default_factory=list)
     composition: str = ""
@@ -484,8 +485,7 @@ SCENES: Dict[str, SceneData] = {
         ],
         main_subject="cramped underground shelter, roughly 15 square meters, earthen floor",
         subject_type="space",
-        character_action="a young boy in worn brown clothes lying on the bed, sleeping fitfully",
-        lighting=[
+            lighting=[
             "dim oil lamp providing warm orange point source",
             "cold blue pre-dawn light seeping through cracks",
             "high contrast between lamp glow and dark corners",
@@ -511,8 +511,7 @@ SCENES: Dict[str, SceneData] = {
         ],
         main_subject="cobblestone lane barely wide enough for two people",
         subject_type="street",
-        character_action="a young boy in worn clothes walking down the misty street",
-        lighting=[
+            lighting=[
             "soft golden morning sun filtering through mist",
             "cool blue shadows in shop doorways",
             "warm backlight creating silhouettes",
@@ -537,8 +536,7 @@ SCENES: Dict[str, SceneData] = {
         ],
         main_subject="gaping dark opening 3 meters high, cold air flowing out",
         subject_type="entrance",
-        character_action="a thin boy in worn brown clothes standing nervously in line",
-        lighting=[
+            lighting=[
             "flat grey overcast sky, no sun visible",
             "cold ambient light with no direction",
             "dark entrance creating ominous black void",
@@ -563,8 +561,7 @@ SCENES: Dict[str, SceneData] = {
         ],
         main_subject="sparse medical room, approximately 20 square meters",
         subject_type="space",
-        character_action="a pale young boy lying on the bed, unconscious",
-        lighting=[
+            lighting=[
             "flat grey ambient light from window",
             "no warm light sources, cold clinical feeling",
             "high contrast shadows in corners",
@@ -590,8 +587,7 @@ SCENES: Dict[str, SceneData] = {
         ],
         main_subject="sprawling mine complex at shift change",
         subject_type="site",
-        character_action="a thin boy standing alone, looking at the sunset",
-        lighting=[
+            lighting=[
             "warm orange sunset backlighting",
             "long shadows stretching across ground",
             "dust particles in evening air",
@@ -616,8 +612,7 @@ SCENES: Dict[str, SceneData] = {
         ],
         main_subject="chaotic destruction, sense of recent disaster",
         subject_type="space",
-        character_action="a young boy standing among the rubble, looking up at the light",
-        lighting=[
+            lighting=[
             "dramatic shaft of light through rubble",
             "deep shadows in corners",
             "dust motes visible in light beam",
@@ -642,8 +637,7 @@ SCENES: Dict[str, SceneData] = {
         ],
         main_subject="portal between realms, ancient and powerful",
         subject_type="rift",
-        character_action="a young boy reaching toward the rift, terrified",
-        lighting=[
+            lighting=[
             "golden light from spiritual energy",
             "purple-black darkness surrounding",
             "swirling energy patterns",
@@ -668,8 +662,7 @@ SCENES: Dict[str, SceneData] = {
         ],
         main_subject="imposing magnificent cultivation academy",
         subject_type="sect",
-        character_action="a young boy looking up at the magnificent gates",
-        lighting=[
+            lighting=[
             "golden morning sunlight, sun behind peaks",
             "long shadows across steps",
             "morning mist around base",
@@ -695,8 +688,7 @@ SCENES: Dict[str, SceneData] = {
         ],
         main_subject="imposing center of academy",
         subject_type="hall",
-        character_action="a young boy in red robes standing at attention",
-        lighting=[
+            lighting=[
             "bright morning sun from windows",
             "long shadows from pillars",
             "warm golden light inside",
@@ -722,8 +714,7 @@ SCENES: Dict[str, SceneData] = {
         ],
         main_subject="humble simple dwelling",
         subject_type="quarters",
-        character_action="a young boy sitting on the stone bench, gazing thoughtfully",
-        lighting=[
+            lighting=[
             "afternoon golden sunlight",
             "tree shadows creating patterns",
             "warm peaceful atmosphere",
@@ -748,8 +739,7 @@ SCENES: Dict[str, SceneData] = {
         ],
         main_subject="cultivation sacred ground",
         subject_type="grove",
-        character_action="a young boy walking slowly into the grove",
-        lighting=[
+            lighting=[
             "silver moonlight",
             "blue-green bioluminescent glow",
             "cool mysterious atmosphere",
@@ -774,8 +764,7 @@ SCENES: Dict[str, SceneData] = {
         ],
         main_subject="center of competition",
         subject_type="arena",
-        character_action="a young boy in red robes walking toward the arena",
-        lighting=[
+            lighting=[
             "bright afternoon sun overhead",
             "harsh shadows on stone",
             "energetic atmosphere",
@@ -801,8 +790,7 @@ SCENES: Dict[str, SceneData] = {
         ],
         main_subject="battlefield",
         subject_type="stage",
-        character_action="a young boy standing firm against the opponent",
-        lighting=[
+            lighting=[
             "fire orange light clashing with blue",
             "dramatic shadows",
             "energy crackling in air",
