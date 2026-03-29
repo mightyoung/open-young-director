@@ -1,0 +1,40 @@
+{#**
+ * 角色特写提示词模板
+ * 用于面部/情绪特写镜头
+ *#}
+{% block HEADER %}
+35mm film photography, high ISO, grain texture, authentic RAW photo,
+character closeup sheet for cinematic period film, extreme closeup face on white canvas,
+{% endblock %}
+
+{% block SUBJECT %}
+subject: a real {{ age }}-year-old East Asian {{ gender }} actor, {{ skin }}, {{ expression_state }},
+{% endblock %}
+
+{% block FACE %}
+facial features: {{ facial_description }}, {{ eye_state }}, {{ special }},
+{% endblock %}
+
+{% block ATTIRE %}
+attire: {{ attire_visible }},
+{% endblock %}
+
+{% block VIEWS %}
+views (from left to right):
+1. strict front view, {{ view_front }},
+2. 3/4 view from {{ view_side }}, showing {{ detail_1 }},
+3. strict profile view from {{ view_side }}, showing {{ detail_2 }},
+4. {{ view_4 }},
+{% endblock %}
+
+{% block TECHNICAL %}
+technical details: shot on ARRI Alexa, {{ lens }}mm macro lens, f/{{ aperture }}, sharp focus on {{ focus }}, {{ lighting }},
+{% endblock %}
+
+{% block BACKGROUND %}
+background: pure seamless white paper backdrop, absolute blank background
+{% endblock %}
+
+{% block NEGATIVE %}
+negative: {{ negative_prompt }}
+{% endblock %}

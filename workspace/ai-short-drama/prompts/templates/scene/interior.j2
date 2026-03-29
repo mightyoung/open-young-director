@@ -1,0 +1,45 @@
+{#**
+ * 场景模板 - 室内/洞穴
+ * 用于矿道、洞穴、房间等封闭空间
+ *#}
+{% block HEADER %}
+RAW landscape photo, cinematic interior shot, shot on ARRI Alexa, 35mm anamorphic lens, 8k resolution,
+{% endblock %}
+
+{% block LOCATION %}
+location: {{ location }},
+{% endblock %}
+
+{% block ENVIRONMENT %}
+environment details:
+{% for env in environment %}
+- {{ env }},
+{% endfor %}
+{% endblock %}
+
+{% block MAIN_SUBJECT %}
+the space: {{ main_subject }},
+{% endblock %}
+
+{% block CHARACTER_ACTION %}
+single figure: {{ character_action }},
+{% endblock %}
+
+{% block LIGHTING %}
+lighting & atmosphere:
+{% for light in lighting %}
+- {{ light }},
+{% endfor %}
+{% endblock %}
+
+{% block COMPOSITION %}
+composition: {{ composition }},
+{% endblock %}
+
+{% block TECHNICAL %}
+technical: high dynamic range, film grain, {{ atmosphere }} atmosphere, photorealistic textures
+{% endblock %}
+
+{% block NEGATIVE %}
+negative: {{ negative_prompt }}
+{% endblock %}
