@@ -51,11 +51,17 @@ prompts/
 ├── README.md              # 本文件
 ├── generate.py           # 主生成器
 ├── generate_prompts.py   # 备用生成器（简化版）
+├── templates_generator.py # ✨ v2.0 Jinja2模板生成器
 ├── video-prompt-templates.md  # 完整模板参考（含Camera Language）
-├── templates/            # 模板文件
-│   ├── __init__.py
-│   ├── character_template.md
-│   └── scene_template.md
+├── templates/            # ✨ Jinja2模板
+│   ├── character/        # 角色模板
+│   │   ├── character_base.j2   # 基础模板
+│   │   ├── closeup.j2          # 特写模板
+│   │   └── awakened.j2         # 觉醒模板
+│   └── scene/            # 场景模板
+│       ├── scene_base.j2       # 基础模板
+│       ├── interior.j2         # 室内模板
+│       └── architecture.j2     # 建筑模板
 ├── characters/           # 角色定义
 │   ├── __init__.py
 │   └── definitions.py
@@ -164,6 +170,53 @@ python generate.py character --id lin_yi --state awakened --save
 python generate.py scene --id sect_entrance --save
 ```
 
+### 6.2 ✨ Jinja2模板生成器（v2.0）
+
+基于Jinja2模板的Prompt生成器，格式完全对齐 `video-prompt-templates.md`：
+
+```bash
+# 列出所有可用角色和场景
+python templates_generator.py --list
+
+# 生成角色提示词
+python templates_generator.py character --name lin_yi --state normal
+python templates_generator.py character --name lin_yi --state awakened
+
+# 生成场景提示词
+python templates_generator.py scene --name mine_entrance
+python templates_generator.py scene --name xingchen_academy
+
+# 生成整集提示词（输出到项目目录）
+python templates_generator.py episode --episode 1 --project "/path/to/project"
+
+# 生成所有集
+python templates_generator.py all --project "/path/to/project"
+```
+
+**内置角色库：**
+- `lin_yi` - 林逸（normal, awakened, asleep, shocked, sect_disciple）
+- `sun_bo` - 孙伯
+- `yun_cang` - 云苍
+- `su_yao` - 苏瑶
+- `chen_yulou` - 陈玉楼（default, fire_attack）
+- `su_youwei` - 苏幼薇
+- `lao_zhou` - 老周
+
+**内置场景库：**
+- `mine_dormitory` - 矿山宿舍
+- `linyuan_town_street` - 临渊镇街道
+- `mine_entrance` - 矿山入口
+- `sect_medical` - 矿区医务室
+- `mine_dusk` - 矿区黄昏
+- `collapsed_mine` - 矿区废墟
+- `spirit_abyss` - 灵渊裂隙
+- `xingchen_academy` - 星辰学院
+- `academy_main_hall` - 星辰学院主殿
+- `east_dormitory` - 东苑宿舍
+- `spirit_bamboo_forest` - 灵竹林
+- `ranking_arena` - 排位赛广场
+- `battle_platform` - 擂台战斗
+
 ### 6.2 API调用
 
 ```python
@@ -185,7 +238,45 @@ combined = gen.generate_combined(
 )
 ```
 
-### 6.3 五维坐标剧本标记示例
+### 6.3 API调用
+
+```python
+from prompts import CharacterPromptGenerator, ScenePromptGenerator
+
+# 生成角色
+gen = CharacterPromptGenerator()
+prompt = gen.generate("lin_yi", state="awakened")
+
+# 生成场景
+scene_gen = ScenePromptGenerator()
+prompt = scene_gen.generate("mine_awakening")
+
+# 生成组合
+combined = gen.generate_combined(
+    character_id="lin_yi",
+    state="awakened",
+    scene_id="power_burst"
+)
+```
+
+**或使用新的 templates_generator.py：**
+
+```python
+from prompts.templates_generator import (
+    CHARACTERS, SCENES,
+    render_character, render_scene
+)
+
+# 获取角色状态
+char_state = CHARACTERS["lin_yi"].get_state("awakened")
+prompt = render_character(char_state)
+
+# 获取场景
+scene = SCENES["mine_entrance"]
+prompt = render_scene(scene)
+```
+
+### 6.4 五维坐标剧本标记示例
 
 在剧本中用坐标标记每个镜头：
 
