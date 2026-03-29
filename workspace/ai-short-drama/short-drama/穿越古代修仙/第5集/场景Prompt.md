@@ -1,203 +1,84 @@
 # 《穿越古代修仙》第5集场景Prompt
 
-> 五维坐标Prompt模板
-> 维度：主体维度 | 环境维度 | 光线维度 | 情绪维度 | 构图维度
+> 格式：AI绘图提示词（场景写实风格）
 
 ---
 
-## S01 灵竹林深处（夜间）
+## S01 排位赛广场
 
-### 场景基础信息
+### 场景提示词
 
-| 属性 | 内容 |
-|------|------|
-| 场景类型 | 外景 |
-| 时间 | 夜间 |
-| 情绪氛围 | 神秘、震撼、命运 |
-| 光线 | 月光、竹光荧光、暗红光芒 |
+**正向提示词：**
+```
+RAW landscape photo, cinematic wide shot, shot on ARRI Alexa, 35mm anamorphic lens, 8k resolution,
+
+location: sect arena as real ancient Chinese fighting arena,
+
+environment details:
+- circular stone platform raised 2 meters,
+- stone steps leading up on all sides,
+- disciples seated on tiered stone benches,
+- colored banners flying from poles,
+- sect elders on elevated platform,
+
+the arena: center of competition,
+
+lighting & atmosphere:
+- bright afternoon sun overhead,
+- harsh shadows on stone,
+- energetic atmosphere,
+- murmurs from crowd,
+- anticipation tension,
+
+composition: wide shot showing circular arena,
+
+technical: high dynamic range, film grain, epic atmosphere, photorealistic textures
+
+negative: 3d render, CGI, cartoon, anime, small room, empty, dark gloomy
+```
 
 ---
 
-### 场景视觉Prompt - 灵竹夜景
+## S02 擂台战斗
 
-**【主体维度】**
-灵竹林深处，夜色深沉月光如水。灵竹泛青碧荧光，两人相对而立。
+### 场景提示词
 
-**【环境维度】**
-暗红光芒交织
-
-**【光线维度】**
-月光+荧光+暗红
-
-**【情绪维度】**
-神秘、震撼
-
-**【构图维度】**
-全景，双人构图
-
-**【画面描述】**
+**正向提示词：**
 ```
-写实摄影，超高清，灵竹林深处
-夜色深沉，月光如水
-灵竹泛青碧荧光
-两人相对而立
-暗红光芒交织
-神秘震撼氛围
-超写实，电影感，仙侠古风
+RAW landscape photo, cinematic medium shot, shot on ARRI Alexa, 35mm anamorphic lens, 8k resolution,
+
+location: arena combat platform as real stone fighting stage,
+
+environment details:
+- cracked stone platform from battle damage,
+- two figures facing each other,
+- fire and blue light clashing in center,
+- crowd watching from surrounding seats,
+- dust being kicked up from impacts,
+
+the stage: battlefield,
+
+lighting & atmosphere:
+- fire orange light clashing with blue,
+- dramatic shadows,
+- energy crackling in air,
+- tense frozen moment,
+- epic battle atmosphere,
+
+composition: medium shot showing clash,
+
+technical: high dynamic range, film grain, dramatic lighting, photorealistic textures
+
+negative: 3d render, CGI, cartoon, anime, peaceful scene, no energy, still atmosphere
 ```
-
-**【素材参考】** @图片12[S12]
-
-**【负面提示词】** 动漫，白天，清晰明亮，普通
-
----
-
-## S02 排位赛广场（日间）
-
-### 场景基础信息
-
-| 属性 | 内容 |
-|------|------|
-| 场景类型 | 外景 |
-| 时间 | 日间 |
-| 情绪氛围 | 紧张、期待、热血 |
-| 光线 | 阳光明媚 |
-
----
-
-### 场景视觉Prompt - 赛场全景
-
-**【主体维度】**
-排位赛广场全景，圆形擂台矗立中央，石砖铺设刻有符文。
-
-**【环境维度】**
-四周观众席座无虚席，旗帜飘扬
-
-**【光线维度】**
-阳光明媚，金色光
-
-**【情绪维度】**
-紧张、期待、热闹
-
-**【构图维度】**
-全景，俯视角度
-
-**【画面描述】**
-```
-写实摄影，超高清，排位赛广场全景
-圆形擂台矗立中央
-石砖铺设，刻有符文
-四周观众席座无虚席
-旗帜飘扬
-阳光明媚，金光闪耀
-热闹紧张氛围
-超写实，电影感，仙侠古风
-```
-
-**【素材参考】** @图片13[S13]
-
-**【负面提示词】** 动漫，空旷，阴暗，冷清
-
----
-
-### 场景视觉Prompt - 擂台特写
-
-**【主体维度】**
-排位赛擂台特写，圆形石台古朴厚重，擂台上有战斗痕迹。
-
-**【环境维度】**
-阳光照耀泛金光
-
-**【光线维度】**
-金色阳光，正面光
-
-**【情绪维度】**
-紧张、对峙
-
-**【构图维度】**
-中景，仰视
-
-**【画面描述】**
-```
-写实摄影，超高清，排位赛擂台特写
-圆形石台，古朴厚重
-擂台上有战斗痕迹
-阳光照耀，泛金光
-两人对峙其中
-紧张对峙氛围
-超写实，电影感
-```
-
-**【素材参考】** @图片13[S13]
-
-**【负面提示词】** 动漫，崭新，空旷，模糊
-
----
-
-## S03 擂台（日间）
-
-### 场景基础信息
-
-| 属性 | 内容 |
-|------|------|
-| 场景类型 | 外景 |
-| 时间 | 日间 |
-| 情绪氛围 | 热血、震撼、高潮 |
-| 光线 | 阳光+蓝光/火光 |
-
----
-
-### 场景视觉Prompt - 战斗高潮
-
-**【主体维度】**
-擂台中央全景，蓝光冲天而起，少年林逸全身笼罩蓝光如神祇。
-
-**【环境维度】**
-全场观众震惊注视
-
-**【光线维度】**
-蓝色光芒+阳光
-
-**【情绪维度】**
-震撼、热血、高潮
-
-**【构图维度】**
-全景，爆炸式构图
-
-**【画面描述】**
-```
-写实摄影，超高清4K，擂台中央全景
-蓝光冲天而起，震撼全场
-少年林逸全身笼罩蓝光
-如神祇降临
-全场观众震惊注视
-擂台石砖被蓝光映照
-史诗震撼氛围
-超写实，史诗氛围，电影感
-```
-
-**【素材参考】** @图片13[S13]
-
-**【负面提示词】** 动漫，无光效果，平静，普通
 
 ---
 
 ## 场景素材索引
 
-| 代码 | 场景 | 用于镜头 |
-|------|------|----------|
-| @图片12[S12] | 灵竹林 | 镜头1-2 |
-| @图片13[S13] | 排位赛广场 | 镜头3 |
-
----
-
-## 光线氛围指南
-
-| 场景 | 主色调 | 光线类型 | 情绪 |
-|------|--------|----------|------|
-| 灵竹林 | 银/青/红 | 月光+荧光+暗红 | 神秘命运 |
-| 排位赛 | 金/红 | 阳光+火光 | 紧张热血 |
-| 擂台高潮 | 蓝/金 | 阳光+蓝光 | 震撼高潮 |
+| 代码 | 场景 |
+|------|------|
+| @图片13[S13] | 排位赛广场 |
 
 ---
 

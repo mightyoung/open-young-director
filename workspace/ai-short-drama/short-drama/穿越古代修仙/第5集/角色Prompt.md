@@ -1,230 +1,81 @@
 # 《穿越古代修仙》第5集角色Prompt
 
-> 五维坐标Prompt模板
-> 维度：主体维度 | 环境维度 | 光线维度 | 情绪维度 | 构图维度
+> 格式：AI绘图提示词（英文单段落）
 
 ---
 
 ## C01 林逸（主角）
 
-### 角色基础信息
+### 角色提示词 - 蓝光觉醒
 
-| 属性 | 内容 |
-|------|------|
-| 年龄 | 15岁 |
-| 身份 | 星辰学院新生，火系丙班 |
-| 能力 | 灵渊血脉（被压制），火属性（表面） |
-| 变化 | 被迫展露真正实力 |
-| 本集状态 | 排位赛首战，被逼觉醒 |
+**正向提示词：**
+```
+35mm film photography, high ISO, grain texture, authentic RAW photo,
+character closeup sheet for cinematic period film, extreme closeup showing power eruption,
+
+subject: a real 15-year-old East Asian male actor, pale complexion, intense pale blue-white bioluminescent glow erupting from within, eyes blazing with blue light, expression of shock and power,
+
+facial features: eyes wide open blazing with intense blue-white glow, blue luminescent lines visible on forehead and temples, mouth slightly open in gasp, tousled hair beginning to float,
+
+attire: torn sect robes, blue energy swirling around body,
+
+views (from left to right):
+1. front view, full power eruption,
+2. 3/4 view showing energy lines on face,
+3. side view showing floating hair,
+4. slight low angle showing dominance,
+
+technical details: shot on ARRI Alexa, 85mm lens, f/1.8, sharp focus on glowing eyes, blue volumetric light emanating from within, dramatic chiaroscuro,
+
+background: pure white with blue tint, energy particles
+```
+
+**负面提示词：**
+```
+3d render, CGI, cartoon, anime, illustration, drawing, text, watermark, logo, plastic skin, normal eyes, no glow, calm expression, weak posture
+```
 
 ---
 
-### 角色视觉Prompt - 学院战斗服
+## C09 陈玉楼
 
-**【主体维度】**
-少年林逸，15岁，瘦削身形。身穿星辰学院战斗服简洁素雅，胸前佩戴火红玉牌。
+### 角色提示词 - 火球攻击
 
-**【环境维度】**
-排位赛擂台，阳光明媚
-
-**【光线维度】**
-阳光明媚，正面光
-
-**【情绪维度】**
-紧张、坚定
-
-**【构图维度】**
-中近景，人物居中
-
-**【画面描述】**
+**正向提示词：**
 ```
-写实摄影，超高清，少年林逸全身
-排位赛擂台背景
-身穿星辰学院战斗服，简洁素雅
-胸前佩戴火红玉牌
-表情紧张又坚定
-阳光明媚，光线明亮
-超写实，电影感，仙侠古风
+35mm film photography, high ISO, grain texture, authentic RAW photo,
+character closeup sheet for cinematic period film, action pose,
+
+subject: a real 17-year-old East Asian male actor, 180cm height, athletic build, handsome arrogant features, hands thrust forward in fire attack, flames swirling around fists,
+
+facial features: intense determined expression, thick eyebrows furrowed, eyes locked on target, mouth set in confident smirk, sweat on brow from exertion,
+
+attire: fire-red sect robes billowing from attack, gold trim catching flame light,
+
+views (from left to right):
+1. front view, both hands forward with flames,
+2. 3/4 view showing robes billowing,
+3. side view showing attack stance,
+4. back view showing fire trail,
+
+technical details: shot on ARRI Alexa, 50mm lens, f/2.8, sharp focus on flames, orange-red fire lighting on face, dramatic lighting,
+
+background: darkened suggesting arena
 ```
 
-**【素材参考】** @图片01[C01]
-
-**【负面提示词】** 动漫，破旧服装，休闲装，开心表情
-
----
-
-### 角色视觉Prompt - 蓝光爆发
-
-**【主体维度】**
-少年林逸全身，蓝光从心脏位置爆发笼罩全身，表情震撼坚定，眼泛蓝光。
-
-**【环境维度】**
-擂台中央被蓝光照明
-
-**【光线维度】**
-蓝色光芒冲天
-
-**【情绪维度】**
-震撼、爆发、坚定
-
-**【构图维度】**
-全景，蓝光占画面一半
-
-**【画面描述】**
+**负面提示词：**
 ```
-写实摄影，超高清4K，少年林逸全身
-全身笼罩在蓝色光芒中
-蓝光从心脏位置爆发，冲天而起
-表情震撼坚定，眼泛蓝光
-擂台中央，蓝光映照
-如神祇降临
-超写实，史诗氛围，电影感
+3d render, CGI, cartoon, anime, illustration, drawing, text, watermark, logo, weak attack, calm expression, no fire, cheap effects
 ```
-
-**【素材参考】** @图片01[C01-F1]
-
-**【负面提示词】** 动漫，无光效果，普通少年，平静表情
-
----
-
-## C08 苏幼薇
-
-### 角色基础信息
-
-| 属性 | 内容 |
-|------|------|
-| 年龄 | 15岁 |
-| 身份 | 星辰学院新生 |
-| 能力 | 灵渊血脉 |
-| 本集状态 | 灵竹林中与林逸互动 |
-
----
-
-### 角色视觉Prompt - 灵竹林中
-
-**【主体维度】**
-少女苏幼薇，黑发紫眸，月光下站立。暗红光芒交织，表情惊讶又好奇。
-
-**【环境维度】**
-灵竹林深处，月光洒落
-
-**【光线维度】**
-月光+暗红光芒
-
-**【情绪维度】**
-惊讶、好奇
-
-**【构图维度】**
-中近景，人物居中偏左
-
-**【画面描述】**
-```
-写实摄影，超高清，少女苏幼薇
-黑发紫眸，月光下
-灵竹林深处背景
-暗红光芒交织
-表情惊讶又好奇
-超写实，电影感
-```
-
-**【素材参考】** @图片08[C08]
-
-**【负面提示词】** 动漫，白天，普通表情，无光效果
-
----
-
-## C09 陈玉楼（对手）
-
-### 角色基础信息
-
-| 属性 | 内容 |
-|------|------|
-| 年龄 | 17岁 |
-| 身份 | 火系乙班，高年级 |
-| 修为 | 灵师初期 |
-| 性格 | 傲慢、阴险 |
-| 本集状态 | 排位赛对手，被击败 |
-
----
-
-### 角色视觉Prompt - 火系登场
-
-**【主体维度】**
-少年，17岁，英俊挺拔。表情傲慢身穿火系学员制服，周身火红灵力环绕。
-
-**【环境维度】**
-擂台中央，火红光芒耀眼
-
-**【光线维度】**
-火红灵力光，正面光
-
-**【情绪维度】**
-傲慢、自信
-
-**【构图维度】**
-中近景，火焰占画面一侧
-
-**【画面描述】**
-```
-写实摄影，超高清，少年全身
-17岁，英俊挺拔
-表情傲慢，嘴角带冷笑
-身穿火系学员制服
-周身火红灵力环绕
-火焰升腾，耀眼夺目
-站在擂台上，居高临下
-超写实，电影感，仙侠古风
-```
-
-**【素材参考】** @图片09[C09]
-
-**【负面提示词】** 动漫，无灵力，普通表情，谦虚
-
----
-
-### 角色视觉Prompt - 火球攻击
-
-**【主体维度】**
-少年陈玉楼，双手推出，火球释放。火红灵力汹涌，表情傲慢自信。
-
-**【环境维度】**
-擂台中央，火光冲天
-
-**【光线维度】**
-火焰橙红色，背光
-
-**【情绪维度】**
-傲慢、攻击性
-
-**【构图维度】**
-中景，火球占画面中心
-
-**【画面描述】**
-```
-写实摄影，超高清，少年陈玉楼
-双手推出，火球释放
-火红灵力汹涌
-火球熊熊燃烧
-表情傲慢自信
-擂台中央，火光冲天
-超写实，电影感
-```
-
-**【素材参考】** @图片09[C09-F1]
-
-**【负面提示词】** 动漫，无火效果，温和表情，弱小
 
 ---
 
 ## 角色素材索引
 
-| 代码 | 角色 | 状态 | 用于场景 |
-|------|------|------|----------|
-| @图片01[C01] | 林逸 | 战斗服 | 镜头3-6 |
-| @图片01[C01-F1] | 林逸 | 蓝光爆发 | 镜头8-9 |
-| @图片08[C08] | 苏幼薇 | 灵竹林 | 镜头1-2 |
-| @图片09[C09] | 陈玉楼 | 火系登场 | 镜头5, 7 |
-| @图片09[C09-F1] | 陈玉楼 | 火球攻击 | 镜头7 |
+| 代码 | 角色 | 状态 |
+|------|------|------|
+| @图片01[C01-F1] | 林逸 | 蓝光觉醒 |
+| @图片09[C09] | 陈玉楼 | 火球攻击 |
 
 ---
 

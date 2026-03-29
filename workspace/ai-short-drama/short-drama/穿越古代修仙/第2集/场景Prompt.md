@@ -1,188 +1,85 @@
 # 《穿越古代修仙》第2集场景Prompt
 
-> 五维坐标Prompt模板
-> 维度：主体维度 | 环境维度 | 光线维度 | 情绪维度 | 构图维度
+> 格式：AI绘图提示词（场景写实风格）
 
 ---
 
-## S01 矿区医务室（清晨）
+## S01 矿区医务室
 
-### 场景基础信息
+### 场景提示词
 
-| 属性 | 内容 |
-|------|------|
-| 场景类型 | 内景 |
-| 时间 | 清晨 |
-| 情绪氛围 | 平静→震惊→压抑 |
-| 光线 | 阳光斜射，昏暗 |
+**正向提示词：**
+```
+RAW landscape photo, cinematic interior shot, shot on ARRI Alexa, 35mm anamorphic lens, 8k resolution,
+
+location: mine site medical station as real rural clinic,
+
+environment details:
+- whitewashed concrete walls with yellowed patches,
+- simple metal frame hospital bed with thin mattress,
+- rusted metal IV stand beside bed,
+- small window with grimy glass letting in grey light,
+- worn wooden floor with scuff marks,
+
+the space: sparse medical room, approximately 20 square meters,
+
+lighting & atmosphere:
+- flat grey ambient light from window,
+- no warm light sources, cold clinical feeling,
+- high contrast shadows in corners,
+- sense of abandonment and neglect,
+- quiet except for distant machinery,
+
+composition: medium shot showing bed and figure,
+
+technical: high dynamic range, film grain, flat grey color grading, photorealistic textures
+
+negative: 3d render, CGI, cartoon, anime, modern hospital, clean bright, happy atmosphere, luxury clinic
+```
 
 ---
 
-### 场景视觉Prompt - 整体环境
+## S02 矿区黄昏
 
-**【主体维度】**
-矿区医务室内部全景，灰白墙壁斑驳有污渍，简单病床铁架结构。
+### 场景提示词
 
-**【环境维度】**
-医疗设备简陋陈旧，窗户外透入清晨阳光
-
-**【光线维度】**
-阳光斜射入窗，形成光斑，主体昏暗
-
-**【情绪维度】**
-平静、压抑
-
-**【构图维度】**
-全景，水平构图
-
-**【画面描述】**
+**正向提示词：**
 ```
-写实摄影，超高清，矿区医务室内部全景
-灰白墙壁，斑驳有污渍
-简单病床，铁架结构
-医疗设备简陋陈旧
-窗户外透入清晨阳光
-整体昏暗，有阳光光斑
-超写实，电影感
+RAW landscape photo, cinematic wide shot, shot on ARRI Alexa, 35mm anamorphic lens, 8k resolution,
+
+location: mine site at dusk as real industrial industrial zone,
+
+environment details:
+- setting sun creating orange red sky,
+- black mine headframes silhouetted against sunset,
+- rusted ore carts on tracks,
+- groups of workers walking home,
+- low industrial buildings,
+
+the site: sprawling mine complex at shift change,
+
+lighting & atmosphere:
+- warm orange sunset backlighting,
+- long shadows stretching across ground,
+- dust particles in evening air,
+- industrial sounds fading,
+- oppressive grey atmosphere mixed with sunset warmth,
+
+composition: wide establishing shot showing scale,
+
+technical: high dynamic range, film grain, warm orange color grade, photorealistic textures
+
+negative: 3d render, CGI, cartoon, anime, bright daylight, clean new, modern city
 ```
-
-**【素材参考】** @图片S01
-
-**【负面提示词】** 动漫，现代医院，明亮干净，豪华
-
----
-
-### 场景视觉Prompt - 阳光特写
-
-**【主体维度】**
-医务室窗户特写，阳光从破旧窗户斜射进来，灰尘在光线中漂浮。
-
-**【环境维度】**
-简陋窗帘半掩
-
-**【光线维度】**
-强烈阳光，形成明显光柱
-
-**【情绪维度】**
-希望、刺眼
-
-**【构图维度】**
-中景，窗户占画面中心
-
-**【画面描述】**
-```
-写实摄影，超高清，医务室窗户特写
-阳光从破旧窗户斜射进来
-灰尘在光线中漂浮
-光线形成明显光柱
-简陋窗帘半掩
-清晨氛围
-超写实，电影感
-```
-
-**【素材参考】** @图片S01
-
-**【负面提示词】** 动漫，豪华窗户，无光，夜晚
-
----
-
-## S02 矿区黄昏外景
-
-### 场景基础信息
-
-| 属性 | 内容 |
-|------|------|
-| 场景类型 | 外景 |
-| 时间 | 黄昏 |
-| 情绪氛围 | 孤独、压抑 |
-| 光线 | 夕阳橙红色 |
-
----
-
-### 场景视觉Prompt - 矿区黄昏全景
-
-**【主体维度】**
-矿区黄昏全景，夕阳西下天边橙红，矿工们陆续下班。
-
-**【环境维度】**
-黑色矿车、铁轨、厂房剪影，矿工宿舍低矮破旧
-
-**【光线维度】**
-夕阳橙红色，侧逆光，影子拉长
-
-**【情绪维度】**
-孤独、压抑
-
-**【构图维度】**
-全景，俯视角度
-
-**【画面描述】**
-```
-写实摄影，超高清，矿区黄昏全景
-夕阳西下，天边橙红
-矿工们陆续下班
-黑色矿车、铁轨、厂房剪影
-影子拉得很长
-矿工宿舍低矮破旧
-超写实，电影感
-```
-
-**【素材参考】** @图片S03
-
-**【负面提示词】** 动漫，明亮白天，现代建筑，欢乐
-
----
-
-### 场景视觉Prompt - 食堂外
-
-**【主体维度】**
-矿区食堂外，黄昏阴影光线昏暗，三三两两矿工经过。
-
-**【环境维度】**
-地面油污斑驳
-
-**【光线维度】**
-黄昏阴影，暗淡
-
-**【情绪维度】**
-压抑、孤独
-
-**【构图维度】**
-中景，人物身后背景
-
-**【画面描述】**
-```
-写实摄影，超高清，矿区食堂外
-黄昏阴影，光线昏暗
-三三两两矿工经过
-表情模糊，逆光
-地面油污斑驳
-压抑氛围
-超写实，电影感
-```
-
-**【素材参考】** @图片S04
-
-**【负面提示词】** 动漫，热闹明亮，干净整洁，欢乐
 
 ---
 
 ## 场景素材索引
 
-| 代码 | 场景 | 用于镜头 |
-|------|------|----------|
-| @图片S01 | 医务室内景 | 镜头1-6 |
-| @图片S03 | 矿区黄昏 | 镜头7 |
-| @图片S04 | 矿区食堂 | 镜头8 |
-
----
-
-## 光线氛围指南
-
-| 场景 | 主色调 | 光线类型 | 情绪 |
-|------|--------|----------|------|
-| 医务室 | 灰白/金 | 阳光斜射 | 平静→压抑 |
-| 矿区黄昏 | 橙红 | 夕阳逆光 | 孤独压抑 |
+| 代码 | 场景 |
+|------|------|
+| @图片S01 | 医务室 |
+| @图片S03 | 矿区黄昏 |
 
 ---
 

@@ -1,202 +1,121 @@
 # 《穿越古代修仙》第3集场景Prompt
 
-> 五维坐标Prompt模板
-> 维度：主体维度 | 环境维度 | 光线维度 | 情绪维度 | 构图维度
+> 格式：AI绘图提示词（场景写实风格）
 
 ---
 
-## S01 矿区废墟（黎明）
+## S01 矿区废墟
 
-### 场景基础信息
+### 场景提示词
 
-| 属性 | 内容 |
-|------|------|
-| 场景类型 | 内景/外景混合 |
-| 时间 | 黎明 |
-| 情绪氛围 | 震撼、迷茫、命运转折 |
-| 光线 | 晨光缝隙照射 |
+**正向提示词：**
+```
+RAW landscape photo, cinematic wide shot, shot on ARRI Alexa, 35mm anamorphic lens, 8k resolution,
+
+location: collapsed mine tunnel as real underground cavern after cave-in,
+
+environment details:
+- massive granite boulders blocking passage,
+- broken wooden support beams scattered,
+- dust and debris covering everything,
+- single shaft of morning light piercing through gap,
+- mining tools partially buried,
+
+the space: chaotic destruction, sense of recent disaster,
+
+lighting & atmosphere:
+- dramatic shaft of light through rubble,
+- deep shadows in corners,
+- dust motes visible in light beam,
+- cold air in cave,
+- aftermath of tragedy,
+
+composition: wide shot showing destruction, single figure standing,
+
+technical: high dynamic range, film grain, dramatic chiaroscuro, photorealistic textures
+
+negative: 3d render, CGI, cartoon, anime, clean intact scene, happy atmosphere, bright cheerful
+```
 
 ---
 
-### 场景视觉Prompt - 整体废墟
+## S02 灵渊裂隙
 
-**【主体维度】**
-矿道废墟内部全景，坍塌的岩壁，碎石散落，破碎矿石遍布地面。
+### 场景提示词
 
-**【环境维度】**
-晨光从岩缝中照射进来，形成明显光柱，尘埃飘浮
-
-**【光线维度】**
-晨光缝隙光，金色光柱
-
-**【情绪维度】**
-震撼、破败
-
-**【构图维度】**
-全景，垂直构图，光柱延伸
-
-**【画面描述】**
+**正向提示词：**
 ```
-写实摄影，超高清，矿道废墟内部全景
-坍塌的岩壁，碎石散落
-破碎矿石遍布地面
-晨光从岩缝中照射进来
-形成明显光柱，尘埃飘浮
-破坏痕迹明显
-超写实，电影感
+RAW landscape photo, cinematic wide shot, shot on ARRI Alexa, 35mm anamorphic lens, 8k resolution,
+
+location: mystical void space as real dimensional rift,
+
+environment details:
+- void of infinite darkness with no visible boundaries,
+- golden spiritual energy flowing like rivers in air,
+- dark purple-black malevolent energy coiling,
+- ancient runes floating in space,
+- sense of vast depth and cosmic scale,
+
+the rift: portal between realms, ancient and powerful,
+
+lighting & atmosphere:
+- golden light from spiritual energy,
+- purple-black darkness surrounding,
+- swirling energy patterns,
+- cosmic mysterious atmosphere,
+- deafening silence,
+
+composition: wide shot showing cosmic scale,
+
+technical: high dynamic range, film grain, ethereal atmosphere, photorealistic textures
+
+negative: 3d render, CGI, cartoon, anime, bright daylight, simple background, clean geometry
 ```
-
-**【素材参考】** @图片S01
-
-**【负面提示词】** 动漫，完整场景，现代，明亮
 
 ---
 
-## S02 灵渊裂隙（异象）
+## S03 星辰学院
 
-### 场景基础信息
+### 场景提示词
 
-| 属性 | 内容 |
-|------|------|
-| 场景类型 | 异象/幻境 |
-| 时间 | 无时间概念 |
-| 情绪氛围 | 震撼、神秘、敬畏 |
-| 光线 | 灵气金光+幽暗紫光 |
-
----
-
-### 场景视觉Prompt - 裂隙异象
-
-**【主体维度】**
-虚空中悬浮的灵渊裂隙，深不见底的裂谷。淡金色灵气与深紫色幽暗气息交织翻涌。
-
-**【环境维度】**
-云苍手掌发光映照
-
-**【光线维度】**
-金光紫光交织，中心亮边缘暗
-
-**【情绪维度】**
-震撼、神秘、敬畏
-
-**【构图维度】**
-全景，中心发光
-
-**【画面描述】**
+**正向提示词：**
 ```
-写实摄影，超高清，虚空中悬浮的灵渊裂隙
-深不见底的裂谷
-淡金色灵气与深紫色幽暗交织
-神秘光芒闪烁
-云苍手掌发光映照
-超写实，史诗氛围，电影感
+RAW landscape photo, cinematic wide shot, shot on ARRI Alexa, 35mm anamorphic lens, 8k resolution,
+
+location: grand immortal sect mountain compound as real ancient Chinese architecture,
+
+environment details:
+- three thousand white marble steps leading up,
+- massive stone platform at summit,
+- ornate carved stone pillars supporting curved roof,
+- jade-green roof tiles with gold trim,
+- clouds swirling around mountain peak,
+
+the sect: imposing magnificent cultivation academy,
+
+lighting & atmosphere:
+- golden morning sunlight, sun behind peaks,
+- long shadows across steps,
+- morning mist around base,
+- warm gold on stone, cool blue in shadows,
+- epic grand atmosphere,
+
+composition: low angle looking up at entrance,
+
+technical: high dynamic range, film grain, epic atmosphere, photorealistic textures
+
+negative: 3d render, CGI, cartoon, anime, modern building, dilapidated, dark gloomy
 ```
-
-**【素材参考】** @图片异象01
-
-**【负面提示词】** 动漫，清晰明亮，简单背景，无神秘感
-
----
-
-## S03 星辰学院（日间）
-
-### 场景基础信息
-
-| 属性 | 内容 |
-|------|------|
-| 场景类型 | 外景 |
-| 时间 | 日间 |
-| 情绪氛围 | 震撼、期待、新的开始 |
-| 光线 | 晨曦阳光，云雾缭绕 |
-
----
-
-### 场景视觉Prompt - 学院全景
-
-**【主体维度】**
-星辰学院全景，依山而建，建筑气势恢宏。重檐庑殿顶建筑，古朴威严。
-
-**【环境维度】**
-云雾缭绕，若隐若现
-
-**【光线维度】**
-晨曦阳光穿透云雾，丁达尔效应
-
-**【情绪维度】**
-震撼、敬畏、期待
-
-**【构图维度】**
-全景，广角，仰视
-
-**【画面描述】**
-```
-写实摄影，超高清，星辰学院全景
-依山而建，气势恢宏
-重檐庑殿顶建筑，古朴威严
-云雾缭绕，若隐若现
-晨曦阳光穿透云雾
-形成丁达尔效应
-超写实，史诗氛围，电影感
-```
-
-**【素材参考】** @图片08[S08]
-
-**【负面提示词】** 动漫，现代建筑，破旧，黑暗色调
-
----
-
-### 场景视觉Prompt - 学院大门
-
-**【主体维度】**
-星辰学院大门特写，白玉石阶洁白无瑕，白玉栏杆雕工精细。
-
-**【环境维度】**
-古朴大门，匾额书"星辰"，云雾缭绕背景
-
-**【光线维度】**
-晨光照射，熠熠生辉
-
-**【情绪维度】**
-庄严、期待
-
-**【构图维度】**
-中景，仰视
-
-**【画面描述】**
-```
-写实摄影，超高清，星辰学院大门特写
-白玉石阶，洁白无瑕
-白玉栏杆，雕工精细
-古朴大门，匾额书"星辰"
-晨光照射，熠熠生辉
-云雾缭绕背景
-超写实，电影感
-```
-
-**【素材参考】** @图片08[S08-D]
-
-**【负面提示词】** 动漫，现代材质，破旧，简洁
 
 ---
 
 ## 场景素材索引
 
-| 代码 | 场景 | 用于镜头 |
-|------|------|----------|
-| @图片S01 | 矿区废墟 | 镜头1-2 |
-| @图片异象01 | 灵渊裂隙 | 镜头4 |
-| @图片08[S08] | 星辰学院全景 | 镜头7 |
-| @图片08[S08-D] | 星辰学院大门 | 镜头8 |
-
----
-
-## 光线氛围指南
-
-| 场景 | 主色调 | 光线类型 | 情绪 |
-|------|--------|----------|------|
-| 矿区废墟 | 灰/金 | 晨光缝隙 | 震撼 |
-| 灵渊裂隙 | 金/紫 | 灵气幽光 | 神秘敬畏 |
-| 星辰学院 | 金/白 | 晨曦阳光 | 震撼期待 |
+| 代码 | 场景 |
+|------|------|
+| @图片S01 | 矿区废墟 |
+| @图片异象01 | 灵渊裂隙 |
+| @图片08[S08] | 星辰学院 |
 
 ---
 
