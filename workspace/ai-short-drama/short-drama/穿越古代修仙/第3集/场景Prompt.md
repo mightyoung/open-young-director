@@ -12,7 +12,7 @@
 ```
 RAW landscape photo, cinematic wide shot, shot on ARRI Alexa, 35mm anamorphic lens, 8k resolution,
 
-location: collapsed mine tunnel as real underground cavern after cave-in,
+location: collapsed mine tunnel as a real underground cavern after cave-in,
 
 environment details:
 - massive granite boulders blocking passage,
@@ -30,11 +30,19 @@ lighting & atmosphere:
 - cold air in cave,
 - aftermath of tragedy,
 
-composition: wide shot showing destruction, single figure standing,
+single figure: a young boy standing among the rubble, looking up at the light,
+
+composition: wide shot showing destruction, single figure,
 
 technical: high dynamic range, film grain, dramatic chiaroscuro, photorealistic textures
+```
 
-negative: 3d render, CGI, cartoon, anime, clean intact scene, happy atmosphere, bright cheerful
+**负面提示词：**
+```
+3d render, CGI, unreal engine, video game scenery, mobile game ad, fantasy illustration, digital painting, drawing, cartoon, anime style,
+magical glow, glowing runes, floating particles, sparkles, neon lights, digital fire, magic aura, bloom effect,
+text, watermark, signature, logo, UI, character names,
+clean geometry, plastic textures, flat lighting, perfectly symmetrical, bright cheerful
 ```
 
 ---
@@ -47,7 +55,7 @@ negative: 3d render, CGI, cartoon, anime, clean intact scene, happy atmosphere, 
 ```
 RAW landscape photo, cinematic wide shot, shot on ARRI Alexa, 35mm anamorphic lens, 8k resolution,
 
-location: mystical void space as real dimensional rift,
+location: mystical void space as a real dimensional rift,
 
 environment details:
 - void of infinite darkness with no visible boundaries,
@@ -65,11 +73,19 @@ lighting & atmosphere:
 - cosmic mysterious atmosphere,
 - deafening silence,
 
+single figure: a young boy reaching toward the rift, terrified,
+
 composition: wide shot showing cosmic scale,
 
 technical: high dynamic range, film grain, ethereal atmosphere, photorealistic textures
+```
 
-negative: 3d render, CGI, cartoon, anime, bright daylight, simple background, clean geometry
+**负面提示词：**
+```
+3d render, CGI, unreal engine, video game scenery, mobile game ad, fantasy illustration, digital painting, drawing, cartoon, anime style,
+magical glow, glowing runes, floating particles, sparkles, neon lights, digital fire, magic aura, bloom effect,
+text, watermark, signature, logo, UI, character names,
+clean geometry, plastic textures, flat lighting, perfectly symmetrical, bright cheerful
 ```
 
 ---
@@ -82,7 +98,7 @@ negative: 3d render, CGI, cartoon, anime, bright daylight, simple background, cl
 ```
 RAW landscape photo, cinematic wide shot, shot on ARRI Alexa, 35mm anamorphic lens, 8k resolution,
 
-location: grand immortal sect mountain compound as real ancient Chinese architecture,
+location: grand immortal sect mountain compound as a real ancient Chinese architecture,
 
 environment details:
 - three thousand white marble steps leading up,
@@ -100,11 +116,19 @@ lighting & atmosphere:
 - warm gold on stone, cool blue in shadows,
 - epic grand atmosphere,
 
+single figure: a young boy looking up at the magnificent gates,
+
 composition: low angle looking up at entrance,
 
 technical: high dynamic range, film grain, epic atmosphere, photorealistic textures
+```
 
-negative: 3d render, CGI, cartoon, anime, modern building, dilapidated, dark gloomy
+**负面提示词：**
+```
+3d render, CGI, unreal engine, video game scenery, mobile game ad, fantasy illustration, digital painting, drawing, cartoon, anime style,
+magical glow, glowing runes, floating particles, sparkles, neon lights, digital fire, magic aura, bloom effect,
+text, watermark, signature, logo, UI, character names,
+clean geometry, plastic textures, flat lighting, perfectly symmetrical, bright cheerful
 ```
 
 ---

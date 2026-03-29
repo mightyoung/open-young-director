@@ -12,7 +12,7 @@
 ```
 RAW landscape photo, cinematic interior shot, shot on ARRI Alexa, 35mm anamorphic lens, 8k resolution,
 
-location: mine site medical station as real rural clinic,
+location: mine site medical station as a real rural clinic,
 
 environment details:
 - whitewashed concrete walls with yellowed patches,
@@ -30,11 +30,19 @@ lighting & atmosphere:
 - sense of abandonment and neglect,
 - quiet except for distant machinery,
 
+single figure: a pale young boy lying on the bed, unconscious,
+
 composition: medium shot showing bed and figure,
 
 technical: high dynamic range, film grain, flat grey color grading, photorealistic textures
+```
 
-negative: 3d render, CGI, cartoon, anime, modern hospital, clean bright, happy atmosphere, luxury clinic
+**负面提示词：**
+```
+3d render, CGI, unreal engine, video game scenery, mobile game ad, fantasy illustration, digital painting, drawing, cartoon, anime style,
+magical glow, glowing runes, floating particles, sparkles, neon lights, digital fire, magic aura, bloom effect,
+text, watermark, signature, logo, UI, character names,
+clean geometry, plastic textures, flat lighting, perfectly symmetrical, bright cheerful
 ```
 
 ---
@@ -47,7 +55,7 @@ negative: 3d render, CGI, cartoon, anime, modern hospital, clean bright, happy a
 ```
 RAW landscape photo, cinematic wide shot, shot on ARRI Alexa, 35mm anamorphic lens, 8k resolution,
 
-location: mine site at dusk as real industrial industrial zone,
+location: mine site at dusk as a real industrial zone,
 
 environment details:
 - setting sun creating orange red sky,
@@ -65,11 +73,19 @@ lighting & atmosphere:
 - industrial sounds fading,
 - oppressive grey atmosphere mixed with sunset warmth,
 
-composition: wide establishing shot showing scale,
+single figure: a thin boy standing alone, looking at the sunset,
+
+composition: wide establishing shot showing scale of the mine,
 
 technical: high dynamic range, film grain, warm orange color grade, photorealistic textures
+```
 
-negative: 3d render, CGI, cartoon, anime, bright daylight, clean new, modern city
+**负面提示词：**
+```
+3d render, CGI, unreal engine, video game scenery, mobile game ad, fantasy illustration, digital painting, drawing, cartoon, anime style,
+magical glow, glowing runes, floating particles, sparkles, neon lights, digital fire, magic aura, bloom effect,
+text, watermark, signature, logo, UI, character names,
+clean geometry, plastic textures, flat lighting, perfectly symmetrical, bright cheerful
 ```
 
 ---

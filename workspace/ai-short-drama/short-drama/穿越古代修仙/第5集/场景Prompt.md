@@ -12,7 +12,7 @@
 ```
 RAW landscape photo, cinematic wide shot, shot on ARRI Alexa, 35mm anamorphic lens, 8k resolution,
 
-location: sect arena as real ancient Chinese fighting arena,
+location: sect arena as a real ancient Chinese fighting arena,
 
 environment details:
 - circular stone platform raised 2 meters,
@@ -30,11 +30,19 @@ lighting & atmosphere:
 - murmurs from crowd,
 - anticipation tension,
 
+single figure: a young boy in red robes walking toward the arena,
+
 composition: wide shot showing circular arena,
 
 technical: high dynamic range, film grain, epic atmosphere, photorealistic textures
+```
 
-negative: 3d render, CGI, cartoon, anime, small room, empty, dark gloomy
+**负面提示词：**
+```
+3d render, CGI, unreal engine, video game scenery, mobile game ad, fantasy illustration, digital painting, drawing, cartoon, anime style,
+magical glow, glowing runes, floating particles, sparkles, neon lights, digital fire, magic aura, bloom effect,
+text, watermark, signature, logo, UI, character names,
+clean geometry, plastic textures, flat lighting, perfectly symmetrical, bright cheerful
 ```
 
 ---
@@ -47,7 +55,7 @@ negative: 3d render, CGI, cartoon, anime, small room, empty, dark gloomy
 ```
 RAW landscape photo, cinematic medium shot, shot on ARRI Alexa, 35mm anamorphic lens, 8k resolution,
 
-location: arena combat platform as real stone fighting stage,
+location: arena combat platform as a real stone fighting stage,
 
 environment details:
 - cracked stone platform from battle damage,
@@ -65,11 +73,19 @@ lighting & atmosphere:
 - tense frozen moment,
 - epic battle atmosphere,
 
+single figure: a young boy standing firm against the opponent,
+
 composition: medium shot showing clash,
 
 technical: high dynamic range, film grain, dramatic lighting, photorealistic textures
+```
 
-negative: 3d render, CGI, cartoon, anime, peaceful scene, no energy, still atmosphere
+**负面提示词：**
+```
+3d render, CGI, unreal engine, video game scenery, mobile game ad, fantasy illustration, digital painting, drawing, cartoon, anime style,
+magical glow, glowing runes, floating particles, sparkles, neon lights, digital fire, magic aura, bloom effect,
+text, watermark, signature, logo, UI, character names,
+clean geometry, plastic textures, flat lighting, perfectly symmetrical, bright cheerful
 ```
 
 ---
