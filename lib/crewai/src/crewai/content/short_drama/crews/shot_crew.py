@@ -63,14 +63,16 @@ class ShotCrew(BaseContentCrew):
         bible: ShortDramaBible,
         episode_num: int,
         scene_number: int,
+        previous_episode_end_frame: dict = None,
     ) -> List[Shot]:
-        """将场景分解为镜头列表
+        """将场景分解为镜头列表（增强版）
 
         Args:
             scene_plan: 场景规划（来自 EpisodeOutline）
             bible: ShortDramaBible
             episode_num: 集号
             scene_number: 场景序号
+            previous_episode_end_frame: 上一集尾帧（用于多集串联）
 
         Returns:
             list[Shot]: 镜头列表
@@ -79,20 +81,24 @@ class ShotCrew(BaseContentCrew):
         if not agent:
             raise ValueError("ShotAgent not found in agents")
 
-        # 调用 agent 分解镜头
+        # 调用 agent 分解镜头（传入尾帧用于串联）
         shot_dicts = agent.decompose_scene(
             scene_plan=scene_plan,
             bible=bible,
             episode_num=episode_num,
             scene_number=scene_number,
+            previous_episode_end_frame=previous_episode_end_frame,
         )
 
-        # 初始化 Prompt 转换器
-        converter = ShotToPromptConverter()
+        # 初始化 Prompt 转换器（使用增强版）
+        converter = ShotToPromptConverter(use_enhanced_timeline=True)
 
         # 转换为 Shot 对象并填充 video_prompt
         shots = []
         for shot_dict in shot_dicts:
+            # 获取camera_movement（增强版新增字段）
+            camera_movement = shot_dict.get("camera_movement", "")
+
             shot = Shot(
                 shot_number=shot_dict.get("shot_number", len(shots) + 1),
                 scene_number=shot_dict.get("scene_number", scene_number),
@@ -105,13 +111,20 @@ class ShotCrew(BaseContentCrew):
                 emotion=shot_dict.get("emotion", "中性"),
             )
 
-            # 使用 ShotToPromptConverter 填充 video_prompt（若为空）
+            # 生成素材引用（用于角色一致性）
+            asset_refs = []
+            for i, char_name in enumerate(shot.characters[:3]):  # 最多3个角色
+                char_ref = converter.generate_asset_reference_for_character(char_name, i + 1)
+                asset_refs.append(char_ref)
+
+            # 使用 ShotToPromptConverter 填充 video_prompt（增强版）
             if not shot.video_prompt:
                 shot.video_prompt = converter.convert_shot(
                     shot=shot,
                     bible=bible,
                     location=scene_plan.get("location", ""),
                     time_of_day=scene_plan.get("time_of_day", "白天"),
+                    asset_references=asset_refs,
                 )
 
             shots.append(shot)
@@ -124,12 +137,12 @@ class ShotCrew(BaseContentCrew):
         bible: ShortDramaBible,
         previous_episode: ShortDramaEpisode | None = None,
     ) -> ShortDramaEpisode:
-        """将整个集大纲分解为镜头
+        """将整个集大纲分解为镜头（增强版：支持多集串联）
 
         Args:
             episode_outline: 集大纲
             bible: ShortDramaBible
-            previous_episode: 上一集（用于获取剧情承接）
+            previous_episode: 上一集（用于多集剧情衔接）
 
         Returns:
             ShortDramaEpisode: 包含完整镜头的剧集
@@ -146,16 +159,22 @@ class ShotCrew(BaseContentCrew):
             episode_context=episode_context,
         )
 
+        # 获取上一集尾帧（用于多集串联）
+        previous_end_frame = None
+        if previous_episode:
+            previous_end_frame = self._extract_episode_end_frame(previous_episode)
+
         shot_counter = 1
         for scene_plan in episode_outline.scene_plan:
             scene_number = scene_plan.get("scene_number", len(episode.scenes) + 1)
 
-            # 分解场景为镜头
+            # 分解场景为镜头（传入上一集尾帧用于串联）
             shots = self.decompose_scene(
                 scene_plan=scene_plan,
                 bible=bible,
                 episode_num=episode_outline.episode_num,
                 scene_number=scene_number,
+                previous_episode_end_frame=previous_end_frame if shot_counter == 1 else None,
             )
 
             # 更新镜头序号
@@ -175,6 +194,35 @@ class ShotCrew(BaseContentCrew):
             episode.add_scene(scene)
 
         return episode
+
+    def _extract_episode_end_frame(self, previous_episode: ShortDramaEpisode) -> dict:
+        """从上一集提取尾帧信息用于串联
+
+        Args:
+            previous_episode: 上一集 ShortDramaEpisode
+
+        Returns:
+            dict: 包含尾帧信息的字典
+        """
+        # 获取上一集最后一个场景的最后一个镜头
+        all_shots = previous_episode.get_all_shots()
+        if not all_shots:
+            return None
+
+        last_shot = all_shots[-1]
+
+        # 构建尾帧信息
+        end_frame = {
+            "character_state": f"{', '.join(last_shot.characters)} {last_shot.action}" if last_shot.characters else last_shot.action,
+            "background": previous_episode.scenes[-1].location if previous_episode.scenes else "未知",
+            "lighting": "自然光",
+            "composition": "中景构图",
+            "mood": last_shot.emotion or "平静",
+            "camera_state": "固定镜头",
+            "motion_state": "静止",
+        }
+
+        return end_frame
 
     def decompose_episode_batch(
         self,

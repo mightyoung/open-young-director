@@ -108,7 +108,7 @@ class EpisodeOutlineAgent:
         # 构建世界观信息
         world_info = bible.world_rules_summary
 
-        prompt = f"""# 短剧集大纲生成
+        prompt = f"""# 短剧集大纲生成（增强版：支持多集串联）
 
 【本集剧情承接】
 {episode_context or '无（第一集）'}
@@ -137,17 +137,28 @@ class EpisodeOutlineAgent:
 1. **时长规划**：每集时长 2-5 分钟，总镜头数 10-20 个
 2. **场景结构**：建议 3-6 个场景，每个场景 20-60 秒
 3. **情节节奏**：
-   - 开头（0-30秒）：建立冲突或悬念
+   - 开头（0-30秒）：建立冲突或悬念，**必须承接上一集尾帧**
    - 发展（30秒-2分钟）：矛盾升级
    - 高潮（2-3分钟）：核心冲突爆发
-   - 结尾（3-5分钟）：反转或悬念收尾
+   - 结尾（3-5分钟）：**必须留下悬念尾帧，为下一集铺垫**
 4. **镜头设计**：每个场景包含 2-5 个镜头
+5. **尾帧设计**：最后一个场景必须设计强悬念尾帧，包含：
+   - 角色状态（表情、动作、位置）
+   - 背景环境
+   - 光线色调
+   - 情绪氛围
 
 请以JSON格式返回：
 {{
     "episode_num": {episode_num},
     "title": "集标题",
     "episode_summary": "本集概要（100字内）",
+    "end_frame": {{
+        "character_state": "尾帧角色状态描述",
+        "background": "尾帧背景环境",
+        "lighting": "尾帧光线色调",
+        "mood": "尾帧情绪氛围"
+    }},
     "scene_plan": [
         {{
             "scene_number": 1,
@@ -157,7 +168,9 @@ class EpisodeOutlineAgent:
             "key_actions": ["关键动作1", "关键动作2"],
             "characters": ["角色1", "角色2"],
             "emotion": "情绪基调",
-            "duration_estimate": 45
+            "duration_estimate": 45,
+            "is_opening": true,
+            "is_ending": false
         }}
     ]
 }}
@@ -165,7 +178,9 @@ class EpisodeOutlineAgent:
 注意：
 - 所有角色名必须与【本集出场角色】中的名称一致
 - 场景描述应简洁，适合拍摄
-- 每个场景的 duration_estimate 单位为秒"""
+- 每个场景的 duration_estimate 单位为秒
+- is_opening=true 表示需要承接上一集尾帧
+- is_ending=true 表示需要设计悬念尾帧"""
         return prompt
 
     def _parse_outline_result(self, result) -> dict:
@@ -207,6 +222,12 @@ class EpisodeOutlineAgent:
             "episode_num": 1,
             "title": "默认标题",
             "episode_summary": "剧情概要",
+            "end_frame": {
+                "character_state": "默认状态",
+                "background": "默认背景",
+                "lighting": "默认光线",
+                "mood": "平静"
+            },
             "scene_plan": [],
         }
 

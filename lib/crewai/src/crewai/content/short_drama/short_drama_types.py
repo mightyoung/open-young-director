@@ -101,6 +101,7 @@ class ShortDramaEpisode:
     - 集号和标题
     - 场景列表
     - 集级配音
+    - 尾帧信息（用于多集串联）
     """
     episode_num: int  # 集号
     title: str  # 集标题
@@ -109,6 +110,7 @@ class ShortDramaEpisode:
     voiceover_intro: str = ""  # 开场配音
     voiceover_outro: str = ""  # 结尾配音
     episode_context: str = ""  # 本集剧情承接（上集结尾）
+    end_frame: dict = field(default_factory=dict)  # 尾帧信息（用于下一集串联）
 
     def add_scene(self, scene: ShortDramaScene) -> None:
         """添加场景"""
@@ -133,6 +135,29 @@ class ShortDramaEpisode:
                 chars.update(shot.characters)
         return chars
 
+    def get_end_frame(self) -> dict:
+        """获取尾帧信息（用于下一集串联）"""
+        if self.end_frame:
+            return self.end_frame
+
+        # 如果没有预设尾帧，从最后一个镜头生成
+        all_shots = self.get_all_shots()
+        if not all_shots:
+            return {}
+
+        last_shot = all_shots[-1]
+        last_scene = self.scenes[-1] if self.scenes else None
+
+        return {
+            "character_state": f"{', '.join(last_shot.characters)} {last_shot.action}" if last_shot.characters else last_shot.action,
+            "background": last_scene.location if last_scene else "未知",
+            "lighting": "自然光",
+            "composition": "中景构图",
+            "mood": last_shot.emotion or "平静",
+            "camera_state": "固定镜头",
+            "motion_state": "静止",
+        }
+
     def to_dict(self) -> dict:
         """转换为字典"""
         return {
@@ -143,6 +168,7 @@ class ShortDramaEpisode:
             "voiceover_intro": self.voiceover_intro,
             "voiceover_outro": self.voiceover_outro,
             "episode_context": self.episode_context,
+            "end_frame": self.end_frame,
         }
 
 
@@ -249,12 +275,13 @@ class ShortDramaPipelineState(PipelineState):
 class EpisodeOutline:
     """EpisodeOutline — 集大纲
 
-    用于 EpisodeOutlineCrew 生成的集大纲，包含场景规划。
+    用于 EpisodeOutlineCrew 生成的集大纲，包含场景规划和尾帧。
     """
     episode_num: int  # 集号
     title: str  # 集标题
     episode_summary: str  # 集概要
     scene_plan: list[dict] = field(default_factory=list)  # 场景规划列表
+    end_frame: dict = field(default_factory=dict)  # 尾帧信息（用于下一集串联）
 
     # 每个场景的信息
     # {
@@ -266,6 +293,16 @@ class EpisodeOutline:
     #     "characters": ["韩林", "长老", "对手"],
     #     "emotion": "紧张/兴奋",
     #     "duration_estimate": 30,  # 秒
+    #     "is_opening": true,
+    #     "is_ending": false
+    # }
+
+    # 尾帧信息
+    # {
+    #     "character_state": "主角回眸一笑，眼神中带着坚定",
+    #     "background": "太虚宗演武场",
+    #     "lighting": "夕阳余晖",
+    #     "mood": "释然/坚定"
     # }
 
     def to_dict(self) -> dict:
@@ -275,6 +312,7 @@ class EpisodeOutline:
             "title": self.title,
             "episode_summary": self.episode_summary,
             "scene_plan": self.scene_plan,
+            "end_frame": self.end_frame,
         }
 
 
