@@ -19,7 +19,7 @@ environment details:
 - white marble floor stretching expanse,
 - bronze incense burners flanking entrance,
 - silk banners hanging from ceiling,
-- disciples in rows practicing,
+- empty practice grounds with scattered training equipment,
 
 the hall: imposing center of academy,
 
@@ -28,9 +28,7 @@ lighting & atmosphere:
 - long shadows from pillars,
 - warm golden light inside,
 - incense smoke visible in light beams,
-- serious disciplined atmosphere,
-
-single figure: a young boy in red robes standing at attention,
+- disciplined atmosphere,
 
 composition: wide shot showing grand scale,
 
@@ -73,8 +71,6 @@ lighting & atmosphere:
 - bamboo rustling in breeze,
 - solitude contemplation,
 
-single figure: a young boy sitting on the stone bench, gazing thoughtfully,
-
 composition: medium shot showing peaceful corner,
 
 technical: high dynamic range, film grain, warm atmosphere, photorealistic textures
@@ -115,8 +111,6 @@ lighting & atmosphere:
 - cool mysterious atmosphere,
 - silent except wind,
 - spiritual energy present,
-
-single figure: a young boy walking slowly into the grove,
 
 composition: wide shot showing towering bamboo,
 

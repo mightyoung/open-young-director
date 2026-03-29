@@ -17,7 +17,7 @@ location: sect arena as a real ancient Chinese fighting arena,
 environment details:
 - circular stone platform raised 2 meters,
 - stone steps leading up on all sides,
-- disciples seated on tiered stone benches,
+- tiered stone seating rising like amphitheater,
 - colored banners flying from poles,
 - sect elders on elevated platform,
 
@@ -27,10 +27,8 @@ lighting & atmosphere:
 - bright afternoon sun overhead,
 - harsh shadows on stone,
 - energetic atmosphere,
-- murmurs from crowd,
 - anticipation tension,
-
-single figure: a young boy in red robes walking toward the arena,
+- epic battle setting,
 
 composition: wide shot showing circular arena,
 
@@ -59,23 +57,21 @@ location: arena combat platform as a real stone fighting stage,
 
 environment details:
 - cracked stone platform from battle damage,
-- two figures facing each other,
-- fire and blue light clashing in center,
-- crowd watching from surrounding seats,
-- dust being kicked up from impacts,
+- combat arena prepared for duel,
+- scorch marks and blast craters visible,
+- debris scattered across arena floor,
+- tiered seating empty and waiting,
 
 the stage: battlefield,
 
 lighting & atmosphere:
-- fire orange light clashing with blue,
-- dramatic shadows,
-- energy crackling in air,
+- dust particles in air,
+- energy residue crackling,
+- dramatic shadows from impacts,
 - tense frozen moment,
-- epic battle atmosphere,
+- epic battle aftermath,
 
-single figure: a young boy standing firm against the opponent,
-
-composition: medium shot showing clash,
+composition: medium shot showing arena damage,
 
 technical: high dynamic range, film grain, dramatic lighting, photorealistic textures
 ```
