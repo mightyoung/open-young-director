@@ -1,0 +1,41 @@
+{#**
+ * 角色提示词基础模板
+ * 格式参考: video-prompt-templates.md v2.0
+ * 使用方式: jinja2 render with character data
+ *#}
+{% block HEADER %}
+35mm film photography, high ISO, grain texture, authentic RAW photo,
+character turnaround sheet for cinematic period film, four separate full body shots on a single white canvas,
+{% endblock %}
+
+{% block SUBJECT %}
+subject: a real {{ age }}-year-old East Asian {{ gender }} actor, {{ height }} height, {{ build }}, realistic human anatomy with {{ anatomy }}, {{ skin }},
+{% endblock %}
+
+{% block FACE %}
+facial features: {{ hair }}, {{ eyes }} irises with {{ gaze }}, {{ expression }}, {{ special }},
+{% endblock %}
+
+{% block ATTIRE %}
+attire: {{ attire }}, {{ attire_details }},
+{% endblock %}
+
+{% block VIEWS %}
+views (from left to right):
+1. strict front view, {{ view_front }},
+2. 3/4 front view facing {{ view_34 }},
+3. strict profile view facing {{ view_profile }},
+4. full back view showing {{ view_back }},
+{% endblock %}
+
+{% block TECHNICAL %}
+technical details: shot on ARRI Alexa, {{ lens }}mm lens, f/{{ aperture }}, sharp focus on {{ focus }}, {{ lighting }},
+{% endblock %}
+
+{% block BACKGROUND %}
+background: pure seamless white paper backdrop, absolute blank background, zero digital artifacts, totally clean background
+{% endblock %}
+
+{% block NEGATIVE %}
+negative: {{ negative_prompt }}
+{% endblock %}

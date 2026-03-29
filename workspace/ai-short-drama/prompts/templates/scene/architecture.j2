@@ -1,0 +1,45 @@
+{#**
+ * 场景模板 - 建筑/宗门
+ * 用于宫殿、宗门、山门等大型建筑
+ *#}
+{% block HEADER %}
+RAW landscape photo, cinematic wide shot, shot on ARRI Alexa, 35mm anamorphic lens, 8k resolution,
+{% endblock %}
+
+{% block LOCATION %}
+location: {{ location }},
+{% endblock %}
+
+{% block ENVIRONMENT %}
+environment details:
+{% for env in environment %}
+- {{ env }},
+{% endfor %}
+{% endblock %}
+
+{% block MAIN_SUBJECT %}
+the {{ subject_type }}: {{ main_subject }},
+{% endblock %}
+
+{% block CHARACTER_ACTION %}
+single figure: {{ character_action }},
+{% endblock %}
+
+{% block LIGHTING %}
+lighting & atmosphere:
+{% for light in lighting %}
+- {{ light }},
+{% endfor %}
+{% endblock %}
+
+{% block COMPOSITION %}
+composition: {{ composition }},
+{% endblock %}
+
+{% block TECHNICAL %}
+technical: high dynamic range, film grain, {{ atmosphere }} atmosphere, photorealistic textures
+{% endblock %}
+
+{% block NEGATIVE %}
+negative: {{ negative_prompt }}
+{% endblock %}
