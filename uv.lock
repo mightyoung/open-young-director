@@ -1181,6 +1181,11 @@ watson = [
     { name = "ibm-watsonx-ai" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "vcrpy" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "a2a-sdk", marker = "extra == 'a2a'", specifier = "~=0.3.10" },
@@ -1234,6 +1239,9 @@ requires-dist = [
     { name = "voyageai", marker = "extra == 'voyageai'", specifier = "~=0.3.5" },
 ]
 provides-extras = ["a2a", "anthropic", "aws", "azure-ai-inference", "bedrock", "docling", "embeddings", "file-processing", "google-genai", "litellm", "mem0", "openpyxl", "pandas", "qdrant", "tools", "voyageai", "watson"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "vcrpy", specifier = ">=7.0.0" }]
 
 [[package]]
 name = "crewai-devtools"

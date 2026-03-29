@@ -158,9 +158,9 @@ class BlogCrew(BaseContentCrew):
         )
         tasks.append(thumbnail_task)
 
-        # 创建Crew
+        # 创建Crew - 提取实际的Agent对象而非wrapper
         crew = Crew(
-            agents=list(agents.values()),
+            agents=[agent_obj.agent for agent_obj in agents.values()],
             tasks=tasks,
             verbose=self._verbose,
             process="sequential",

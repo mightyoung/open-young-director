@@ -22,21 +22,34 @@ def _save_json_output(result, output_dir: Path, filename: str) -> None:
 def _create_llm_from_env():
     """Create an LLM instance from environment variables.
 
-    Checks Gemini, DeepSeek, Doubao, Kimi, MiniMax in priority order
+    Checks MiniMax, DeepSeek, Gemini, Doubao, Kimi in priority order
     and returns the first configured one.
     """
-    # Check Gemini first (reliable, widely compatible)
-    gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
-    if gemini_key:
+    # Check MiniMax first (fast, good for China)
+    minimax_key = os.environ.get("MINIMAX_API_KEY", "").strip()
+    minimax_url = os.environ.get("MINIMAX_BASE_URL", "").strip()
+    minimax_model = os.environ.get("MINIMAX_MODEL", "").strip()
+
+    if minimax_key and minimax_url:
         from crewai.llm import LLM
-        # Try gemini-2.5-flash, fall back to gemini-1.5-pro
-        return LLM(model="gemini/gemini-2.5-flash", api_key=gemini_key)
+        model = minimax_model or "MiniMax-M2.7-highspeed"
+        return LLM(
+            model=model,
+            api_key=minimax_key,
+            base_url=minimax_url,
+        )
 
     # Check DeepSeek (widely compatible, reliable)
     deepseek_key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
     if deepseek_key:
         from crewai.llm import LLM
         return LLM(model="deepseek/deepseek-chat", api_key=deepseek_key)
+
+    # Check Gemini (reliable, widely compatible)
+    gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if gemini_key:
+        from crewai.llm import LLM
+        return LLM(model="gemini/gemini-2.5-flash", api_key=gemini_key)
 
     # Check Doubao/Volcengine (OpenAI-compatible endpoint)
     doubao_key = os.environ.get("DOUBAO_API_KEY", "").strip()
@@ -62,21 +75,6 @@ def _create_llm_from_env():
             model=model,
             api_key=kimi_key,
             base_url="https://api.moonshot.cn/v1",
-        )
-
-    # Check MiniMax (common in China, OpenAI-compatible endpoint)
-    minimax_key = os.environ.get("MINIMAX_API_KEY", "").strip()
-    minimax_url = os.environ.get("MINIMAX_BASE_URL", "").strip()
-    minimax_model = os.environ.get("MINIMAX_MODEL", "").strip()
-
-    if minimax_key and minimax_url:
-        from crewai.llm import LLM
-        # Use the model string as-is for OpenAI-compatible endpoint
-        model = minimax_model or "MiniMax-M2.7-highspeed"
-        return LLM(
-            model=model,
-            api_key=minimax_key,
-            base_url=minimax_url,
         )
 
     # Last resort: let crewai auto-detect (will use OPENAI_API_KEY from env)

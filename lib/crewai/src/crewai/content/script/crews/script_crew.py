@@ -13,7 +13,7 @@ from crewai.content.script.script_types import (
     SceneOutput,
     SceneDialogue,
 )
-from crewai.content.script.agents import BeatSheetAgent, CinematographyAgent, VisualMotifTracker
+from crewai.content.script.agents import BeatSheetAgent, VisualMotifTracker
 
 if TYPE_CHECKING:
     from crewai.llm import LLM
@@ -97,9 +97,16 @@ class ScriptCrew(BaseContentCrew):
         start = time.time()
 
         # 使用专门的生成流程
-        script_output = self._generate_script()
+        script_output, motif_tracker = self._generate_script()
+
+        # 生成视觉主题报告
+        motif_report = motif_tracker.generate_motif_report()
 
         execution_time = time.time() - start
+
+        # 将motif报告添加到metadata中
+        metadata = self._get_metadata()
+        metadata["motif_report"] = motif_report
 
         return BaseCrewOutput(
             content=script_output,
@@ -109,13 +116,18 @@ class ScriptCrew(BaseContentCrew):
                 "场景描写",
                 "对白生成",
                 "格式转换",
+                "视觉主题追踪",
             ],
             execution_time=execution_time,
-            metadata=self._get_metadata(),
+            metadata=metadata,
         )
 
-    def _generate_script(self) -> ScriptOutput:
-        """生成完整剧本"""
+    def _generate_script(self) -> tuple[ScriptOutput, VisualMotifTracker]:
+        """生成完整剧本
+
+        Returns:
+            tuple: (ScriptOutput, motif_tracker实例)
+        """
         config = self.config
 
         # 1. 获取或生成结构
@@ -130,7 +142,7 @@ class ScriptCrew(BaseContentCrew):
         scenes = self._generate_scenes(beat_sheets, config)
 
         # 4. 生成对白
-        dialogues = self._generate_dialogues(scenes, config)
+        dialogues, motif_tracker = self._generate_dialogues(scenes, config)
 
         # 5. 组装输出
         metadata = ScriptMetadata(
@@ -141,7 +153,7 @@ class ScriptCrew(BaseContentCrew):
             rating=config.get("rating", ""),
         )
 
-        return ScriptOutput(
+        script_output = ScriptOutput(
             title=config.get("title", "未命名剧本"),
             logline=config.get("logline", ""),
             beat_sheets=beat_sheets,
@@ -150,6 +162,8 @@ class ScriptCrew(BaseContentCrew):
             metadata=metadata,
             warnings=[],
         )
+
+        return script_output, motif_tracker
 
     def _generate_beat_sheets(
         self,
@@ -168,12 +182,6 @@ class ScriptCrew(BaseContentCrew):
         """生成场景描写"""
         scenes = []
         scene_number = 1
-
-        # 使用 CinematographyAgent 生成视觉指导
-        cinematography_agent = CinematographyAgent(
-            llm=self._get_llm(),
-            verbose=self.verbose
-        )
 
         for beat_sheet in beat_sheets:
             for beat in beat_sheet.beats:
@@ -211,8 +219,12 @@ class ScriptCrew(BaseContentCrew):
         self,
         scenes: List[SceneOutput],
         config: dict,
-    ) -> List[SceneDialogue]:
-        """生成对白"""
+    ) -> tuple[List[SceneDialogue], VisualMotifTracker]:
+        """生成对白
+
+        Returns:
+            tuple: (dialogues列表, motif_tracker实例)
+        """
         dialogues = []
 
         # 使用VisualMotifTracker追踪视觉主题
@@ -250,7 +262,7 @@ class ScriptCrew(BaseContentCrew):
                     scene.action[:50] if len(scene.action) > 50 else scene.action
                 )
 
-        return dialogues
+        return dialogues, motif_tracker
 
     def _get_llm(self):
         """获取LLM实例"""

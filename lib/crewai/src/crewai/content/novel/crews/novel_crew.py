@@ -33,6 +33,7 @@ from crewai.content.novel.human_feedback import (
     create_approval_feedback,
 )
 from crewai.content.novel.feedback_applier import FeedbackApplier
+from crewai.content.novel.seed_mechanism import SeedConfig, set_llm_seed
 from crewai.content.review.global_postpass import GlobalPostPass
 from crewai.content.review.per_chapter_postpass import PerChapterPostPass, PostPassResult
 from crewai.content.review.review_context import ReviewContext
@@ -520,6 +521,7 @@ word_count: {word_count}
         review_each_chapter: bool = False,
         approval_mode: bool = False,
         seed: str | None = None,
+        variant: str | None = None,
     ) -> BaseCrewOutput:
         """执行完整的小说创作流程
 
@@ -533,6 +535,8 @@ word_count: {word_count}
             seed: 可选，用于确定性重放的 seed。如果提供，会验证与已保存状态的 seed 匹配。
                   不匹配时，不加载已有状态，从头开始生成核心内容（世界观、大纲等）。
                   如果未提供但配置中有 seed，会自动使用配置的 seed。
+            variant: 可选，变体标识，用于生成同一主题的不同变体。
+                     例如: variant="horror" 会生成恐怖主题变体。
 
         Returns:
             BaseCrewOutput: 包含NovelOutput的crew输出，或PipelineState
@@ -540,41 +544,96 @@ word_count: {word_count}
         import time
         start = time.time()
 
-        # 自动生成 seed（如果配置中提供了 topic, genre, style）
+        # 获取配置参数
+        topic = self.config.get("topic", "")
+        genre = self.config.get("genre", "")
+        style = self.config.get("style", "")
+
+        # 自动生成 seed_config（如果配置中提供了 topic, genre, style）
+        seed_config = None
         if seed is None:
             seed = self.config.get("seed")
-        if seed is None:
-            topic = self.config.get("topic", "")
-            genre = self.config.get("genre", "")
-            style = self.config.get("style", "")
-            if topic:
-                seed = PipelineState.generate_seed(topic, genre, style)
+        if seed is None and topic:
+            seed_config = SeedConfig(
+                topic=topic,
+                genre=genre,
+                style=style,
+                variant=variant,
+            )
+            seed = seed_config.generate_seed()
+        elif seed:
+            # 使用提供的 seed 创建 seed_config
+            seed_config = SeedConfig(
+                seed=seed,
+                topic=topic,
+                genre=genre,
+                style=style,
+                variant=variant,
+            )
 
         # 设置 seed 到 pipeline_state（用于保存时记录）
         if seed:
             self.pipeline_state.seed = seed
-            # 将 seed 传递给 LLM，使其真正影响 LLM 输出
-            # 将 32 字符 hex seed 转换为 int（取模 2^32 以适应 API 要求）
+            if seed_config:
+                self.pipeline_state.seed_config = seed_config
+
+            # 将 seed 传递给 LLM（使用 set_llm_seed 实现多方法 fallback）
             llm = self.config.get("llm")
-            if llm and hasattr(llm, 'seed'):
-                llm_seed = int(seed, 16) % (2**32)
-                llm.seed = llm_seed
-                logger.info(f"LLM seed set to {llm_seed} (from hex: {seed})")
+            if llm:
+                success = set_llm_seed(llm, seed)
+                if success:
+                    logger.info(f"LLM seed set successfully (from hex: {seed[:8]}...)")
+                else:
+                    logger.warning(f"Failed to set LLM seed, continuing without deterministic seed")
 
         # 如果提供了状态路径，加载已有状态以支持断点续跑
         if pipeline_state_path:
-            loaded_state = PipelineState.load(pipeline_state_path)
-            # Seed 验证：seed 不匹配时不加载已有状态，从头开始生成
-            if seed and not loaded_state.seed_valid(seed):
-                logger.warning(
-                    f"Seed mismatch: expected '{seed}', got '{loaded_state.seed}'. "
-                    f"Will regenerate core content (world, outline, etc.)"
-                )
-                # 重置状态，只保留 seed
+            try:
+                loaded_state = PipelineState.load(pipeline_state_path)
+                # 计算重放计划（基于 seed 配置的增量重放）
+                replay_plan = loaded_state.get_replay_plan(seed_config)
+                approval_preserve = loaded_state.preserve_approval_history() if not replay_plan.regenerate_all else {}
+
+                if replay_plan.regenerate_all:
+                    logger.warning(
+                        f"Regenerating all: seed_config mismatch or no seed_config found. "
+                        f"Will regenerate core content (world, outline, etc.)"
+                    )
+                    self._pipeline_state = PipelineState(config=dict(self.config) if hasattr(self.config, "keys") else {})
+                    self._pipeline_state.seed = seed
+                    if seed_config:
+                        self._pipeline_state.seed_config = seed_config
+                elif replay_plan.should_regenerate_world():
+                    logger.info(f"Regenerating from world stage, preserving: {replay_plan.preserve}")
+                    self._pipeline_state = loaded_state
+                    # 清除需要重新生成的阶段数据
+                    self._pipeline_state.world_data = {}
+                    self._pipeline_state.plot_data = {}
+                    self._pipeline_state.current_stage = "init"
+                elif replay_plan.should_regenerate_outline():
+                    logger.info(f"Regenerating from outline stage, preserving: {replay_plan.preserve}")
+                    self._pipeline_state = loaded_state
+                    self._pipeline_state.plot_data = {}
+                    self._pipeline_state.current_stage = "outline"
+                elif replay_plan.should_regenerate_chapters() and replay_plan.dirty_chapters:
+                    logger.info(f"Regenerating chapters: {replay_plan.dirty_chapters}")
+                    self._pipeline_state = loaded_state
+                    # 标记脏章节
+                    self._pipeline_state.clear_dirty_chapters()
+                else:
+                    logger.info("Using cached state (no regeneration needed)")
+                    self._pipeline_state = loaded_state
+
+                # 恢复审批历史
+                if approval_preserve:
+                    self._pipeline_state.restore_approval_history(approval_preserve)
+
+            except FileNotFoundError:
+                logger.info(f"Pipeline state file not found: {pipeline_state_path}, starting fresh")
                 self._pipeline_state = PipelineState(config=dict(self.config) if hasattr(self.config, "keys") else {})
                 self._pipeline_state.seed = seed
-            else:
-                self._pipeline_state = loaded_state
+                if seed_config:
+                    self._pipeline_state.seed_config = seed_config
 
         # 获取当前流水线阶段
         current_stage = self.pipeline_state.current_stage
@@ -1429,7 +1488,10 @@ word_count: {word_count}
                 logger.warning(f"Chapter {chapter_num} continuity issues: {continuity_issues}")
 
             # Store actual content for better context
-            previous_summary = f"第{chapter_num}章《{chapter_output.title}》: {chapter_output.content[:500] if chapter_output.content else ''}..."
+            previous_summary = self._extract_chapter_ending_context(
+                chapter_output.content if chapter_output.content else '',
+                chapter_output.title
+            )
 
         return chapters
 
@@ -1650,7 +1712,10 @@ word_count: {word_count}
             self.continuity_tracker.add_event(event)
 
             # Store content for context
-            previous_summary = f"第{chapter_num}章《{chapter_output.title}》: {chapter_output.content[:500] if chapter_output.content else ''}..."
+            previous_summary = self._extract_chapter_ending_context(
+                chapter_output.content if chapter_output.content else '',
+                chapter_output.title
+            )
 
             # Per-chapter review pause point
             if review_each_chapter:
@@ -2291,3 +2356,40 @@ word_count: {word_count}
         if current_summary:
             return f"{current_summary}\n\n{memory_summary}"
         return memory_summary
+
+    def _extract_chapter_ending_context(self, content: str, chapter_title: str) -> str:
+        """从章节内容中提取结尾场景描述，用于为下一章提供连贯的上下文。
+
+        提取内容：具体场景/地点、人物及其状态、情绪氛围、悬念/伏笔
+
+        Args:
+            content: 章节正文内容
+            chapter_title: 章节标题
+
+        Returns:
+            格式化结尾场景描述字符串
+        """
+        if not content:
+            return ""
+
+        # 取最后500字作为结尾部分进行分析
+        ending_section = content[-1000:] if len(content) > 1000 else content
+
+        # 简单分析：提取最后几段的关键信息
+        # 注意：这里使用简单规则，未来可用LLM来做更精确的提取
+        lines = ending_section.strip().split('\n')
+        last_paragraphs = [l.strip() for l in lines if l.strip() and len(l.strip()) > 50][-3:]
+
+        if not last_paragraphs:
+            # fallback：简单截取最后200字
+            return f"第{chapter_title}结尾: {content[-200:]}"
+
+        # 组合最后几段作为场景延续的上下文
+        scene_desc = "\n".join(last_paragraphs)
+        return f"""【前章结尾场景】
+{scene_desc}
+
+以上是前章结尾的场景描述。请延续此场景继续写作，确保：
+- 地点、人物状态保持一致
+- 情绪氛围自然延续
+- 不得突兀切换到其他场景或时间"""
