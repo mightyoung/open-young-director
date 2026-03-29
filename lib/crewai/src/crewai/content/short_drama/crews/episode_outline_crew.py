@@ -84,12 +84,13 @@ class EpisodeOutlineCrew(BaseContentCrew):
             episode_context=episode_context,
         )
 
-        # 转换为 EpisodeOutline 对象
+        # 转换为 EpisodeOutline 对象（包含尾帧）
         return EpisodeOutline(
             episode_num=result.get("episode_num", episode_num),
             title=result.get("title", f"第{episode_num}集"),
             episode_summary=result.get("episode_summary", ""),
             scene_plan=result.get("scene_plan", []),
+            end_frame=result.get("end_frame", {}),
         )
 
     def generate_outline_batch(
