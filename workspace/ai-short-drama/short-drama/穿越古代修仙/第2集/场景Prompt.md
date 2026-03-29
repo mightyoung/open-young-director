@@ -30,11 +30,9 @@ lighting & atmosphere:
 - sense of abandonment and neglect,
 - quiet except for distant machinery,
 
-single figure: a pale young boy lying on the bed, unconscious,
+composition: medium shot showing medical equipment and interior,
 
-composition: medium shot showing bed and figure,
-
-technical: high dynamic range, film grain, flat grey color grading, photorealistic textures
+technical: high dynamic range, film grain, clinical atmosphere, photorealistic textures
 ```
 
 **负面提示词：**
@@ -61,7 +59,7 @@ environment details:
 - setting sun creating orange red sky,
 - black mine headframes silhouetted against sunset,
 - rusted ore carts on tracks,
-- groups of workers walking home,
+- workers heading home in distance,
 - low industrial buildings,
 
 the site: sprawling mine complex at shift change,
@@ -70,12 +68,10 @@ lighting & atmosphere:
 - warm orange sunset backlighting,
 - long shadows stretching across ground,
 - dust particles in evening air,
-- industrial sounds fading,
-- oppressive grey atmosphere mixed with sunset warmth,
+- distant sounds of end shift,
+- melancholic atmosphere,
 
-single figure: a thin boy standing alone, looking at the sunset,
-
-composition: wide establishing shot showing scale of the mine,
+composition: wide establishing shot showing scale of the mining complex,
 
 technical: high dynamic range, film grain, warm orange color grade, photorealistic textures
 ```

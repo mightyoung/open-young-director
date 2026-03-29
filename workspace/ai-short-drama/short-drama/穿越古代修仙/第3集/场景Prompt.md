@@ -21,18 +21,16 @@ environment details:
 - single shaft of morning light piercing through gap,
 - mining tools partially buried,
 
-the space: chaotic destruction, sense of recent disaster,
+the space: chaotic destruction, aftermath of disaster,
 
 lighting & atmosphere:
 - dramatic shaft of light through rubble,
 - deep shadows in corners,
 - dust motes visible in light beam,
 - cold air in cave,
-- aftermath of tragedy,
+- tense atmosphere,
 
-single figure: a young boy standing among the rubble, looking up at the light,
-
-composition: wide shot showing destruction, single figure,
+composition: wide shot showing destruction and debris,
 
 technical: high dynamic range, film grain, dramatic chiaroscuro, photorealistic textures
 ```
@@ -73,11 +71,9 @@ lighting & atmosphere:
 - cosmic mysterious atmosphere,
 - deafening silence,
 
-single figure: a young boy reaching toward the rift, terrified,
-
 composition: wide shot showing cosmic scale,
 
-technical: high dynamic range, film grain, ethereal atmosphere, photorealistic textures
+technical: high dynamic range, film grain, cosmic atmosphere, photorealistic textures
 ```
 
 **负面提示词：**
@@ -115,8 +111,6 @@ lighting & atmosphere:
 - morning mist around base,
 - warm gold on stone, cool blue in shadows,
 - epic grand atmosphere,
-
-single figure: a young boy looking up at the magnificent gates,
 
 composition: low angle looking up at entrance,
 

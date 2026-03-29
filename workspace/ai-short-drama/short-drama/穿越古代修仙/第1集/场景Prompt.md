@@ -4,7 +4,7 @@
 
 ---
 
-## S01 矿山宿舍（黎明）
+## S01 矿山宿舍
 
 ### 场景提示词
 
@@ -30,11 +30,9 @@ lighting & atmosphere:
 - visible dust motes in light beams,
 - oppressive damp atmosphere,
 
-single figure: a young boy in worn brown clothes lying on the bed, sleeping fitfully,
+composition: wide shot showing cramped living conditions and interior layout,
 
-composition: wide shot showing cramped living conditions, single figure on bed,
-
-technical: high dynamic range, film grain, dramatic chiaroscuro lighting, photorealistic textures
+technical: high dynamic range, film grain, oppressive atmosphere, photorealistic textures
 ```
 
 **负面提示词：**
@@ -47,7 +45,7 @@ clean geometry, plastic textures, flat lighting, perfectly symmetrical, bright c
 
 ---
 
-## S02 临渊镇街道（清晨）
+## S02 临渊镇街道
 
 ### 场景提示词
 
@@ -73,9 +71,7 @@ lighting & atmosphere:
 - mist creating soft volumetric atmosphere,
 - early morning quiet, no people yet,
 
-single figure: a young boy in worn clothes walking down the misty street,
-
-composition: wide establishing shot looking down the misty street, showing scale,
+composition: wide establishing shot looking down the misty street,
 
 technical: high dynamic range, film grain, misty atmosphere, soft focus background, photorealistic textures
 ```
@@ -90,7 +86,7 @@ clean geometry, plastic textures, flat lighting, perfectly symmetrical, bright c
 
 ---
 
-## S03 矿山入口（清晨）
+## S03 矿山入口
 
 ### 场景提示词
 
@@ -103,9 +99,8 @@ location: mine tunnel entrance as a real historical mining site,
 environment details:
 - black granite mountain face with dark cave mouth,
 - rough timber support frame at entrance, weathered and ancient,
-- scattered ore carts on rusted tracks leading into darkness,
-- group of young boys in ragged clothes waiting in line,
-- adult overseer in black uniform watching with stern expression,
+- scattered ore carts on rusted tracks, mine equipment piled nearby,
+- dark mine tunnel disappearing into the mountain,
 
 the entrance: gaping dark opening 3 meters high, cold air flowing out,
 
@@ -113,14 +108,12 @@ lighting & atmosphere:
 - flat grey overcast sky, no sun visible,
 - cold ambient light with no direction,
 - dark entrance creating ominous black void,
-- group of boys huddled together, scared faces,
+- oppressive cold air flowing from tunnel,
 - oppressive atmosphere, sense of impending danger,
 
-single figure: a thin boy in worn brown clothes standing nervously in line,
+composition: wide shot showing scale of the mine entrance,
 
-composition: wide shot showing scale of entrance, overseer towering over boys,
-
-technical: high dynamic range, film grain, flat grey color grading, photorealistic textures
+technical: high dynamic range, film grain, oppressive atmosphere, photorealistic textures
 ```
 
 **负面提示词：**
@@ -137,7 +130,7 @@ clean geometry, plastic textures, flat lighting, perfectly symmetrical, bright c
 
 | 代码 | 场景 |
 |------|------|
-| @图片S01 | 矿山宿舍内景 |
+| @图片S01 | 矿山宿舍 |
 | @图片S02 | 临渊镇街道 |
 | @图片S03 | 矿山入口 |
 
