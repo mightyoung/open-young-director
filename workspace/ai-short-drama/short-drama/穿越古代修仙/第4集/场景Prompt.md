@@ -12,7 +12,7 @@
 ```
 RAW landscape photo, cinematic wide shot, shot on ARRI Alexa, 35mm anamorphic lens, 8k resolution,
 
-location: grand immortal sect main hall as real ancient Chinese palace,
+location: grand immortal sect main hall as a real ancient Chinese palace,
 
 environment details:
 - massive wooden hall with curved roof,
@@ -30,11 +30,19 @@ lighting & atmosphere:
 - incense smoke visible in light beams,
 - serious disciplined atmosphere,
 
+single figure: a young boy in red robes standing at attention,
+
 composition: wide shot showing grand scale,
 
 technical: high dynamic range, film grain, epic atmosphere, photorealistic textures
+```
 
-negative: 3d render, CGI, cartoon, anime, modern building, dirty, dark gloomy
+**负面提示词：**
+```
+3d render, CGI, unreal engine, video game scenery, mobile game ad, fantasy illustration, digital painting, drawing, cartoon, anime style,
+magical glow, glowing runes, floating particles, sparkles, neon lights, digital fire, magic aura, bloom effect,
+text, watermark, signature, logo, UI, character names,
+clean geometry, plastic textures, flat lighting, perfectly symmetrical, bright cheerful
 ```
 
 ---
@@ -47,7 +55,7 @@ negative: 3d render, CGI, cartoon, anime, modern building, dirty, dark gloomy
 ```
 RAW landscape photo, cinematic medium shot, shot on ARRI Alexa, 35mm anamorphic lens, 8k resolution,
 
-location: sect disciple quarters as real traditional Chinese courtyard,
+location: sect disciple quarters as a real traditional Chinese courtyard,
 
 environment details:
 - small courtyard with ancient scholar tree,
@@ -65,11 +73,19 @@ lighting & atmosphere:
 - bamboo rustling in breeze,
 - solitude contemplation,
 
+single figure: a young boy sitting on the stone bench, gazing thoughtfully,
+
 composition: medium shot showing peaceful corner,
 
 technical: high dynamic range, film grain, warm atmosphere, photorealistic textures
+```
 
-negative: 3d render, CGI, cartoon, anime, modern apartment, noisy busy, luxury mansion
+**负面提示词：**
+```
+3d render, CGI, unreal engine, video game scenery, mobile game ad, fantasy illustration, digital painting, drawing, cartoon, anime style,
+magical glow, glowing runes, floating particles, sparkles, neon lights, digital fire, magic aura, bloom effect,
+text, watermark, signature, logo, UI, character names,
+clean geometry, plastic textures, flat lighting, perfectly symmetrical, bright cheerful
 ```
 
 ---
@@ -82,7 +98,7 @@ negative: 3d render, CGI, cartoon, anime, modern apartment, noisy busy, luxury m
 ```
 RAW landscape photo, cinematic wide shot, shot on ARRI Alexa, 35mm anamorphic lens, 8k resolution,
 
-location: spirit bamboo grove as real ancient bamboo forest,
+location: spirit bamboo grove as a real ancient bamboo forest,
 
 environment details:
 - tall bamboo stalks 20 meters high,
@@ -100,11 +116,19 @@ lighting & atmosphere:
 - silent except wind,
 - spiritual energy present,
 
+single figure: a young boy walking slowly into the grove,
+
 composition: wide shot showing towering bamboo,
 
 technical: high dynamic range, film grain, mysterious atmosphere, photorealistic textures
+```
 
-negative: 3d render, CGI, cartoon, anime, bright daylight, new plantation, noisy busy
+**负面提示词：**
+```
+3d render, CGI, unreal engine, video game scenery, mobile game ad, fantasy illustration, digital painting, drawing, cartoon, anime style,
+magical glow, glowing runes, floating particles, sparkles, neon lights, digital fire, magic aura, bloom effect,
+text, watermark, signature, logo, UI, character names,
+clean geometry, plastic textures, flat lighting, perfectly symmetrical, bright cheerful
 ```
 
 ---
