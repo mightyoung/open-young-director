@@ -96,6 +96,41 @@ class WorldAgent:
 
 确保各元素之间逻辑自洽。"""
 
+    def _normalize_chinese_keys(self, data: dict) -> dict:
+        """将中文键名映射为英文键名，保持向后兼容"""
+        if not isinstance(data, dict):
+            return data
+
+        # 顶层键映射
+        key_map = {
+            "世界名称": "name",
+            "世界名称:": "name",
+            "背景设定": "description",
+            "描述": "description",
+            "主要冲突": "main_conflict",
+            "势力": "factions",
+            "地点": "key_locations",
+            "关键地点": "key_locations",
+            "力量体系": "power_system",
+        }
+
+        result = {}
+        for k, v in data.items():
+            # 映射键名
+            new_key = key_map.get(k, k)
+            # 递归处理嵌套字典
+            if isinstance(v, dict):
+                result[new_key] = self._normalize_chinese_keys(v)
+            elif isinstance(v, list):
+                result[new_key] = [
+                    self._normalize_chinese_keys(item) if isinstance(item, dict) else item
+                    for item in v
+                ]
+            else:
+                result[new_key] = v
+
+        return result
+
     def _parse_result(self, result) -> dict:
         """解析LLM输出为字典"""
         import json
@@ -127,12 +162,39 @@ class WorldAgent:
 
             json_text = json_text.strip()
 
+            # Extract world name from markdown title if present (e.g., "# 世界观: 极维界")
+            extracted_name = None
+            title_match = re.search(r"#.*世界观[：:]\s*(.+?)(?:\n|$)", json_text)
+            if title_match:
+                extracted_name = title_match.group(1).strip()
+
             # Try to find JSON object in text
             json_match = re.search(r"\{[\s\S]*\}", json_text)
             if json_match:
                 data = json.loads(json_match.group())
             else:
                 data = json.loads(json_text)
+
+            # Use extracted name if JSON doesn't have one
+            if extracted_name and ("name" not in data or not data["name"]):
+                data["name"] = extracted_name
+
+            # 规范化中文键名
+            data = self._normalize_chinese_keys(data)
+
+            # 确保必要字段存在
+            if "name" not in data or not data["name"]:
+                data["name"] = "默认世界"
+            if "description" not in data:
+                data["description"] = "一个神秘的世界"
+            if "main_conflict" not in data:
+                data["main_conflict"] = "待定"
+            if "factions" not in data:
+                data["factions"] = []
+            if "key_locations" not in data:
+                data["key_locations"] = []
+            if "power_system" not in data:
+                data["power_system"] = None
 
         except (json.JSONDecodeError, Exception) as e:
             # Fallback to default structure

@@ -138,5 +138,10 @@ crewai-files = { workspace = true }
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[dependency-groups]
+dev = [
+    "vcrpy>=7.0.0",
+]
+
 [tool.hatch.version]
 path = "src/crewai/__init__.py"

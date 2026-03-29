@@ -27,6 +27,7 @@ from crewai.cli.tools.main import ToolCommand
 from crewai.cli.train_crew import train_crew
 from crewai.cli.triggers.main import TriggersCommand
 from crewai.cli.update_crew import update_crew
+from crewai.cli.short_drama import short_drama
 from crewai.cli.utils import build_env_with_tool_repository_credentials, read_toml
 from crewai.memory.storage.kickoff_task_outputs_storage import (
     KickoffTaskOutputsSQLiteStorage,
@@ -38,6 +39,7 @@ from crewai.memory.storage.kickoff_task_outputs_storage import (
 def crewai():
     """Top-level command group for crewai."""
 
+crewai.add_command(short_drama)
 
 @crewai.command(
     name="uv",

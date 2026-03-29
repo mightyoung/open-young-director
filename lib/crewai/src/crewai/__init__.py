@@ -77,6 +77,7 @@ _track_install_async()
 
 _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     "Memory": ("crewai.memory.unified_memory", "Memory"),
+    "FilmDrama": ("crewai.content.agents.film_drama", "DirectorAgent"),
 }
 
 
@@ -103,6 +104,7 @@ __all__ = [
     "Knowledge",
     "LLMGuardrail",
     "Memory",
+    "FilmDrama",
     "PlanningConfig",
     "Process",
     "Task",

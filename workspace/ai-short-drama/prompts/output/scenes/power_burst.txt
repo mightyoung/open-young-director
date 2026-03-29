@@ -1,0 +1,34 @@
+RAW landscape photo, cinematic wide shot, shot on ARRI Alexa, 35mm anamorphic lens, 8k resolution,
+
+location: martial arts arena at peak action,
+
+environment details:
+- stone platform now cracked and damaged from battle,
+- debris and broken stone fragments scattered across arena floor,
+- scorch marks and blast craters visible,
+- one fighter thrown backward through air, dust explosion all around,
+
+the subject: young man standing with arm extended, fist glowing with intense blue-white energy, not cartoon glow but realistic light emanation,
+
+the youth: hair and clothes flowing dramatically from energy release, fierce determination in eyes, loser flying backward with shocked expression,
+
+lighting & atmosphere:
+- intense blue-white light emanating from victor,
+- purple-gold residual light from defeated techniques,
+- dust explosion all around arena,
+- dramatic rim lighting on victor from backlight,
+- particles kicked up by energy blast,
+
+composition: low-angle close-up on victor's face and extended fist, energy burst in foreground, loser in background, motion blur on debris,
+
+technical: high dynamic range, film grain, epic, intense, dramatic atmosphere, photorealistic textures
+
+negative: 3d render, CGI, unreal engine, video game scenery, mobile game ad,
+fantasy illustration, digital painting, drawing, cartoon, anime style,
+magical glow, glowing runes, floating particles, sparkles, neon lights,
+digital fire, magic aura, bloom effect,
+text, watermark, signature, logo, UI, navigation bar,
+clean geometry, plastic textures, flat lighting,
+perfectly symmetrical architecture, brand new stone,
+blurry foreground, distorted perspective, oversaturated colors,
+purple tint, fake mist, 2d elements

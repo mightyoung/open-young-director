@@ -122,8 +122,11 @@ class OutlineCrew(BaseContentCrew):
                 except Exception:
                     world_data = {"name": "默认世界", "description": raw_world}
 
-        # 解析plot数据（使用 CrewOutput.raw）
-        raw_plot = getattr(crew_result, 'raw', '') or str(crew_result)
+        # 解析plot数据（使用 tasks_output 中 plan_plot 任务的原始输出）
+        if hasattr(crew_result, 'tasks_output') and len(crew_result.tasks_output) > 1:
+            raw_plot = crew_result.tasks_output[1].raw
+        else:
+            raw_plot = getattr(crew_result, 'raw', '') or str(crew_result)
         plot_agent = self._agents.get("plot_planner")
         if plot_agent and hasattr(plot_agent, '_parse_result'):
             plot_data = plot_agent._parse_result(raw_plot)
@@ -136,7 +139,7 @@ class OutlineCrew(BaseContentCrew):
                 if json_match:
                     plot_data = json.loads(json_match.group())
                 else:
-                    plot_data = {"main_strand": {"name": "主线", "description": raw_plot, "main_events": [], "tension_arc": []}, "sub_strands": [], "foreshadowing_strands": [], "emotional_strands": [], "weave_points": [], "high_points": []}
+                    plot_data = {"main_strand": {"name": "主线", "description": raw_plot, "main_events": [], "tension_arc": []}, "sub_strands": [], "foreshadowing_strands": [], "emotional_strands": [], "weave_points": [], "high_points": [], "volumes": []}
             except Exception:
                 plot_data = {"main_strand": {"name": "主线", "description": raw_plot, "main_events": [], "tension_arc": []}, "sub_strands": [], "foreshadowing_strands": [], "emotional_strands": [], "weave_points": [], "high_points": []}
 

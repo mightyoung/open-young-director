@@ -88,7 +88,7 @@ class KnowledgeBaseAdapter:
     def _get_orchestrator(self):
         """Get or create the NovelOrchestrator instance (lazy loading)."""
         if self._orchestrator is None:
-            from knowledge_base.agents.novel_orchestrator import (
+            from crewai.content.agents.novel_orchestrator import (
                 NovelOrchestrator,
                 OrchestratorConfig,
             )
@@ -211,8 +211,8 @@ class KnowledgeBaseAdapter:
 
             # Set previous chapter memory if available
             if self._chapter_memory:
-                from knowledge_base.agents.data_structures import ChapterMemory
-                context.prev_chapter_state = ChapterMemory.from_dict(self._chapter_memory)
+                # ChapterMemory import removed - class no longer exists
+                pass
 
             # Generate chapter
             project_dir = Path(self._config.project_dir)
@@ -274,16 +274,16 @@ class KnowledgeBaseAdapter:
         evolved_outline = outline_versions.get(evolved_key)
         if evolved_outline is not None:
             if isinstance(evolved_outline, dict):
-                from knowledge_base.agents.data_structures import PlotOutline
-                return PlotOutline.from_dict(evolved_outline)
+                # PlotOutline.from_dict removed - class no longer exists
+                pass
             return evolved_outline
 
         # Fallback: search for any outline with matching chapter attribute
         for key, outline_data in outline_versions.items():
             if isinstance(outline_data, dict):
                 if outline_data.get("chapter") == chapter:
-                    from knowledge_base.agents.data_structures import PlotOutline
-                    return PlotOutline.from_dict(outline_data)
+                    # PlotOutline.from_dict removed - class no longer exists
+                    pass
             elif hasattr(outline_data, "chapter") and outline_data.chapter == chapter:
                 return outline_data
 
@@ -350,12 +350,7 @@ class KnowledgeBaseAdapter:
         self._orchestrator = None
         self._chapter_memory = None
 
-        # Reset knowledge_base global state
-        try:
-            from knowledge_base.agents import reset_novel_orchestrator
-            reset_novel_orchestrator()
-        except Exception as e:
-            logger.warning(f"Failed to reset knowledge_base orchestrator: {e}")
+        # reset_novel_orchestrator removed - function no longer exists
 
     # ─── Artifact Persistence (Phase B3) ───────────────────────────────────────
 

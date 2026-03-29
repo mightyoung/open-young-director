@@ -148,7 +148,7 @@ class PlotAgent:
 ## 高潮设计
 设计全书的{num_volumes}个主要高潮点，分布在前中后期。
 
-请用JSON格式返回：
+请直接返回JSON格式，不要包含任何markdown标记（如```、###等）。只返回纯JSON对象：
 {{
     "series_overview": "系列概览，描述全书核心主题和走向",
     "total_chapters": {total_chapters},
@@ -237,7 +237,7 @@ class PlotAgent:
 6. 角色发展
 7. 与其他章节线的交织点
 
-请用JSON格式返回：
+请直接返回JSON格式，不要包含任何markdown标记（如```、###等）。只返回纯JSON对象：
 {{
     "chapter_num": {chapter_num},
     "title": "章节标题",
@@ -290,6 +290,126 @@ class PlotAgent:
 
         return "\n".join(lines)
 
+    def _normalize_chinese_keys(self, data: dict) -> dict:
+        """将中文键名映射为英文键名"""
+        if not isinstance(data, dict):
+            return data
+
+        # 顶层键映射
+        key_map = {
+            "卷数": "volume_num",
+            "卷": "volume",
+            "章节": "chapter",
+            "章节数": "chapter_num",
+            "主线": "main_strand",
+            "副线": "sub_strands",
+            "伏笔": "foreshadowing_strands",
+            "情感线": "emotional_strands",
+            "张力曲线": "tension_arc",
+            "交织点": "weave_points",
+            "高潮点": "high_points",
+        }
+
+        result = {}
+        for k, v in data.items():
+            new_key = key_map.get(k, k)
+            if isinstance(v, dict):
+                result[new_key] = self._normalize_chinese_keys(v)
+            elif isinstance(v, list):
+                result[new_key] = [
+                    self._normalize_chinese_keys(item) if isinstance(item, dict) else item
+                    for item in v
+                ]
+            else:
+                result[new_key] = v
+
+        return result
+
+    def _try_parse_json(self, json_text: str) -> dict | None:
+        """尝试解析JSON，处理不完整或损坏的JSON"""
+        import json
+        import re
+
+        # 尝试直接解析
+        try:
+            return json.loads(json_text)
+        except json.JSONDecodeError:
+            pass
+
+        # 移除 markdown 格式
+        cleaned = json_text.strip()
+
+        # 处理 markdown 代码块
+        if "```" in cleaned:
+            lines = cleaned.split("\n")
+            # 找到 JSON 代码块的开始和结束
+            in_code_block = False
+            code_lines = []
+            for line in lines:
+                if line.strip().startswith("```"):
+                    if not in_code_block:
+                        in_code_block = True
+                        continue
+                    else:
+                        break
+                elif in_code_block:
+                    code_lines.append(line)
+            if code_lines:
+                cleaned = "\n".join(code_lines)
+
+        # 移除 markdown 标题（### 开头）
+        lines = cleaned.split("\n")
+        non_header_lines = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("#"):
+                continue
+            non_header_lines.append(line)
+        cleaned = "\n".join(non_header_lines).strip()
+
+        # 尝试直接解析清理后的文本
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError:
+            pass
+
+        # 尝试提取并修复JSON
+        try:
+            # 查找 JSON 对象
+            json_match = re.search(r"\{[\s\S]*\}", cleaned)
+            if json_match:
+                json_str = json_match.group()
+                # 尝试解析
+                return json.loads(json_str)
+        except (json.JSONDecodeError, Exception):
+            pass
+
+        # 尝试提取 volumes 数组（用于volumes）
+        try:
+            # 查找 volumes 数组
+            volumes_match = re.search(r'"volumes"\s*:\s*\[([\s\S]*)\]', cleaned)
+            if volumes_match:
+                volumes_str = "[" + volumes_match.group(1) + "]"
+                # 尝试找到完整的数组
+                bracket_count = 1
+                start = volumes_match.start(1)
+                end = start
+                for i, c in enumerate(volumes_str[1:], 1):
+                    if c == '[':
+                        bracket_count += 1
+                    elif c == ']':
+                        bracket_count -= 1
+                        if bracket_count == 0:
+                            end = i + 1
+                            break
+                volumes_str = volumes_str[:end]
+                volumes = json.loads(volumes_str)
+                return {"volumes": volumes}
+        except (json.JSONDecodeError, Exception):
+            pass
+
+        return None
+
     def _parse_result(self, result) -> dict:
         """解析LLM输出"""
         import json
@@ -321,12 +441,13 @@ class PlotAgent:
 
             json_text = json_text.strip()
 
-            # Try to find JSON object in text
-            json_match = re.search(r"\{[\s\S]*\}", json_text)
-            if json_match:
-                data = json.loads(json_match.group())
-            else:
-                data = json.loads(json_text)
+            # 尝试解析JSON
+            data = self._try_parse_json(json_text)
+            if data is None:
+                raise ValueError("Failed to parse JSON")
+
+            # 规范化中文键名
+            data = self._normalize_chinese_keys(data)
 
         except (json.JSONDecodeError, Exception):
             return {
@@ -341,6 +462,7 @@ class PlotAgent:
                 "emotional_strands": [],
                 "weave_points": [],
                 "high_points": [],
+                "volumes": [],
             }
 
         return data

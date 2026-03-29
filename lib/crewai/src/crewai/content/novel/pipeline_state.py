@@ -12,18 +12,21 @@
 - stop_at 语义 - 在指定阶段暂停
 - resume_from 语义 - 从指定阶段恢复
 - seed 语义 - 基于 topic+genre+style 的确定性重放
+- replay_plan 语义 - 基于 ReplayPlan 的增量重放
 
 使用示例:
     state = PipelineState()
+    state.seed_config = SeedConfig(topic="修仙", genre="xianxia", style="epic")
+    state.seed_config.generate_seed()
     state.world_data = world_data
     state.plot_data = plot_data
-    state.seed = "abc123"  # 设置 seed
     state.save("novel_pipeline.json")
 
-    # 恢复（seed 不匹配时不加载已有状态）
+    # 恢复（使用 ReplayPlan 进行增量重放）
     state = PipelineState.load("novel_pipeline.json")
-    if not state.seed_valid("abc123"):
-        state = PipelineState()  # 重置
+    replay_plan = state.get_replay_plan(new_seed_config)
+    if replay_plan.regenerate_all:
+        state = PipelineState()  # 完全重置
 """
 
 import hashlib
@@ -33,6 +36,12 @@ import os
 from dataclasses import dataclass, field, asdict
 from typing import Any, Optional
 from pathlib import Path
+
+from crewai.content.novel.seed_mechanism import (
+    SeedConfig,
+    ReplayPlan,
+    DirtyTracker,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +88,9 @@ class PipelineState:
     # 审批模式是否开启
     approval_mode: bool = False
 
-    # Seed 用于确定性重放：基于 topic + genre + style 生成
+    # Seed 配置（基于 seed_mechanism.py 的改进设计）
+    seed_config: SeedConfig | None = field(default=None)
+    # 兼容性别名：保留旧的 seed 字段用于向后兼容
     seed: str = ""
 
     # 增量检查点相关
@@ -87,6 +98,8 @@ class PipelineState:
     core_content_hash: str = ""
     # 脏章节标记：需要重新生成的章节号集合
     dirty_chapters: set = field(default_factory=set)
+    # 脏数据追踪器
+    _dirty_tracker: DirtyTracker = field(default_factory=DirtyTracker, repr=False)
 
     def save(self, path: str) -> None:
         """保存到磁盘
@@ -115,6 +128,11 @@ class PipelineState:
 
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
+
+        # 检查是否是旧格式（只有 seed，没有 seed_config）
+        if "seed" in data and "seed_config" not in data:
+            logger.info("Migrating legacy PipelineState format")
+            return cls.migrate_legacy_state(data)
 
         return cls(**data)
 
@@ -272,7 +290,31 @@ class PipelineState:
             "approval_mode": self.approval_mode,
             "stage_statuses": self.stage_statuses,
             "seed": self.seed,
+            "seed_config": self.seed_config.to_dict() if self.seed_config else None,
         }
+
+    @property
+    def dirty_tracker(self) -> DirtyTracker:
+        """获取脏数据追踪器"""
+        return self._dirty_tracker
+
+    def mark_dirty(self, field: str) -> None:
+        """标记字段为脏（需要重新生成）
+
+        Args:
+            field: 字段名 (world, outline, chapter_0, chapter_1, etc.)
+        """
+        self._dirty_tracker.mark_dirty(field)
+        if field.startswith("chapter_"):
+            try:
+                chapter_num = int(field.split("_")[1])
+                self.mark_chapters_dirty([chapter_num])
+            except (IndexError, ValueError):
+                pass
+        elif field == "outline":
+            self.mark_all_chapters_dirty()
+        elif field == "world":
+            self.mark_all_chapters_dirty()
 
     # ==================== 审批工作流方法 ====================
 
@@ -375,6 +417,39 @@ class PipelineState:
         hash_digest = hashlib.sha256(combined.encode("utf-8")).hexdigest()
         return hash_digest[:32]
 
+    @classmethod
+    def create_seed_config(
+        cls,
+        topic: str = "",
+        genre: str = "",
+        style: str = "",
+        variant: str | None = None,
+        seed: str | None = None,
+    ) -> SeedConfig:
+        """创建 SeedConfig
+
+        Args:
+            topic: 小说主题
+            genre: 小说类型
+            style: 写作风格
+            variant: 可选的变体标识
+            seed: 可选的已有 seed
+
+        Returns:
+            SeedConfig: 种子配置
+        """
+        config = SeedConfig(
+            topic=topic,
+            genre=genre,
+            style=style,
+            variant=variant,
+        )
+        if seed:
+            config.seed = seed
+        else:
+            config.generate_seed()
+        return config
+
     def seed_valid(self, expected_seed: str | None = None) -> bool:
         """验证 seed 是否匹配
 
@@ -387,7 +462,11 @@ class PipelineState:
         Returns:
             bool: seed 匹配返回 True，不匹配或无 seed 返回 False
         """
-        # 如果状态中没有 seed，任何 expected_seed 都不匹配
+        # 优先使用 seed_config
+        if self.seed_config:
+            return self.seed_config.seed == expected_seed if expected_seed else True
+
+        # 兼容旧格式
         if not self.seed:
             return False
 
@@ -397,6 +476,125 @@ class PipelineState:
 
         # 比较 seed
         return self.seed == expected_seed
+
+    def get_replay_plan(self, new_seed_config: SeedConfig | None = None) -> ReplayPlan:
+        """计算重放计划
+
+        基于当前状态的 seed_config 和新提供的 seed_config，
+        确定哪些阶段需要重新生成。
+
+        Args:
+            new_seed_config: 新的种子配置
+
+        Returns:
+            ReplayPlan: 包含需要重新生成的阶段信息
+        """
+        # 情况1: 没有 seed_config，需要完全重新生成
+        if not self.seed_config:
+            logger.info("No seed_config found, will regenerate all")
+            return ReplayPlan(regenerate_all=True)
+
+        # 情况2: 没有新配置，只检查脏数据
+        if not new_seed_config:
+            if self.dirty_chapters:
+                return ReplayPlan(
+                    regenerate_from="chapters",
+                    preserve=["outline", "world"],
+                    dirty_chapters=list(self.dirty_chapters),
+                )
+            return ReplayPlan(replay_all=False)
+
+        # 情况3: 核心参数变化（topic/genre/style）
+        if not self.seed_config.matches(new_seed_config):
+            logger.info(
+                f"Core parameters changed: "
+                f"({self.seed_config.topic},{self.seed_config.genre},{self.seed_config.style}) -> "
+                f"({new_seed_config.topic},{new_seed_config.genre},{new_seed_config.style})"
+            )
+            return ReplayPlan(
+                regenerate_from="world",
+                preserve=["chapters"],
+            )
+
+        # 情况4: 核心内容（world/outline）变化
+        if self.has_core_content_changed():
+            logger.info("Core content (world/outline) changed")
+            return ReplayPlan(
+                regenerate_from="outline",
+                preserve=["chapters"],
+            )
+
+        # 情况5: 只有脏章节
+        if self.dirty_chapters:
+            return ReplayPlan(
+                regenerate_from="chapters",
+                dirty_chapters=list(self.dirty_chapters),
+            )
+
+        # 情况6: variant 变化（只影响章节，不影响 world/outline）
+        if self.seed_config.variant != new_seed_config.variant:
+            logger.info(f"Variant changed: {self.seed_config.variant} -> {new_seed_config.variant}")
+            return ReplayPlan(
+                regenerate_from="chapters",
+                preserve=["world", "outline"],
+                dirty_chapters=list(range(len(self.chapters))) if self.chapters else None,
+            )
+
+        # 情况7: 不需要重新生成
+        logger.info("No regeneration needed, using cached state")
+        return ReplayPlan(replay_all=False)
+
+    def preserve_approval_history(self) -> dict:
+        """保留审批历史用于恢复
+
+        Returns:
+            dict: 包含 stage_statuses 和 approval_history 的字典
+        """
+        return {
+            "stage_statuses": dict(self.stage_statuses),
+            "approval_history": list(self.approval_history),
+        }
+
+    def restore_approval_history(self, preserved: dict) -> None:
+        """恢复审批历史
+
+        Args:
+            preserved: preserve_approval_history() 返回的字典
+        """
+        if "stage_statuses" in preserved:
+            self.stage_statuses = preserved["stage_statuses"]
+        if "approval_history" in preserved:
+            self.approval_history = preserved["approval_history"]
+
+    @classmethod
+    def migrate_legacy_state(cls, state_data: dict) -> "PipelineState":
+        """迁移旧格式的 PipelineState
+
+        旧格式只有 seed 字符串，没有 seed_config。
+
+        Args:
+            state_data: 旧格式的状态字典
+
+        Returns:
+            PipelineState: 迁移后的新状态
+        """
+        legacy_seed = state_data.get("seed", "")
+
+        # 尝试从 metadata 反推
+        metadata = state_data.get("metadata", {}) or state_data.get("config", {}) or {}
+        seed_config = SeedConfig(
+            seed=legacy_seed,
+            topic=metadata.get("topic", ""),
+            genre=metadata.get("genre", ""),
+            style=metadata.get("style", ""),
+        )
+
+        # 创建新状态
+        state = cls(**state_data)
+        state.seed_config = seed_config
+
+        logger.info("Migrated legacy PipelineState format to new format with SeedConfig")
+        return state
 
     def verify(self) -> tuple[bool, str]:
         """验证检查点完整性

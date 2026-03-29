@@ -3,14 +3,10 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:
-    from knowledge_base.agents.data_structures import (
-        CharacterBible,
-        WorldContext,
-        PlotOutline,
-    )
+    from crewai.content.agents.film_drama.data_structures import CharacterBible
 
 
-def convert_world_data_to_world_context(world_data: Dict[str, Any]) -> "WorldContext":
+def convert_world_data_to_world_context(world_data: Dict[str, Any]) -> Dict[str, Any]:
     """Convert crewai world_data to knowledge_base WorldContext.
 
     Args:
@@ -20,7 +16,7 @@ def convert_world_data_to_world_context(world_data: Dict[str, Any]) -> "WorldCon
             - power_system
 
     Returns:
-        WorldContext for knowledge_base components
+        Dict representation of WorldContext for knowledge_base components
     """
     # Extract realm system from power_system
     realm_system = {}
@@ -66,26 +62,25 @@ def convert_world_data_to_world_context(world_data: Dict[str, Any]) -> "WorldCon
             for root_type, description in spirit_root.items():
                 spirit_root_system[root_type] = description
 
-    from knowledge_base.agents.data_structures import WorldContext
-    return WorldContext(
-        realm_system=realm_system,
-        sect_hierarchy=sect_hierarchy,
-        key_rules=key_rules,
-        cultivation_arts=cultivation_arts,
-        spirit_root_system=spirit_root_system,
-        sect_divisions=sect_divisions,
-        world_background={
+    return {
+        "realm_system": realm_system,
+        "sect_hierarchy": sect_hierarchy,
+        "key_rules": key_rules,
+        "cultivation_arts": cultivation_arts,
+        "spirit_root_system": spirit_root_system,
+        "sect_divisions": sect_divisions,
+        "world_background": {
             "world_name": world_data.get("name", ""),
             "main_region": world_data.get("description", ""),
             "main_conflict": world_data.get("main_conflict", ""),
         },
-    )
+    }
 
 
 def convert_chapter_outline(
     chapter_outline: Dict[str, Any],
     chapter_num: int,
-) -> "PlotOutline":
+) -> Dict[str, Any]:
     """Convert crewai chapter_outline to knowledge_base PlotOutline.
 
     Args:
@@ -96,11 +91,34 @@ def convert_chapter_outline(
             - weave_connections, character_developments
 
     Returns:
-        PlotOutline for knowledge_base NovelOrchestrator
+        Dict representation of PlotOutline for knowledge_base NovelOrchestrator
     """
-    # 使用PlotOutline.from_chapter_outline进行完整转换
-    from knowledge_base.agents.data_structures import PlotOutline
-    return PlotOutline.from_chapter_outline(chapter_outline, chapter_num)
+    # Extract main events
+    main_events = chapter_outline.get("main_events", [])
+    if isinstance(main_events, list):
+        main_events = "\n".join(f"- {event}" for event in main_events)
+
+    # Extract weave connections
+    weave_connections = chapter_outline.get("weave_connections", [])
+    if isinstance(weave_connections, list):
+        weave_connections = "\n".join(f"- {conn}" for conn in weave_connections)
+
+    # Extract character developments
+    character_developments = chapter_outline.get("character_developments", [])
+    if isinstance(character_developments, list):
+        character_developments = "\n".join(f"- {dev}" for dev in character_developments)
+
+    return {
+        "chapter_num": chapter_num,
+        "title": chapter_outline.get("title", ""),
+        "hook": chapter_outline.get("hook", ""),
+        "main_events": main_events,
+        "climax": chapter_outline.get("climax", ""),
+        "ending_hook": chapter_outline.get("ending_hook", ""),
+        "tension_level": chapter_outline.get("tension_level", ""),
+        "weave_connections": weave_connections,
+        "character_developments": character_developments,
+    }
 
 
 def convert_chapter_memory_to_summary(
@@ -165,7 +183,7 @@ def convert_character_profiles_to_bibles(
     if world_data and isinstance(world_data, dict):
         world_chars = world_data.get("characters", {})
 
-    from knowledge_base.agents.data_structures import CharacterBible
+    from crewai.content.agents.film_drama.data_structures import CharacterBible
     for name, profile in character_profiles.items():
         # Get additional info from world_data if available
         char_info = world_chars.get(name, {}) if isinstance(world_chars, dict) else {}

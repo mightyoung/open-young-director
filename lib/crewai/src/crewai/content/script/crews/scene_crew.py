@@ -7,6 +7,7 @@ from crewai.task import Task
 
 from crewai.content.base import BaseContentCrew, BaseCrewOutput
 from crewai.content.script.script_types import SceneOutput
+from crewai.content.script.agents.cinematography_agent import CinematographyAgent
 
 if TYPE_CHECKING:
     from crewai.llm import LLM
@@ -96,10 +97,47 @@ class SceneCrew(BaseContentCrew):
 
         return prompt
 
+    def _get_cinematography_guide(self, scene: Dict) -> Dict:
+        """获取场景的视觉指导
+
+        Args:
+            scene: 场景信息字典
+
+        Returns:
+            视觉指导字典，包含camera_angle, lens, movement, lighting, blocking, visual_notes
+        """
+        llm = self.config.get("llm") if isinstance(self.config, dict) else None
+        cinematography_agent = CinematographyAgent(llm=llm, verbose=self.verbose)
+
+        visual_guide = cinematography_agent.generate_visual_guide(
+            scene=scene,
+            style="电影",
+            format_type=self.config.get("format", "film") if isinstance(self.config, dict) else "film"
+        )
+
+        return visual_guide
+
     def _parse_output(self, result: Any) -> SceneOutput:
         """解析Crew输出为SceneOutput"""
         config = self.config
         beat = config.get("beat", {})
+
+        # 获取视觉指导
+        scene_dict = {
+            "location": config.get("location", ""),
+            "action": beat.get("description", ""),
+            "characters": config.get("characters", []),
+        }
+        visual_guide = self._get_cinematography_guide(scene_dict)
+
+        # 构建视觉提示
+        visual_notes = visual_guide.get("visual_notes", "")
+        if visual_guide.get("camera_angle"):
+            visual_notes += f"\n摄影机角度: {visual_guide.get('camera_angle', '')}"
+        if visual_guide.get("movement"):
+            visual_notes += f"\n镜头运动: {visual_guide.get('movement', '')}"
+        if visual_guide.get("lighting"):
+            visual_notes += f"\n光影设计: {visual_guide.get('lighting', '')}"
 
         return SceneOutput(
             scene_number=config.get("scene_number", 0),
@@ -110,7 +148,7 @@ class SceneCrew(BaseContentCrew):
             action=str(result),
             dialogue_count=str(result).count("-") if str(result).count("-") > 0 else 0,
             estimated_duration=config.get("estimated_duration", 5),
-            visual_notes=""
+            visual_notes=visual_notes.strip()
         )
 
 

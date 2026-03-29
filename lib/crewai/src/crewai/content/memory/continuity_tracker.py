@@ -351,6 +351,10 @@ class ContinuityTracker:
         return {
             "events": [e.to_dict() for e in self.events],
             "entity_states": self.entity_states,
+            "entity_state_history": {
+                k: [s.to_dict() for s in v]
+                for k, v in self.entity_state_history.items()
+            },
         }
 
     @classmethod
@@ -360,7 +364,108 @@ class ContinuityTracker:
         for event_data in data.get("events", []):
             event = Event.from_dict(event_data)
             tracker.add_event(event)
+        # 恢复entity_states
+        tracker.entity_states = data.get("entity_states", {})
+        # 恢复entity_state_history
+        for entity_id, history_data in data.get("entity_state_history", {}).items():
+            tracker.entity_state_history[entity_id] = [
+                EntityState.from_dict(s) for s in history_data
+            ]
         return tracker
+
+    def save_checkpoint(self, path: str) -> None:
+        """保存checkpoint到文件
+
+        Args:
+            path: 保存路径
+        """
+        import json
+        from pathlib import Path
+
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(self.to_dict(), f, ensure_ascii=False, indent=2, default=str)
+
+    def load_checkpoint(self, path: str) -> bool:
+        """从文件加载checkpoint
+
+        Args:
+            path: checkpoint路径
+
+        Returns:
+            是否成功加载
+        """
+        import json
+        from pathlib import Path
+
+        if not Path(path).exists():
+            return False
+
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            tracker = ContinuityTracker.from_dict(data)
+            self.events = tracker.events
+            self.entity_states = tracker.entity_states
+            self.entity_state_history = tracker.entity_state_history
+            self.event_index = tracker.event_index
+            return True
+        except Exception:
+            return False
+
+    def get_plot_threads(self, chapter: int) -> dict[str, list[str]]:
+        """获取当前章节的剧情线追踪
+
+        返回未解决的悬念和伏笔。
+
+        Args:
+            chapter: 章节号
+
+        Returns:
+            包含 active_hooks, unresolved_conflicts, pending_reveals 的字典
+        """
+        # 获取本章之后的事件中涉及的实体
+        future_events = [e for e in self.events if e.chapter > chapter]
+
+        # 收集所有涉及的实体
+        involved_entities = set()
+        for event in future_events:
+            involved_entities.update(event.involved_entities)
+
+        return {
+            "active_hooks": [],  # TODO: 需要从dianting_checker集成
+            "unresolved_conflicts": [],  # TODO: 需要从dianting_checker集成
+            "pending_reveals": [],  # TODO: 需要从dianting_checker集成
+            "entities_in_play": list(involved_entities),
+        }
+
+    def validate_timeline(self) -> list[ContinuityIssue]:
+        """验证整个时间线的连续性
+
+        Returns:
+            发现的所有连续性问题列表
+        """
+        issues = []
+
+        for i, event in enumerate(self.events):
+            # 检查事件顺序
+            if i > 0:
+                prev_event = self.events[i - 1]
+                if event.chapter < prev_event.chapter:
+                    issues.append(ContinuityIssue(
+                        event_id=event.id,
+                        entity_id="",
+                        issue_type="timeline_conflict",
+                        description=f"事件 {event.id} 的章节号 ({event.chapter}) 早于前一个事件 ({prev_event.chapter})",
+                        severity="high",
+                        chapter=event.chapter,
+                    ))
+
+            # 检查实体状态一致性
+            event_issues = self.check_continuity(event)
+            issues.extend(event_issues)
+
+        return issues
 
 
 __all__ = ["ContinuityTracker"]
