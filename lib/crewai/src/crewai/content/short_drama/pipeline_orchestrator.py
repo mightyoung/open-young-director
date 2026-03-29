@@ -412,7 +412,131 @@ class ShortDramaPipelineOrchestrator:
             title=data["title"],
             episode_summary=data["episode_summary"],
             scene_plan=data.get("scene_plan", []),
+            end_frame=data.get("end_frame"),
         )
+
+    async def step_visual_assets(
+        self,
+        episode: int,
+        bible: ShortDramaBible,
+        from_novel: Optional[str] = None,
+    ) -> dict:
+        """Step 2.5: Generate visual asset prompts (character & scene).
+
+        This step extracts characters and scenes from the bible/novel,
+        then generates AI绘图 Prompts for each.
+
+        Args:
+            episode: Episode number.
+            bible: ShortDramaBible.
+            from_novel: Path to novel project.
+
+        Returns:
+            Dict with character_prompts and scene_prompts.
+        """
+        from crewai.content.short_drama.visual_asset_generator import (
+            VisualAssetGenerator,
+        )
+
+        logger.info(f"[Pipeline:Step2.5] Generating visual assets for episode {episode}")
+
+        # Check checkpoint
+        ckpt = self.checkpoint.load(episode, "visual_assets")
+        if ckpt:
+            logger.info("[Pipeline:Step2.5] Resuming from checkpoint")
+            return ckpt["data"]
+
+        # Get novel text for character/scene extraction
+        novel_text = ""
+        if from_novel:
+            novel_path = Path(from_novel)
+        else:
+            novel_path = self.project_dir.parent / f"{self.project_name}_novel"
+
+        if novel_path.exists():
+            try:
+                adapter = NovelToShortDramaAdapter(novel_path)
+                adapter.load_pipeline_state()
+                chapter_text = adapter.get_chapter_text(episode)
+                novel_text = chapter_text
+            except (FileNotFoundError, AttributeError):
+                pass
+
+        # Initialize generator
+        assets_dir = self.project_dir / "assets"
+        generator = VisualAssetGenerator(self.project_dir)
+
+        # Generate from novel text (automatic extraction)
+        if novel_text:
+            generator.generate_from_novel(novel_text)
+
+        # Add characters from bible
+        for name, char in bible.relevant_characters.items():
+            # Check if already added
+            existing = [c for c in generator.manifest.characters if c.character_name == name]
+            if existing:
+                continue
+
+            # Map CharacterProfile to add_character
+            generator.add_character(
+                name=name,
+                age=char.backstory.split("岁")[0] + "岁" if "岁" in char.backstory else "未知",
+                appearance=char.appearance,
+                clothing="粗布麻衣（古风设定）",
+                identity=char.role,
+                cultivation_realm=char.cultivation_realm or "凡人",
+                emotion="坚毅" if char.role == "protagonist" else "温和",
+                face_features=char.appearance,
+            )
+
+        # Add scenes from outline
+        outline_file = self.project_dir / f"episode_{episode:03d}_outline.json"
+        if outline_file.exists():
+            with open(outline_file, "r", encoding="utf-8") as f:
+                outline_data = json.load(f)
+
+            for scene_plan in outline_data.get("scene_plan", []):
+                scene_name = scene_plan.get("location", "")
+                time_of_day = scene_plan.get("time_of_day", "")
+
+                # Skip if already added
+                existing = [s for s in generator.manifest.scenes if s.scene_name == scene_name]
+                if existing:
+                    continue
+
+                # Add scene with default prompts
+                generator.add_scene(
+                    name=scene_name,
+                    time_of_day=time_of_day,
+                    description=f"{scene_name}场景",
+                    lighting="自然光",
+                    space_layout="古风建筑",
+                    items="无",
+                    env_details="无",
+                    atmosphere="待定",
+                    time_hint=time_of_day,
+                )
+
+        # Save to assets directory
+        generator.save_to_assets_dir(assets_dir)
+
+        # Prepare result
+        result = {
+            "assets_dir": str(assets_dir),
+            "characters": [
+                {"id": c.character_id, "name": c.character_name, "status": c.status}
+                for c in generator.manifest.characters
+            ],
+            "scenes": [
+                {"id": s.scene_id, "name": s.scene_name, "status": s.status}
+                for s in generator.manifest.scenes
+            ],
+        }
+
+        self.checkpoint.save(episode, "visual_assets", result)
+        logger.info(f"[Pipeline:Step2.5] Visual assets saved to {assets_dir}")
+
+        return result
 
     async def step_shots(
         self,
@@ -865,6 +989,10 @@ class ShortDramaPipelineOrchestrator:
             # Stage 2: Outline
             outline = await self.step_outline(episode, bible, from_novel, chapter)
             result.episode_outline = outline
+
+            # Stage 2.5: Visual Assets (NEW - generate character & scene prompts)
+            visual_assets = await self.step_visual_assets(episode, bible, from_novel)
+            result.checkpoints["visual_assets"] = visual_assets
 
             # Stage 3: Shots
             episode_obj = await self.step_shots(episode, outline, bible)
