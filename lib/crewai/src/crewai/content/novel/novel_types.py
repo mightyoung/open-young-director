@@ -209,6 +209,8 @@ class WritingContext:
     world_description: str
     character_profiles: dict[str, str] = field(default_factory=dict)
     previous_chapters_summary: str = ""
+    # 【情节连贯】专用字段：前章结尾的具体场景信息（地点+人物状态+情绪+未解决悬念）
+    previous_chapter_ending: str = ""
     chapter_outline: str = ""
     target_word_count: int = 0
     current_chapter_num: int = 1
@@ -224,6 +226,7 @@ class WritingContext:
             "world_description": self.world_description,
             "character_profiles": self.character_profiles,
             "previous_chapters_summary": self.previous_chapters_summary,
+            "previous_chapter_ending": self.previous_chapter_ending,
             "chapter_outline": self.chapter_outline,
             "target_word_count": self.target_word_count,
             "current_chapter_num": self.current_chapter_num,

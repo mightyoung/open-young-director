@@ -206,16 +206,21 @@ class Telemetry:
             self._original_handlers[sig] = original_handler
 
             def handler(signum: int, frame: Any) -> None:
-                crewai_event_bus.emit(self, event_class())
+                try:
+                    crewai_event_bus.emit(self, event_class())
+                except Exception:
+                    pass  # Ignore emit errors during shutdown
 
                 if shutdown:
                     self._shutdown()
 
                 if original_handler not in (signal.SIG_DFL, signal.SIG_IGN, None):
                     if callable(original_handler):
-                        original_handler(signum, frame)
-                elif shutdown:
-                    raise SystemExit(0)
+                        try:
+                            original_handler(signum, frame)
+                        except Exception:
+                            pass
+                # Removed SystemExit(0) to prevent asyncio event loop corruption
 
             signal.signal(sig, handler)
         except ValueError as e:

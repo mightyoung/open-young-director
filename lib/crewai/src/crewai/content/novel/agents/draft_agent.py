@@ -153,7 +153,11 @@ class DraftAgent:
 【网络小说写作黄金法则】
 1. 字数控制: 标准网文每章2000-2500字，本章目标{context.target_word_count}字，不要超过{context.target_word_count + 500}字
 2. 【开头切入】禁止以"早晨/阳光/天亮/醒来"等开篇，从动作/对话/危机/悬念直接切入
-3. 【情节连贯】必须承接前章结尾的具体场景（地点+人物状态+情绪），不得另起炉灶
+3. 【情节连贯 - 最高优先级】本章必须以"前章结尾场景"中描述的具体场景为起点继续写作！
+   - 地点：必须与前章结尾相同
+   - 人物状态：必须延续前章结尾时的状态
+   - 情绪：必须自然延续前章结尾时的情绪
+   - 禁止：另起炉灶、时间跳跃、人物状态重置
 4. 【场景控制】每章不超过3个场景，场景切换用过渡句连接
 5. 【节奏公式】对话3成 + 情节叙述3成 + 描写3成
 6. 【打斗描写】七分铺垫，三分打斗
@@ -177,6 +181,13 @@ class DraftAgent:
             lines.append("\n角色设定:")
             for name, profile in context.character_profiles.items():
                 lines.append(f"  - {name}: {profile}")
+
+        # 【关键】前章结尾场景 - 必须从此场景继续，不得另起炉灶
+        if context.previous_chapter_ending:
+            lines.append(f"\n{'='*60}")
+            lines.append(f"【前章结尾场景】（本章必须以此场景为起点继续写作）:")
+            lines.append(f"{context.previous_chapter_ending}")
+            lines.append(f"{'='*60}")
 
         if context.previous_chapters_summary:
             lines.append(f"\n前章概要:\n{context.previous_chapters_summary}")

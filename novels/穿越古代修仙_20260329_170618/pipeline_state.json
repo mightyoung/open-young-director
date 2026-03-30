@@ -1,0 +1,119 @@
+{
+  "world_data": {},
+  "plot_data": {
+    "主线": "林逸从意外觉醒灵渊血脉到成为改变世界的关键人物的成长历程",
+    "卷结构": [
+      {
+        "id": "volume_1",
+        "title": "觉醒之章",
+        "chapters": "1-10",
+        "summary": "平凡少年林逸在矿山事故中意外觉醒灵渊血脉，被星辰学院院长带入学院开始学习。在学院中结识苏幼薇、沐风、叶青等人，组成四人伙伴团队。林逸逐渐学习控制力量，却因一次差点失控的意外引发危机。学期末考核中展现惊人潜力，引起暗影议会暗中关注。同时，林逸开始调查父亲失踪的真相，发现父亲二十年前封印萧无极于灵渊古渊。"
+      },
+      {
+        "id": "volume_2",
+        "title": "风云之章",
+        "chapters": "11-20",
+        "summary": "林逸深入探索灵渊的真正力量，发现世界背后的秘密组织'暗影议会'。学院政治危机爆发——科技联邦精英学员挑衅，星辰学院内部出现分裂迹象。林逸在学院竞赛中与夜凌天成为战友。苏幼薇的身世秘密逐渐揭露，她是元素议会流落在外的公主，团队面临第一次信任危机但最终和解。林逸通过父亲留下的线索，确认自己是灵渊守护者的传承者。"
+      },
+      {
+        "id": "volume_3",
+        "title": "炼狱之章",
+        "chapters": "21-30",
+        "summary": "林逸与团队踏上前往灵渊古渊的征程，寻找父亲林渊并阻止萧无极的阴谋。在极北冰原中历经艰险，终于与父亲重逢。萧无极现身，最终对决展开。林逸选择救赎而非杀戮，化解了萧无极的执念。林渊安然离世，林逸继承父亲遗志，与苏幼薇携手共进。"
+      }
+    ]
+  },
+  "volume_outlines": [],
+  "chapter_summaries": [
+    {"chapter": 1, "title": "幽蓝深渊", "summary": "林逸在矿山事故中觉醒灵渊血脉"},
+    {"chapter": 2, "title": "苏醒之晨", "summary": "林逸苏醒后被神秘黑衣人收为弟子"},
+    {"chapter": 3, "title": "星辰学院", "summary": "林逸被带往深山修炼，遭遇暗影议会追杀，苏长青救场"},
+    {"chapter": 4, "title": "旧物遗音", "summary": "秦风夜袭被苏长青化解，林逸发现父亲石碑"},
+    {"chapter": 5, "title": "星火初燃", "summary": "排位赛展露头角，结识沐风、叶青，与苏幼薇达成暗盟"},
+    {"chapter": 6, "title": "暗影追踪", "summary": "遭遇神秘黑影袭击，苏幼薇救援，得知玄冥殿存在"},
+    {"chapter": 7, "title": "灵渊之秘", "summary": "灵渊之力再次失控，沐风、叶青救援，苏幼薇揭示灵渊真相"},
+    {"chapter": 8, "title": "失控", "summary": "学期末考核组队战开始，三人配合默契"},
+    {"chapter": 9, "title": "风云际会", "summary": "进入灵渊塔，获得传承，修为突破至炼气境七重巅峰"},
+    {"chapter": 10, "title": "巅峰对决", "summary": "决赛击败苏幼薇，第一卷完结"},
+    {"chapter": 11, "title": "暗影涌动", "summary": "暗影议会猎使降临的消息传来，林逸团队收到林渊遗讯"},
+    {"chapter": 12, "title": "猎使降临", "summary": "与暗影议会猎使激战，沐风重伤，苏长青暗中出手相助"},
+    {"chapter": 13, "title": "天地熔炉", "summary": "林逸团队进入天地熔炉，获得灵渊剑传承"},
+    {"chapter": 14, "title": "学院竞赛", "summary": "夜凌天揭示真实身份，揭示暗影议会炼魂计划"},
+    {"chapter": 15, "title": "科技与道法", "summary": "团队决赛对战夜凌天队，暗影议会副议长现身"},
+    {"chapter": 16, "title": "身世风暴", "summary": "苏幼薇身世揭晓：元素议会公主"},
+    {"chapter": 17, "title": "裂痕", "summary": "团队因苏幼薇身世产生矛盾，信任危机化解"},
+    {"chapter": 18, "title": "暗影之秘", "summary": "萧无极与林渊的过往揭开，灵渊之心真相揭露"},
+    {"chapter": 19, "title": "父亲的真相", "summary": "夜凌天揭示萧无极与林渊的过往，灵渊之心的真相揭露"},
+    {"chapter": 20, "title": "离别", "summary": "团队出发前往灵渊古渊，萧无极突袭，苏幼薇被掳走"},
+    {"chapter": 21, "title": "极北之城", "summary": "林逸沐风抵达极北之城，遇见灵渊遗族，获得净化符篆"},
+    {"chapter": 22, "title": "寒渊迷阵", "summary": "五人组队进入灵渊古渊，突破迷宫，救出苏幼薇"},
+    {"chapter": 23, "title": "重逢", "summary": "林逸与叶青夜凌天重逢，发现通往封印殿的密道"},
+    {"chapter": 24, "title": "冰宫", "summary": "众人经历幻境考验，遭遇九只冰龙傀儡"},
+    {"chapter": 25, "title": "父与子", "summary": "林逸与父亲林渊重逢，面临艰难抉择"},
+    {"chapter": 26, "title": "绝境", "summary": "萧无极现身，最终决战开始，林逸血脉觉醒"},
+    {"chapter": 27, "title": "灵渊之心", "summary": "林逸觉醒灵渊之心，选择救赎萧无极"},
+    {"chapter": 28, "title": "救赎", "summary": "林逸进入萧无极内心，化解其心魔，萧无极获得救赎"},
+    {"chapter": 29, "title": "新生", "summary": "林渊离世，萧无极牺牲，团队凯旋"},
+    {"chapter": 30, "title": "星辰之路", "summary": "一年后，林逸苏幼薇即将成婚，踏上新征程"}
+  ],
+  "chapters": [
+    {"chapter": 1, "title": "幽蓝深渊", "word_count": 5800, "summary": "林逸在矿山事故中觉醒灵渊血脉"},
+    {"chapter": 2, "title": "苏醒之晨", "word_count": 4200, "summary": "林逸苏醒后被神秘黑衣人收为弟子"},
+    {"chapter": 3, "title": "星辰学院", "word_count": 4500, "summary": "林逸被带往深山修炼，遭遇暗影议会追杀，苏长青救场"},
+    {"chapter": 4, "title": "旧物遗音", "word_count": 2500, "summary": "秦风夜袭被苏长青化解，林逸发现父亲石碑"},
+    {"chapter": 5, "title": "星火初燃", "word_count": 4800, "summary": "排位赛展露头角，结识沐风、叶青，与苏幼薇达成暗盟"},
+    {"chapter": 6, "title": "暗影追踪", "word_count": 5200, "summary": "遭遇神秘黑影袭击，苏幼薇救援，得知玄冥殿存在"},
+    {"chapter": 7, "title": "灵渊之秘", "word_count": 5100, "summary": "灵渊之力再次失控，沐风、叶青救援，苏幼薇揭示灵渊真相"},
+    {"chapter": 8, "title": "失控", "word_count": 5500, "summary": "学期末考核组队战开始，三人配合默契"},
+    {"chapter": 9, "title": "风云际会", "word_count": 5800, "summary": "进入灵渊塔，获得传承，修为突破至炼气境七重巅峰"},
+    {"chapter": 10, "title": "巅峰对决", "word_count": 6200, "summary": "决赛击败苏幼薇，第一卷完结"},
+    {"chapter": 11, "title": "暗影涌动", "word_count": 5500, "summary": "暗影议会猎使降临的消息传来，林逸团队收到林渊遗讯"},
+    {"chapter": 12, "title": "猎使降临", "word_count": 5200, "summary": "与暗影议会猎使激战，沐风重伤，苏长青暗中出手相助"},
+    {"chapter": 13, "title": "天地熔炉", "word_count": 5200, "summary": "林逸团队进入天地熔炉，获得灵渊剑传承"},
+    {"chapter": 14, "title": "学院竞赛", "word_count": 5200, "summary": "夜凌天揭示真实身份，揭示暗影议会炼魂计划"},
+    {"chapter": 15, "title": "科技与道法", "word_count": 5200, "summary": "团队决赛对战夜凌天队，暗影议会副议长现身"},
+    {"chapter": 16, "title": "身世风暴", "word_count": 5100, "summary": "苏幼薇身世揭晓：元素议会公主"},
+    {"chapter": 17, "title": "裂痕", "word_count": 5200, "summary": "团队因苏幼薇身世产生矛盾，信任危机化解"},
+    {"chapter": 18, "title": "暗影之秘", "word_count": 5100, "summary": "萧无极与林渊的过往揭开，灵渊之心真相揭露"},
+    {"chapter": 19, "title": "父亲的真相", "word_count": 5500, "summary": "夜凌天揭示萧无极与林渊的过往，灵渊之心的真相揭露"},
+    {"chapter": 20, "title": "离别", "word_count": 5500, "summary": "团队出发前往灵渊古渊，萧无极突袭，苏幼薇被掳走"},
+    {"chapter": 21, "title": "极北之城", "word_count": 5200, "summary": "林逸沐风抵达极北之城，遇见灵渊遗族，获得净化符篆"},
+    {"chapter": 22, "title": "寒渊迷阵", "word_count": 5100, "summary": "五人组队进入灵渊古渊，突破迷宫，救出苏幼薇"},
+    {"chapter": 23, "title": "重逢", "word_count": 5100, "summary": "林逸与叶青夜凌天重逢，发现通往封印殿的密道"},
+    {"chapter": 24, "title": "冰宫", "word_count": 5200, "summary": "众人经历幻境考验，遭遇九只冰龙傀儡"},
+    {"chapter": 25, "title": "父与子", "word_count": 5200, "summary": "林逸与父亲林渊重逢，面临艰难抉择"},
+    {"chapter": 26, "title": "绝境", "word_count": 5100, "summary": "萧无极现身，最终决战开始，林逸血脉觉醒"},
+    {"chapter": 27, "title": "灵渊之心", "word_count": 5200, "summary": "林逸觉醒灵渊之心，选择救赎萧无极"},
+    {"chapter": 28, "title": "救赎", "word_count": 5100, "summary": "林逸进入萧无极内心，化解其心魔，萧无极获得救赎"},
+    {"chapter": 29, "title": "新生", "word_count": 5234, "summary": "林渊离世，萧无极牺牲，团队凯旋"},
+    {"chapter": 30, "title": "星辰之路", "word_count": 5387, "summary": "一年后，林逸苏幼薇即将成婚，踏上新征程"}
+  ],
+  "current_stage": "review_completed",
+  "metadata": {
+    "novel_title": "穿越古代修仙",
+    "total_words": 155534,
+    "chapters_completed": 30,
+    "target_chapters": 30,
+    "review_completed": true,
+    "fixes_applied": [
+      "父亲时间线矛盾已修复（二十年前消失，非三年前）",
+      "中英文名字混用已统一为中文",
+      "沐风/穆风已统一为沐风",
+      "灵元一族已修正为灵渊一族",
+      "Spirit Yuan已统一为灵渊",
+      "Shadow Council已统一为暗影议会"
+    ]
+  },
+  "outline_evaluation": {
+    "score": 8.5,
+    "passed": true
+  },
+  "evaluation_passed": true,
+  "config": {
+    "topic": "穿越古代修仙",
+    "words": 50000,
+    "chapters": 30,
+    "style": "xianxia"
+  },
+  "bible_serialized": null
+}

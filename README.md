@@ -18,6 +18,9 @@
 - **PostPass Pipeline**: Critique → Revision → Polish workflow per chapter
 - **Pipeline Persistence**: Save/resume from any stage (outline, volume, summary, writing)
 - **Specialized Agents**: Interiority checker, POV checker, outline verifier
+- **Typed Config**: Strongly-typed configuration system (NovelConfig)
+- **Stage Services**: Modular stage services for independent testing
+- **Structured Failure Semantics**: Clear success/partial/failed status
 
 ### Architecture
 
@@ -111,6 +114,9 @@ uvx mypy lib/crewai/src
 - **PostPass 流水线**：每章批判 → 修改 → 润色工作流
 - **流水线持久化**：可在任意阶段保存/恢复（大纲、卷、概要、写作）
 - **专项检查**：内心独白检查、视角检查、大纲验证
+- **Typed Config**：强类型配置系统（NovelConfig）
+- **阶段服务架构**：可独立测试的模块化阶段服务
+- **结构化失败语义**：success/partial/failed 状态明确
 
 ### 技术架构
 
@@ -128,6 +134,16 @@ lib/crewai/src/crewai/content/novel/
 │   ├── review_crew.py          # 批判/修改/润色
 │   ├── volume_outline_crew.py  # 卷大纲生成
 │   └── chapter_summary_crew.py # 章节概要生成
+├── config/
+│   └── novel_config.py         # Typed Config (NovelConfig)
+├── services/
+│   ├── base_stage_service.py   # 阶段服务基类
+│   ├── outline_stage_service.py # Outline 阶段服务
+│   ├── volume_stage_service.py  # Volume 阶段服务
+│   ├── summary_stage_service.py # Summary 阶段服务
+│   ├── writing_stage_service.py # Writing 阶段服务
+│   ├── approval_coordinator.py # 审批协调器
+│   └── replay_coordinator.py    # 重放协调器
 ├── production_bible/
 │   ├── bible_types.py          # BibleSection, CharacterProfile
 │   ├── bible_builder.py        # ProductionBible 构建器
@@ -175,11 +191,17 @@ KIMI_BASE_URL=https://api.moonshot.cn/v1
 ### CLI 命令
 
 ```bash
-# 创建新小说
-uv run crewai create novel --title "标题" --genre 类型 --word-count 字数
+# 创建新小说（完整生成）
+uv run crewai create novel "标题" --words 100000 --chapters 10
 
-# 从保存状态恢复
-uv run crewai create novel --title "标题" --resume-from state.json
+# 在大纲阶段停止（查看大纲）
+uv run crewai create novel "标题" --stop-at outline
+
+# 从保存状态恢复继续
+uv run crewai create novel "标题" --resume-from summary
+
+# 逐章审核模式
+uv run crewai create novel "标题" --review-each-chapter
 
 # 运行测试
 uv run pytest lib/crewai/tests/
