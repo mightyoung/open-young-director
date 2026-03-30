@@ -113,6 +113,8 @@ class NovelCrew(BaseContentCrew):
         self._production_bible: Any = None
         # Per-Chapter PostPass for consistency verification
         self._per_chapter_postpass: PerChapterPostPass | None = None
+        # Chapters marked for regeneration (set during replay)
+        self._chapters_to_regenerate: set[int] | None = None
 
     def _create_agents(self) -> dict[str, Any]:
         """创建Agents - 委托给子Crews"""
@@ -618,8 +620,10 @@ word_count: {word_count}
                 elif replay_plan.should_regenerate_chapters() and replay_plan.dirty_chapters:
                     logger.info(f"Regenerating chapters: {replay_plan.dirty_chapters}")
                     self._pipeline_state = loaded_state
-                    # 标记脏章节
-                    self._pipeline_state.clear_dirty_chapters()
+                    # 保存脏章节列表用于过滤（不清除，直到重写完成）
+                    self._chapters_to_regenerate = set(replay_plan.dirty_chapters)
+                    # 标记脏章节（但保留脏章节信息用于过滤）
+                    self.pipeline_state.dirty_chapters.update(replay_plan.dirty_chapters)
                 else:
                     logger.info("Using cached state (no regeneration needed)")
                     self._pipeline_state = loaded_state
@@ -981,14 +985,36 @@ word_count: {word_count}
         except PendingChapterApproval as e:
             # 保存状态并返回待审批结果
             self.pipeline_state.set_stage("writing")
-            return self._pack_approval_output(
-                stage="chapter",
-                content={
-                    "chapter_num": e.chapter_num,
-                    "chapter_output": e.chapter_output,
-                    "pipeline_state_path": e.pipeline_state_path,
-                },
+            # 保存状态文件
+            state_path = e.pipeline_state_path or ".pending_chapter.json"
+            self.pipeline_state.save(state_path)
+            return BaseCrewOutput(
+                content=None,
+                tasks_completed=[f"等待审批: chapter_{e.chapter_num}"],
                 execution_time=time.time() - start,
+                metadata={
+                    "approval_required": True,
+                    "stage": "chapter",
+                    "stage_status": "pending_approval",
+                    "pipeline_state_path": state_path,
+                    "pending_chapter": e.chapter_num,
+                    "content_summary": {
+                        "chapter_num": e.chapter_num,
+                        "chapter_title": e.chapter_output.title if e.chapter_output else None,
+                    },
+                    "feedback_options": {
+                        "approve": "通过当前章节，继续下一章",
+                        "revise": "需要修改，请提供修改意见",
+                        "reject": "拒绝，重新生成",
+                    },
+                    # Structured failure semantics
+                    "status": "partial",
+                    "failure_reason": "chapter_pending_approval",
+                    "failure_details": {
+                        "chapter_num": e.chapter_num,
+                        "recoverable": True,
+                    },
+                },
             )
 
         # Run Global PostPass
@@ -1291,6 +1317,7 @@ word_count: {word_count}
 
         chapters = []
         previous_summary = ""
+        previous_chapter_ending = ""
 
         # Build BibleSection per volume for bible-constrained writing (P1-4)
         bible_section_builder = None
@@ -1307,6 +1334,75 @@ word_count: {word_count}
             except Exception as e:
                 logger.warning(f"Failed to build BibleSections for writing: {e}")
                 bible_section_builder = None
+        elif plot_data and plot_data.get("main_strand"):
+            # FILM_DRAMA fallback: build minimal BibleSection from plot_data when ProductionBible unavailable
+            try:
+                from crewai.content.novel.production_bible.bible_types import (
+                    BibleSection,
+                    CharacterProfile,
+                )
+                main_strand = plot_data.get("main_strand", {})
+                protagonist_data = main_strand.get("protagonist", {})
+                if isinstance(protagonist_data, dict) and protagonist_data.get("name"):
+                    protagonist_name = protagonist_data.get("name")
+                else:
+                    protagonist_name = main_strand.get("name", "林逸")
+
+                # Build minimal characters from plot_data
+                characters = {}
+                characters[protagonist_name] = CharacterProfile(
+                    name=protagonist_name,
+                    role="protagonist",
+                    personality=protagonist_data.get("personality", "") if isinstance(protagonist_data, dict) else "",
+                    appearance="",
+                    core_desire=protagonist_data.get("goal", "") if isinstance(protagonist_data, dict) else "",
+                    fear="",
+                    backstory=protagonist_data.get("background", "") if isinstance(protagonist_data, dict) else "",
+                    character_arc="",
+                    first_appearance=1,
+                    faction="",
+                    relationships={},
+                )
+
+                # Extract supporting characters from chapter_summaries if available
+                chapter_summaries = self.pipeline_state.chapter_summaries if self.pipeline_state else []
+                for ch in chapter_summaries[:5]:  # First 5 chapters
+                    if "苏幼薇" in ch.get("summary", ""):
+                        characters["苏幼薇"] = CharacterProfile(
+                            name="苏幼薇", role="female_lead", personality="", appearance="",
+                            core_desire="", fear="", backstory="", character_arc="",
+                            first_appearance=5, faction="", relationships={},
+                        )
+                    if "沐风" in ch.get("summary", ""):
+                        characters["沐风"] = CharacterProfile(
+                            name="沐风", role="supporting", personality="", appearance="",
+                            core_desire="", fear="", backstory="", character_arc="",
+                            first_appearance=5, faction="", relationships={},
+                        )
+                    if "叶青" in ch.get("summary", ""):
+                        characters["叶青"] = CharacterProfile(
+                            name="叶青", role="supporting", personality="", appearance="",
+                            core_desire="", fear="", backstory="", character_arc="",
+                            first_appearance=5, faction="", relationships={},
+                        )
+
+                # Build minimal BibleSection
+                bible_volume_map[1] = BibleSection(
+                    volume_num=1,
+                    relevant_characters=characters,
+                    world_rules_summary="灵渊血脉：特殊血脉，可操控灵渊之力；境界：炼气境、筑基境、金丹境、元婴境、化神境",
+                    timeline_up_to_this_point=[],
+                    open_foreshadowing=[],
+                    relationship_states_at_start={},
+                    canonical_facts_this_volume=[
+                        f"主角{protagonist_name}拥有灵渊血脉",
+                        "星辰学院是主要修炼场所",
+                        "暗影议会是敌对组织",
+                    ],
+                )
+                logger.info("FILM_DRAMA: Built minimal BibleSection from plot_data")
+            except Exception as e:
+                logger.warning(f"Failed to build minimal BibleSection: {e}")
 
         # 获取主线信息
         main_strand = plot_data.get("main_strand", {})
@@ -1333,6 +1429,7 @@ word_count: {word_count}
                 chapter_num,
                 world_data,
                 previous_summary,
+                previous_chapter_ending,
                 chapter_outline,
                 target_words_per_chapter,
             )
@@ -1492,6 +1589,8 @@ word_count: {word_count}
                 chapter_output.content if chapter_output.content else '',
                 chapter_output.title
             )
+            # Also store as previous_chapter_ending for dedicated continuity enforcement
+            previous_chapter_ending = previous_summary
 
         return chapters
 
@@ -1513,6 +1612,7 @@ word_count: {word_count}
         """
         chapters = []
         previous_summary = ""
+        previous_chapter_ending = ""
 
         # 计算每章目标字数
         num_chapters = len(chapter_summaries) if chapter_summaries else self.config.get("num_chapters", 10)
@@ -1548,9 +1648,73 @@ word_count: {word_count}
             except Exception as e:
                 logger.warning(f"Failed to build BibleSections for writing: {e}")
                 bible_section_builder = None
+        elif self.pipeline_state.plot_data and self.pipeline_state.plot_data.get("main_strand"):
+            # FILM_DRAMA fallback: build minimal BibleSections from plot_data when ProductionBible unavailable
+            try:
+                from crewai.content.novel.production_bible.bible_types import (
+                    BibleSection,
+                    CharacterProfile,
+                )
+                plot_data = self.pipeline_state.plot_data
+                main_strand = plot_data.get("main_strand", {})
+                protagonist_data = main_strand.get("protagonist", {})
+                if isinstance(protagonist_data, dict) and protagonist_data.get("name"):
+                    protagonist_name = protagonist_data.get("name")
+                else:
+                    protagonist_name = main_strand.get("name", "林逸")
+
+                # Build minimal characters from plot_data
+                characters = {}
+                characters[protagonist_name] = CharacterProfile(
+                    name=protagonist_name,
+                    role="protagonist",
+                    personality=protagonist_data.get("personality", "") if isinstance(protagonist_data, dict) else "",
+                    appearance="",
+                    core_desire=protagonist_data.get("goal", "") if isinstance(protagonist_data, dict) else "",
+                    fear="",
+                    backstory=protagonist_data.get("background", "") if isinstance(protagonist_data, dict) else "",
+                    character_arc="",
+                    first_appearance=1,
+                    faction="",
+                    relationships={},
+                )
+
+                # Build minimal BibleSection for all volumes
+                bible_volume_map[1] = BibleSection(
+                    volume_num=1,
+                    relevant_characters=characters,
+                    world_rules_summary="灵渊血脉：特殊血脉，可操控灵渊之力；境界：炼气境、筑基境、金丹境，元婴境、化神境",
+                    timeline_up_to_this_point=[],
+                    open_foreshadowing=[],
+                    relationship_states_at_start={},
+                    canonical_facts_this_volume=[
+                        f"主角{protagonist_name}拥有灵渊血脉",
+                        "星辰学院是主要修炼场所",
+                        "暗影议会是敌对组织",
+                    ],
+                )
+                logger.info("FILM_DRAMA: Built minimal BibleSection for parallel writing from plot_data")
+            except Exception as e:
+                logger.warning(f"Failed to build minimal BibleSection for parallel writing: {e}")
 
         for i, chapter_summary in enumerate(chapter_summaries):
             chapter_num = chapter_summary.get("chapter_num", i + 1)
+
+            # 如果有脏章节过滤，只重写脏章节；否则重写全部
+            if self._chapters_to_regenerate is not None:
+                if chapter_num not in self._chapters_to_regenerate:
+                    # 保留已有章节
+                    existing = [c for c in self.pipeline_state.chapters if c.chapter_num == chapter_num]
+                    if existing:
+                        chapters.append(existing[0])
+                        # 更新 previous_summary 以保持连续性
+                        prev_summary = existing[0].content[-500:] if existing[0].content else ""
+                        previous_summary = f"第{chapter_num}章结尾: {prev_summary}"
+                        previous_chapter_ending = previous_summary
+                        logger.info(f"Skipping clean chapter {chapter_num}, preserving from state")
+                    else:
+                        logger.warning(f"Chapter {chapter_num} marked clean but not in state, will generate")
+                    continue
 
             # 从概要构建章节大纲
             chapter_outline = self._build_outline_from_summary(chapter_summary)
@@ -1560,15 +1724,16 @@ word_count: {word_count}
                 chapter_num,
                 world_data,
                 previous_summary,
+                previous_chapter_ending,
                 chapter_outline,
                 chapter_summary.get("word_target", target_words_per_chapter),
             )
 
             # 获取本章对应的 BibleSection（P1-4: bible 约束写作）
             bible_section = None
-            if bible_section_builder is not None:
+            if bible_section_builder is not None or bible_volume_map:
                 vol_num = chapter_summary.get("volume_num") or chapter_to_volume.get(chapter_num, 1)
-                bible_section = bible_volume_map.get(vol_num)
+                bible_section = bible_volume_map.get(vol_num) or bible_volume_map.get(1)
 
             # 根据配置选择写作引擎
             # 混合模式(hybrid): orchestrator 支持 bible 约束，通过 bible_constraint 参数传递
@@ -1716,6 +1881,8 @@ word_count: {word_count}
                 chapter_output.content if chapter_output.content else '',
                 chapter_output.title
             )
+            # Also store as previous_chapter_ending for dedicated continuity enforcement
+            previous_chapter_ending = previous_summary
 
             # Per-chapter review pause point
             if review_each_chapter:
@@ -1771,6 +1938,12 @@ word_count: {word_count}
                         chapter_output=chapter_output,
                         pipeline_state_path=self.pipeline_state.save(".pending_chapter.json"),
                     )
+
+        # 清除脏章节标记（重写完成）
+        if self._chapters_to_regenerate is not None:
+            self.pipeline_state.clear_dirty_chapters()
+            self._chapters_to_regenerate = None
+            logger.info("Dirty chapters regeneration complete, cleared dirty markers")
 
         return chapters
 
@@ -2178,6 +2351,7 @@ word_count: {word_count}
         chapter_num: int,
         world_data: dict,
         previous_summary: str,
+        previous_chapter_ending: str,
         chapter_outline: dict,
         target_words: int,
     ) -> WritingContext:
@@ -2192,6 +2366,7 @@ word_count: {word_count}
             world_description=world_data.get("description", ""),
             character_profiles=character_profiles,
             previous_chapters_summary=previous_summary,
+            previous_chapter_ending=previous_chapter_ending,
             chapter_outline=str(chapter_outline),
             target_word_count=target_words,
             current_chapter_num=chapter_num,
@@ -2372,17 +2547,18 @@ word_count: {word_count}
         if not content:
             return ""
 
-        # 取最后500字作为结尾部分进行分析
-        ending_section = content[-1000:] if len(content) > 1000 else content
+        # 取最后1500字作为结尾部分进行分析（扩大范围以捕获完整场景）
+        ending_section = content[-1500:] if len(content) > 1500 else content
 
         # 简单分析：提取最后几段的关键信息
         # 注意：这里使用简单规则，未来可用LLM来做更精确的提取
         lines = ending_section.strip().split('\n')
-        last_paragraphs = [l.strip() for l in lines if l.strip() and len(l.strip()) > 50][-3:]
+        # 降低阈值到30字符，并取最后5段以更好地捕获结尾场景
+        last_paragraphs = [l.strip() for l in lines if l.strip() and len(l.strip()) > 30][-5:]
 
         if not last_paragraphs:
-            # fallback：简单截取最后200字
-            return f"第{chapter_title}结尾: {content[-200:]}"
+            # fallback：简单截取最后300字
+            return f"第{chapter_title}结尾: {content[-300:]}"
 
         # 组合最后几段作为场景延续的上下文
         scene_desc = "\n".join(last_paragraphs)
@@ -2390,6 +2566,8 @@ word_count: {word_count}
 {scene_desc}
 
 以上是前章结尾的场景描述。请延续此场景继续写作，确保：
-- 地点、人物状态保持一致
-- 情绪氛围自然延续
-- 不得突兀切换到其他场景或时间"""
+- 地点：必须与前章结尾保持一致，禁止切换到新地点
+- 人物：必须延续前章结尾时在场的人物及其状态
+- 情绪：必须自然延续前章结尾时的情绪氛围
+- 时间：必须是前章结尾的延续，不能有时间跳跃
+- 未解决情节：必须承接前章留下的悬念或伏笔"""

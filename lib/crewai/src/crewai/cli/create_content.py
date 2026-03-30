@@ -197,9 +197,16 @@ def _run_novel_creation(
     from pathlib import Path
     try:
         from dotenv import load_dotenv
-        env_path = Path(__file__).resolve().parents[2] / ".env"
+        # Use CREWAI_PROJECT_ROOT env var if set, otherwise use cwd
+        project_root = os.environ.get("CREWAI_PROJECT_ROOT", str(Path.cwd()))
+        env_path = Path(project_root) / ".env"
         if env_path.exists():
             load_dotenv(env_path)
+        else:
+            # Fallback: try the lib/crewai parent directory
+            env_path = Path(__file__).resolve().parents[2] / ".env"
+            if env_path.exists():
+                load_dotenv(env_path)
     except ImportError:
         pass  # python-dotenv not installed
 
@@ -217,20 +224,25 @@ def _run_novel_creation(
         # Create LLM instance from environment or defaults
         llm = _create_llm_from_env()
 
-        config = {
-            "topic": topic,
-            "style": style,
-            "target_words": words,
-            "num_chapters": chapters if chapters > 0 else 10,
-            "genre": style,
-            "llm": llm,
-            "output_dir": output,  # Enable checkpoint saving
-        }
-        crew = NovelCrew(config=config)
+        # Use typed config instead of raw dict
+        from crewai.content.novel.config import NovelConfig
+        config = NovelConfig(
+            topic=topic,
+            style=style,
+            target_words=words,
+            num_chapters=chapters if chapters > 0 else 0,  # 0 = auto
+            genre=style,
+            llm=llm,
+            output_dir=output,
+            review_each_chapter=review_each_chapter,
+            seed_variant=seed_variant,
+        )
+        crew = NovelCrew(config=config.to_dict())
 
         # Compute seed with variant for deterministic variant generation
         from crewai.content.novel.pipeline_state import PipelineState
         seed = PipelineState.generate_seed(topic, style, style, seed_variant)
+        config.seed = seed  # Set computed seed on config
         if seed_variant:
             click.echo(f"   Seed变体: {seed_variant}")
 
@@ -279,6 +291,9 @@ def _run_novel_creation(
             # 检查是否停止在某个阶段（没有完整内容）
             if result.metadata.get("stopped"):
                 click.echo(f"⏸️ 流水线已停止在阶段: {result.metadata.get('pipeline_state', {}).get('stage', 'unknown')}")
+
+                # 确保输出目录存在
+                _ensure_output_dir(output)
 
                 # 保存流水线状态
                 state_file = Path(output) / "pipeline_state.json"

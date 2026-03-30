@@ -110,8 +110,66 @@ class PipelineState:
         # 确保目录存在
         Path(path).parent.mkdir(parents=True, exist_ok=True)
 
+        # 自定义序列化，避免 asdict() 的 deepcopy 问题
+        # (asdict 会递归复制所有对象，可能触发 RLock 等不可 pickle 对象的复制)
+        data = self._serialize()
+
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(asdict(self), f, ensure_ascii=False, indent=2, default=str)
+            json.dump(data, f, ensure_ascii=False, indent=2, default=str)
+
+    def _serialize(self) -> dict[str, Any]:
+        """自定义序列化方法，避免 deepcopy 带来的 RLock pickle 问题
+
+        Returns:
+            dict: 可序列化的字典
+        """
+        import copy
+
+        # 手动构建字典，避免 deepcopy
+        result = {
+            "world_data": self._safe_copy(self.world_data),
+            "plot_data": self._safe_copy(self.plot_data),
+            "volume_outlines": self._safe_copy(self.volume_outlines),
+            "chapter_summaries": self._safe_copy(self.chapter_summaries),
+            "chapters": self._safe_copy(self.chapters),
+            "current_stage": self.current_stage,
+            "metadata": self._safe_copy(self.metadata),
+            "outline_evaluation": self._safe_copy(self.outline_evaluation),
+            "evaluation_passed": self.evaluation_passed,
+            "config": self._safe_copy(self.config),
+            "bible_serialized": self._safe_copy(self.bible_serialized),
+            "stage_statuses": self._safe_copy(self.stage_statuses),
+            "approval_history": self._safe_copy(self.approval_history),
+            "pending_feedback": self._safe_copy(self.pending_feedback),
+            "approval_mode": self.approval_mode,
+            # seed_config 单独处理
+            "seed_config": self.seed_config.to_dict() if self.seed_config else None,
+            "seed": self.seed,
+            "core_content_hash": self.core_content_hash,
+            "dirty_chapters": sorted(self.dirty_chapters) if self.dirty_chapters else [],
+        }
+        return result
+
+    def _safe_copy(self, obj: Any) -> Any:
+        """安全复制对象，使用 JSON 作为中介来避免不可 pickle 对象
+
+        Args:
+            obj: 要复制的对象
+
+        Returns:
+            复制后的对象
+        """
+        try:
+            # 尝试使用 JSON 作为中介进行深拷贝
+            # 这会剥离掉所有不可序列化的对象（如 RLock）
+            return json.loads(json.dumps(obj, default=str, ensure_ascii=False))
+        except (TypeError, ValueError):
+            # 如果 JSON 序列化失败，尝试 asdict
+            try:
+                return copy.deepcopy(obj)
+            except Exception:
+                # 最后手段：返回原始对象（可能会有引用问题，但至少不会崩溃）
+                return obj
 
     @classmethod
     def load(cls, path: str) -> "PipelineState":
@@ -133,6 +191,11 @@ class PipelineState:
         if "seed" in data and "seed_config" not in data:
             logger.info("Migrating legacy PipelineState format")
             return cls.migrate_legacy_state(data)
+
+        # 确保 seed_config dict 被正确转换为 SeedConfig 对象
+        if "seed_config" in data and data["seed_config"] is not None:
+            if isinstance(data["seed_config"], dict):
+                data["seed_config"] = SeedConfig.from_dict(data["seed_config"])
 
         return cls(**data)
 
@@ -292,6 +355,11 @@ class PipelineState:
             "seed": self.seed,
             "seed_config": self.seed_config.to_dict() if self.seed_config else None,
         }
+
+    @property
+    def outline_data(self) -> dict:
+        """获取大纲数据（world + plot）- 兼容性属性"""
+        return self.get_outline_data()
 
     @property
     def dirty_tracker(self) -> DirtyTracker:
