@@ -129,6 +129,7 @@ exclude_dirs = ["lib/crewai/src/crewai/cli/templates"]
 [tool.pytest.ini_options]
 markers = [
     "telemetry: mark test as a telemetry test (don't mock telemetry)",
+    "slow: mark test as slow running",
 ]
 testpaths = [
     "lib/crewai/tests",
@@ -141,6 +142,13 @@ addopts = "--tb=short -n auto --timeout=60 --dist=loadfile --max-worker-restart=
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
+filterwarnings = [
+    # Ignore the deprecated 'reasoning' parameter warning in agent/core.py
+    # This is a known deprecation and tests using reasoning=True are testing backward compatibility
+    "ignore::DeprecationWarning:crewai.agent.core",
+    # Ignore PytestCollectionWarning for TestFlow class (has __init__ constructor - known pytest issue)
+    "ignore::pytest.PytestCollectionWarning",
+]
 
 [tool.uv]
 

@@ -1,5 +1,6 @@
 """ScriptCrew - 主编排器，负责整个剧本生成流程"""
 
+from dataclasses import dataclass, field
 from typing import Dict, List, Any, Optional, TYPE_CHECKING
 
 from crewai.agent import Agent
@@ -17,6 +18,21 @@ from crewai.content.script.agents import BeatSheetAgent, VisualMotifTracker
 
 if TYPE_CHECKING:
     from crewai.llm import LLM
+
+
+@dataclass
+class ScriptConfig:
+    """ScriptCrew configuration."""
+    topic: str
+    format: str = "film"  # film/tv/web series
+    target_runtime: int = 120  # minutes
+    num_acts: int = 3
+    genre: str = ""
+    title: str = ""
+    logline: str = ""
+    structure: dict = field(default_factory=dict)
+    target_audience: str = ""
+    rating: str = ""
 
 
 class ScriptCrew(BaseContentCrew):
@@ -90,6 +106,46 @@ class ScriptCrew(BaseContentCrew):
             verbose=self.verbose,
         )
         return crew
+
+    def _evaluate_output(self, output: "ScriptOutput") -> "QualityReport":
+        """评估ScriptOutput质量
+
+        P2: 统一的 QualityReport 语义。
+        - scenes为空 -> is_usable=False
+        - dialogues为空 -> requires_manual_review=True
+        - output.warnings或metadata中有warnings -> requires_manual_review=True
+        """
+        from crewai.content.base import QualityReport
+
+        warnings = list(output.warnings) if output.warnings else []
+        errors = []
+
+        # 检查场景数
+        if not output.scenes:
+            errors.append("no_scenes: 场景列表为空")
+            return QualityReport(
+                is_usable=False,
+                requires_manual_review=True,
+                warnings=warnings,
+                errors=errors,
+            )
+
+        # 检查对白（可选，但有则检查质量）
+        if not output.dialogues:
+            warnings.append("no_dialogues: 对白列表为空")
+
+        # 检查metadata中的warnings
+        if output.metadata:
+            meta_warnings = output.metadata.warnings if hasattr(output.metadata, 'warnings') else []
+            if meta_warnings:
+                warnings.extend(meta_warnings)
+
+        return QualityReport(
+            is_usable=len(errors) == 0,
+            requires_manual_review=len(warnings) > 0 or len(errors) > 0,
+            warnings=warnings,
+            errors=errors,
+        )
 
     def kickoff(self) -> BaseCrewOutput:
         """执行剧本生成"""

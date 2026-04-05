@@ -4,6 +4,13 @@ from enum import Enum
 from typing import Any
 
 
+class ContentStatus(Enum):
+    """内容生成状态"""
+    SUCCESS = "success"  # 完整成功
+    PARTIAL = "partial"  # 部分成功（可修复）
+    FAILED = "failed"    # 完全失败
+
+
 class HookType(Enum):
     """钩子类型"""
     QUESTION = "question"  # 问题式
@@ -16,8 +23,9 @@ class HookType(Enum):
 
 class TitleStyle(Enum):
     """标题风格"""
+    SEO = "seo"  # 无特定风格（不过滤）
     SENSATIONAL = "sensational"  # 震惊体
-    Curiosity = "curiosity"  # 好奇心
+    CURIOSITY = "curiosity"  # 好奇心
     LIST = "list"  # 列表体
     GUIDE = "guide"  # 指南体
     QUESTION = "question"  # 疑问体
@@ -38,7 +46,7 @@ class TitleOption:
     """标题选项"""
     variant: int
     title: str
-    style: str  # sensational, curiosity, list, guide, question, number
+    style: str  # sensational, curiosity, list, guide, question, number (matches TitleStyle values)
     click_score: float  # 预估点击率 (1-10)
     seo_score: float  # SEO友好度 (1-10)
 
@@ -51,6 +59,15 @@ class ThumbnailConcept:
     suggested_elements: list[str]  # 建议元素
     color_scheme: str  # 配色方案
     text_overlay: str | None = None  # 文字叠加
+
+
+@dataclass
+class BodyContent:
+    """博客正文内容"""
+    body: str
+    word_count: int
+    outline: list[str] = field(default_factory=list)
+    sections: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -90,6 +107,7 @@ class BlogPost:
     quality_score: float | None = None
     warnings: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
+    status: ContentStatus = ContentStatus.SUCCESS  # 明确的内容生成状态
 
 
 @dataclass
@@ -99,11 +117,16 @@ class BlogCrewOutput:
     tasks_completed: list[str]
     execution_time: float
     metadata: dict[str, Any]
+    # P1: 强化 partial 契约 - 调用方不只靠 warning 判断结果质量
+    is_usable: bool = True  # 内容是否可直接使用（False = 需要人工介入）
+    requires_manual_review: bool = False  # 是否需要人工审核
 
 
 __all__ = [
     "BlogCrewOutput",
     "BlogPost",
+    "BodyContent",
+    "ContentStatus",
     "HookOption",
     "HookType",
     "PlatformContent",

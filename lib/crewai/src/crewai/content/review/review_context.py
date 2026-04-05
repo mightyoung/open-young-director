@@ -13,11 +13,14 @@ class ReviewContext:
     target_audience: str = ""
     style_guide: str = ""
     previous_chapters_summary: str = ""
+    # 【情节连贯】前章结尾的具体场景信息（地点+人物状态+情绪+未解决悬念）
+    previous_chapter_ending: str = ""
     character_profiles: Dict[str, str] = field(default_factory=dict)
     world_rules: Dict[str, str] = field(default_factory=dict)
     writing_goals: str = ""
     pacing_notes: str = ""
     tension_arc: str = ""
+    bible_section: Optional[Any] = None
 
     # Optional metadata
     chapter_number: Optional[int] = None
@@ -32,6 +35,7 @@ class ReviewContext:
             "target_audience": self.target_audience,
             "style_guide": self.style_guide,
             "previous_chapters_summary": self.previous_chapters_summary,
+            "previous_chapter_ending": self.previous_chapter_ending,
             "character_profiles": self.character_profiles,
             "world_rules": self.world_rules,
             "writing_goals": self.writing_goals,
@@ -51,6 +55,7 @@ class ReviewContext:
             target_audience=data.get("target_audience", ""),
             style_guide=data.get("style_guide", ""),
             previous_chapters_summary=data.get("previous_chapters_summary", ""),
+            previous_chapter_ending=data.get("previous_chapter_ending", ""),
             character_profiles=data.get("character_profiles", {}),
             world_rules=data.get("world_rules", {}),
             writing_goals=data.get("writing_goals", ""),
@@ -92,5 +97,8 @@ class ReviewContext:
 
         if self.previous_chapters_summary:
             parts.append(f"\n前章概要:\n{self.previous_chapters_summary}")
+
+        if self.previous_chapter_ending:
+            parts.append(f"\n前章结尾场景（连贯性检查用）:\n{self.previous_chapter_ending}")
 
         return "\n".join(parts)

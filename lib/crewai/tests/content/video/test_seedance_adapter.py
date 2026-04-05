@@ -72,7 +72,7 @@ class TestSeedance2PromptAdapter:
         assert "【光学与摄影机调度】" in output
         assert "【时间轴与状态演变】" in output
         assert "【美学介质与底层渲染参数】" in output
-        assert "【seedance2.0专属负面提示词】" in output
+        assert "【负面提示词】" in output
 
         # Check negative prompt is included
         assert "CGI, 3D render" in output

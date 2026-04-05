@@ -107,10 +107,30 @@ Tools are defined in `crewai-tools` with a base `BaseTool` class. Tools can be:
 The `crewai` CLI (entry point in `crewai/cli/cli.py`) supports:
 - `crewai create crew <name>` - Scaffold new crew project
 - `crewai create flow <name>` - Scaffold new flow
-- `crewai create content <type>` - Scaffold content generation
+- `crewai create novel <name>` - Generate a novel (EXPERIMENTAL: full pipeline with approval/replay)
 - `crewai run` - Execute a crew
 - `crewai chat <crew>` - Interactive crew chat
 - `crewai login/logout` - Authentication
+
+### Persistent Project Memory
+
+- Use `.claude/PROJECT_MEMORY.md` to store durable repo-level working agreements and user preferences.
+- Use `crewai project-memory init|show|add` to manage that file.
+- Keep `status`, `tasks`, `resume-content`, and project memory aligned with the current repo state.
+
+### Content Generation Capabilities
+
+**Novel (Stable)**: Full pipeline with world building, outline, volume/Chapter planning, writing, and review.
+- Supports `--review-each-chapter` for approval-gated writing
+- Supports `--resume-from` for checkpoint recovery
+- Supports `--pipeline-state-path` for explicit state file
+- Smart chapter distribution based on style (xianxia: 6000w/ch, urban: 4000w/ch)
+- Classic literature reference backbone extraction
+
+**Script/Blog/Podcast (Experimental)**: Available as standalone modules but not integrated into main CLI.
+- `crewai.content.script` - Script generation with beat sheet
+- `crewai.content.blog` - Blog generation with SEO
+- `crewai.content.podcast` - Podcast generation with segments
 
 ## Testing
 

@@ -205,7 +205,7 @@ class NovelToShortDramaAdapter:
     ) -> EpisodeOutline:
         """从章节文本生成集大纲
 
-        这是一个简化的实现，实际可能需要 LLM 来完成。
+        当前使用启发式分割（按段落+短对话检测），精度有限。
 
         Args:
             chapter_num: 章节号
@@ -215,8 +215,7 @@ class NovelToShortDramaAdapter:
         """
         text = self.get_chapter_text(chapter_num)
 
-        # 简化实现：按段落分割
-        # 实际应该用 LLM 来分析情节结构
+        # TODO: 使用 LLM 分析情节结构替代启发式分割
         scenes = []
         current_scene = None
         scene_count = 0

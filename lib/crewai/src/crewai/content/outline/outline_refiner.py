@@ -58,7 +58,8 @@ class OutlineRefiner:
 """
         result = self.agent.run(prompt)
 
-        # 返回优化后的大纲（简化实现：不做实际修改）
+        # 返回带反馈的大纲（反馈已生成待人工确认，暂不自动修改）
+        # TODO: 实现自动应用反馈的完整优化流程
         return OutlineOutput(
             world=world,
             chapters=chapters,

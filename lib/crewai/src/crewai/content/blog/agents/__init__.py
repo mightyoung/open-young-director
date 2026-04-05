@@ -1,4 +1,5 @@
 """博客内容生成Agents"""
+from crewai.content.blog.agents.body_agent import BodyAgent, BodyContent
 from crewai.content.blog.agents.hook_agent import HookAgent, HookOption
 from crewai.content.blog.agents.platform_adapter_agent import (
     PlatformAdapterAgent,
@@ -13,6 +14,8 @@ from crewai.content.blog.agents.title_agent import TitleAgent, TitleOption
 
 
 __all__ = [
+    "BodyAgent",
+    "BodyContent",
     "HookAgent",
     "HookOption",
     "PlatformAdapterAgent",

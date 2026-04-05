@@ -36,11 +36,19 @@ class WritingCrew(BaseContentCrew):
         super().__init__(config, verbose=verbose)
         self.entity_memory = entity_memory
         self.continuity_tracker = continuity_tracker
+        self._last_compaction_report = None
 
     def _create_agents(self) -> dict[str, Any]:
         """创建Agents"""
+        draft_agent = DraftAgent(llm=self.config.get("llm"))
+        
+        # --- CLAUDE-CODE STYLE: GLOBAL RULE INJECTION ---
+        global_rules = self.config.get("global_writer_rules", "")
+        if global_rules:
+            draft_agent.agent.backstory += f"\n{global_rules}"
+            
         return {
-            "draft_writer": DraftAgent(llm=self.config.get("llm")),
+            "draft_writer": draft_agent,
         }
 
     def _create_tasks(self) -> dict[str, Any]:
@@ -63,41 +71,74 @@ class WritingCrew(BaseContentCrew):
         chapter_outline: dict,
         bible_section: "BibleSection | None" = None,
     ) -> str:
-        """撰写单个章节（完整PostPass流水线）
-
-        Args:
-            context: 写作上下文
-            chapter_outline: 章节大纲
-            bible_section: 可选的 BibleSection，用于约束本章写作与 Production Bible 一致
-
-        Returns:
-            str: 润色后的章节内容
-        """
+        """撰写单个章节（含颗粒度 Beats 步进生成）"""
         import logging
         logger = logging.getLogger(__name__)
 
-        # 1. Generate draft (with optional bible constraint)
+        # 1. 动态 Context 压缩 (Claude-Code Style)
+        compacted_bible = bible_section
+        self._last_compaction_report = None
+        if bible_section:
+            try:
+                from crewai.content.novel.services.context_compactor import ContextCompactor
+                compactor = ContextCompactor(self.config)
+                compacted_bible, self._last_compaction_report = compactor.compact_bible_section_with_report(
+                    bible_section,
+                    chapter_outline,
+                )
+            except Exception:
+                compacted_bible = bible_section
+                self._last_compaction_report = None
+
+        # 2. 生成叙事节拍 (Beats Generation)
         try:
-            draft = self.agents["draft_writer"].write(context, chapter_outline, bible_section)
-        except ValueError as e:
-            if "Invalid response from LLM call" in str(e) or "None or empty" in str(e):
-                logger.warning(f"LLM returned empty response for chapter {context.current_chapter_num}, using outline as draft: {e}")
-                # Fallback: generate draft from outline
-                draft = self._generate_fallback_draft(context, chapter_outline)
-            else:
-                raise
+            from crewai.content.novel.agents.beats_agent import BeatsAgent
+            beats_agent = BeatsAgent(llm=self.config.get("llm"), verbose=self.verbose)
+            logger.info(f"Breaking Chapter {context.current_chapter_num} into granular beats...")
+            beats = beats_agent.generate_beats(chapter_outline, context.previous_chapters_summary)
+        except Exception as e:
+            logger.warning(f"Beats generation failed, falling back to full-chapter mode: {e}")
+            beats = []
 
-        # 2. Build review context
+        # 3. 步进式写作 (Sequential Beat Execution)
+        if beats:
+            chapter_content = []
+            current_draft = ""
+            for i, beat in enumerate(beats):
+                logger.info(f"Writing Beat {i+1}/{len(beats)}: {beat[:50]}...")
+                # 构造 Beat 专用提示词（利用当前已写内容作为上文）
+                beat_prompt = f"""请根据以下节拍撰写小说片段。
+                
+【当前节拍指令】：{beat}
+【上文剧情】：{current_draft[-1000:] if current_draft else '本章开头'}
+
+要求：
+1. 仅撰写当前节拍的内容。
+2. 保持极致的细节描写和文风一致性。
+3. 严禁跳剧情。
+
+请输出该节拍的具体文字。"""
+                
+                beat_result = self.agents["draft_writer"].agent.kickoff(messages=beat_prompt)
+                beat_text = str(beat_result.raw if hasattr(beat_result, 'raw') else beat_result).strip()
+                chapter_content.append(beat_text)
+                current_draft = "\n\n".join(chapter_content)
+            
+            polished_draft = current_draft
+        else:
+            # Fallback to original monolithic writing
+            polished_draft = self.agents["draft_writer"].write(context, chapter_outline, compacted_bible)
+
+        # 4. 后期处理 (Review, PostPass, etc.)
         review_context = self._build_review_context(context, chapter_outline)
+        _, _, final_draft = self._run_postpass(polished_draft, review_context)
 
-        # 3. Run Per-Chapter PostPass
-        critique_result, revised_draft, polished_draft = self._run_postpass(draft, review_context)
+        return final_draft
 
-        # 4. Update entity memory with polished content
-        if self.entity_memory is not None:
-            self._update_memory_from_draft(polished_draft, context)
-
-        return polished_draft
+    @property
+    def last_compaction_report(self):
+        """Return the most recent bible compaction report, if any."""
+        return self._last_compaction_report
 
     def _generate_fallback_draft(self, context: WritingContext, chapter_outline: dict) -> str:
         """Generate a basic draft from outline when LLM fails.
@@ -163,6 +204,7 @@ class WritingCrew(BaseContentCrew):
             genre=context.genre,
             style_guide=context.style,
             previous_chapters_summary=context.previous_chapters_summary,
+            previous_chapter_ending=context.previous_chapter_ending,
             chapter_number=context.current_chapter_num,
             word_count_target=context.target_word_count,
             writing_goals=writing_goals,

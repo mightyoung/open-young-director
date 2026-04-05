@@ -344,6 +344,27 @@ class Agent(BaseAgent):
             and len(tools) > 0
         )
 
+    def _clean_thinking_tags(self, result: Any) -> Any:
+        """剔除所有形式的思维链/思考标签及其内容"""
+        import re
+        if result is None:
+            return result
+            
+        if not isinstance(result, str):
+            # 处理 LiteAgentOutput 对象
+            if hasattr(result, "raw") and isinstance(result.raw, str):
+                result.raw = self._clean_thinking_tags(result.raw)
+            return result
+
+        # 剔除 <think>...</think>
+        clean_text = re.sub(r"<think>[\s\S]*?</think>", "", result)
+        # 剔除 [THINKING]...[/THINKING] (某些模型的变体)
+        clean_text = re.sub(r"\[THINKING\][\s\S]*?\[/THINKING\]", "", clean_text, flags=re.IGNORECASE)
+        # 剔除可能存在的 Markdown 注释形式的思考
+        clean_text = re.sub(r"<!--[\s\S]*?-->", "", clean_text)
+        
+        return clean_text.strip()
+
     def execute_task(
         self,
         task: Task,
@@ -530,7 +551,7 @@ class Agent(BaseAgent):
         save_last_messages(self)
         self._cleanup_mcp_clients()
 
-        return result
+        return self._clean_thinking_tags(result)
 
     def _execute_with_timeout(self, task_prompt: str, task: Task, timeout: int) -> Any:
         """Execute a task with a timeout.
@@ -770,7 +791,7 @@ class Agent(BaseAgent):
         save_last_messages(self)
         self._cleanup_mcp_clients()
 
-        return result
+        return self._clean_thinking_tags(result)
 
     async def _aexecute_with_timeout(
         self, task_prompt: str, task: Task, timeout: int
@@ -1423,6 +1444,10 @@ class Agent(BaseAgent):
                 ),
             )
 
+            # --- 全局思维链清理 ---
+            if hasattr(output, "raw"):
+                output.raw = self._clean_thinking_tags(output.raw)
+
             return output
 
         except Exception as e:
@@ -1529,6 +1554,9 @@ class Agent(BaseAgent):
         )
 
         todo_results = LiteAgentOutput.from_todo_items(executor.state.todos.items)
+
+        # --- 全局思维链清理 ---
+        raw_str = self._clean_thinking_tags(raw_str)
 
         return LiteAgentOutput(
             raw=raw_str,
@@ -1702,6 +1730,10 @@ class Agent(BaseAgent):
                 ),
             )
 
+            # --- 全局思维链清理 ---
+            if hasattr(output, "raw"):
+                output.raw = self._clean_thinking_tags(output.raw)
+
             return output
 
         except Exception as e:
@@ -1724,6 +1756,9 @@ class Agent(BaseAgent):
 
         Args:
             messages: Either a string query or a list of message dictionaries.
+                     If a string is provided, it will be converted to a user message.
+                     If a list is provided, each dict should have 'role' and 'content' keys.
+                     Messages can include a 'files' field with file inputs.
             response_format: Optional Pydantic model for structured output.
             input_files: Optional dict of named files to attach to the message.
 

@@ -1,12 +1,11 @@
 """Approval coordinator - handles human feedback and approval workflow."""
 import logging
-from typing import Any, Optional
+from typing import Any
+
 from crewai.content.novel.human_feedback import (
-    HumanFeedback,
-    ApprovalDecision,
     ApprovalWorkflow,
+    HumanFeedback,
 )
-from crewai.content.exceptions import ExecutionResult, ExecutionStatus
 
 
 logger = logging.getLogger(__name__)
@@ -29,7 +28,7 @@ class ApprovalCoordinator:
     def __init__(self, pipeline_state: Any, llm: Any = None):
         self.pipeline_state = pipeline_state
         self.llm = llm
-        self._workflow: Optional[ApprovalWorkflow] = None
+        self._workflow: ApprovalWorkflow | None = None
 
     def enable(self) -> None:
         """启用审批模式。"""
@@ -42,12 +41,13 @@ class ApprovalCoordinator:
         """是否启用了审批模式。"""
         return self.pipeline_state.approval_mode
 
-    def request_approval(self, stage: str, content: dict) -> "ApprovalResult":
+    def request_approval(self, stage: str, content: dict, output_dir: str | None = None) -> "ApprovalResult":
         """请求对某个阶段的审批。
 
         Args:
             stage: 阶段名 (outline/volume/summary/chapter)
             content: 该阶段生成的内容
+            output_dir: 可选的输出目录，用于保存状态文件
 
         Returns:
             ApprovalResult: 包含是否暂停以及相关元数据
@@ -55,23 +55,25 @@ class ApprovalCoordinator:
         if not self.is_enabled:
             return ApprovalResult(paused=False)
 
-        # 保存当前状态
-        self.pipeline_state.set_stage_status(stage, "pending")
+        # P1: Delegate to ApprovalService for consistent approval handling
+        from crewai.content.novel.services.approval_service import ApprovalService
 
-        # 保存待审批内容
-        state_path = f".novel_pipeline_{stage}_pending.json"
-        self.pipeline_state.save(state_path)
+        service = ApprovalService.get_instance()
+        output = service.request_approval(
+            stage=stage,
+            content=content,
+            pipeline_state=self.pipeline_state,
+            output_dir=output_dir,
+        )
 
+        # Convert BaseCrewOutput metadata to ApprovalResult
+        metadata = output.metadata
         return ApprovalResult(
             paused=True,
-            stage=stage,
-            state_path=state_path,
-            content_summary=self._summarize_content(stage, content),
-            feedback_options={
-                "approve": f"通过当前 {stage}，继续下一阶段",
-                "revise": f"需要修改，请提供修改意见",
-                "reject": f"拒绝，重新生成",
-            },
+            stage=metadata.get("stage"),
+            state_path=metadata.get("pipeline_state_path"),
+            content_summary=metadata.get("content_summary"),
+            feedback_options=metadata.get("feedback_options"),
         )
 
     def submit_feedback(self, feedback: HumanFeedback) -> None:
@@ -83,7 +85,7 @@ class ApprovalCoordinator:
         self.pipeline_state.add_pending_feedback(feedback.to_dict())
         logger.info(f"Feedback submitted for stage '{feedback.stage}': {feedback.decision}")
 
-    def get_pending_feedback(self) -> Optional[dict]:
+    def get_pending_feedback(self) -> dict | None:
         """获取待处理的反馈。"""
         return self.pipeline_state.get_pending_feedback()
 
@@ -98,11 +100,11 @@ class ApprovalCoordinator:
                 "world_name": content.get("world_data", {}).get("name", ""),
                 "has_plot": bool(content.get("plot_data", {}).get("main_strand")),
             }
-        elif stage == "volume":
+        if stage == "volume":
             return {"volume_count": len(content.get("volume_outlines", []))}
-        elif stage == "summary":
+        if stage == "summary":
             return {"summary_count": len(content.get("chapter_summaries", []))}
-        elif stage == "chapter":
+        if stage == "chapter":
             return {"chapter_num": content.get("chapter_num")}
         return {}
 
