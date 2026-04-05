@@ -1,6 +1,6 @@
 """情节规划Agent - 使用Strand Weave结构"""
 
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, Any, List
 
 from crewai.agent import Agent
 
@@ -54,6 +54,7 @@ class PlotAgent:
         num_volumes: int = 3,
         chapters_per_volume: int = 10,
         target_words: int = 300000,
+        reference_context: str = "",
     ) -> dict:
         """规划整体情节结构（卷-章结构）
 
@@ -64,12 +65,13 @@ class PlotAgent:
             num_volumes: 卷数量（默认3卷）
             chapters_per_volume: 每卷章节数（默认10章）
             target_words: 目标总字数
+            reference_context: 参考骨架上下文（可选）
 
         Returns:
             dict: 包含卷-章结构的Strand Weave情节规划
         """
         prompt = self._build_planning_prompt(
-            theme, style, world_data, num_volumes, chapters_per_volume, target_words
+            theme, style, world_data, num_volumes, chapters_per_volume, target_words, reference_context
         )
         result = self.agent.kickoff(messages=prompt)
         return self._parse_result(result)
@@ -108,12 +110,17 @@ class PlotAgent:
         num_volumes: int = 3,
         chapters_per_volume: int = 10,
         target_words: int = 300000,
+        reference_context: str = "",
     ) -> str:
         """构建整体情节规划提示词（卷-章结构）"""
         world_str = self._format_world(world_data)
         total_chapters = num_volumes * chapters_per_volume
 
-        return f"""为以下主题和世界观设计完整的故事结构，采用卷-章层次结构。
+        reference_section = ""
+        if reference_context:
+            reference_section = f"\n\n## 参考经典名著骨架\n\n{reference_context}\n\n请在设计情节结构时参考上述经典名著的：\n- 主干情节走向\n- 结构模式（如取经模式、英雄之旅等）\n- 角色成长弧线\n- 高潮设计手法\n\n"
+
+        return f"""为以下主题和世界观设计完整的故事结构，采用卷-章层次结构。{reference_section}
 
 主题: {theme}
 风格: {style}
@@ -125,83 +132,70 @@ class PlotAgent:
 世界观:
 {world_str}
 
-请设计{num_volumes}卷的故事结构，每卷包含{chapters_per_volume}章。整体采用Strand Weave结构：
+请设计{num_volumes}卷的故事结构，整体采用Strand Weave结构，并融入以下【神作设计准则】：
 
-## 整体结构设计
-1. 主线 (Main Strand): 核心冲突和主角成长线（贯穿全书）
-2. 副线 (Sub Strands): 支线剧情
-3. 伏笔 (Foreshadowing Strands): 埋下的线索
-4. 情感线 (Emotional Strands): 情感纠葛
+## 1. 凡人流：资源与逻辑闭环
+- 修行资源（灵石、功法、地盘）是稀缺的。
+- 角色的每一次跃升必须有明确的代价或博弈过程，禁止无缘无故的奇遇。
 
-## 卷结构要求
-每卷需要设计：
-- 卷主题/副标题：概括本卷核心内容
-- 卷开场钩子：吸引读者继续阅读
-- 本卷主要冲突：本卷的核心矛盾
-- 本卷关键事件：本卷最重要的3-5个事件
-- 卷内张力曲线：[3, 5, 8, 10, 7]表示从低到高的张力变化
-- 卷高潮点：是否是本卷的爆发点
+## 2. 庆余年流：价值观对撞
+- 主角（或核心势力）必须代表一种与世界主流格格不入的【现代性价值观】（如：众生平等、科技强国、逻辑至上）。
+- 这种价值观冲突应成为权谋和剧情推进的底层动力。
 
-## 交织点(Weave Points)
-标注各条线在哪些章节交织，说明如何交织。
+## 3. 雪中/剑来流：群像与气象
+- 每个重要配角（Strand ID: sub_*）必须有独立的、不依赖于主角的生存逻辑和“名场面”规划。
+- 设计至少3个足以流传的【名场面 (Stellar Scenes)】，重点在于意境渲染而非数值打斗。
 
-## 高潮设计
-设计全书的{num_volumes}个主要高潮点，分布在前中后期。
+## 4. 整体结构要求
+- 主线 (Main Strand): 核心冲突和主角成长线。
+- 副线 (Sub Strands): 支线剧情，负责补完世界观。
+- 伏笔 (Foreshadowing Strands): 必须设计跨度超过30章的深层伏笔。
 
-请直接返回JSON格式，不要包含任何markdown标记（如```、###等）。只返回纯JSON对象：
+请直接返回JSON格式，不要包含任何markdown标记。只返回纯JSON对象：
 {{
-    "series_overview": "系列概览，描述全书核心主题和走向",
+    "series_overview": "全书核心主题、价值观冲突及最终走向",
     "total_chapters": {total_chapters},
     "volumes": [
         {{
             "volume_num": 1,
-            "title": "第一卷标题",
-            "description": "本卷主题和核心内容概述",
-            "hook": "本卷开场钩子",
-            "main_conflict": "本卷主要冲突",
-            "resolution": "本卷如何收束",
-            "word_target": {target_words // num_volumes},
-            "key_events": ["关键事件1", "关键事件2", "关键事件3"],
-            "tension_arc": [3, 5, 7, 9, 6],
-            "climax_point": true,
-            "chapters": [
-                {{
-                    "chapter_num": 1,
-                    "title": "章节标题",
-                    "hook": "章节开场钩子",
-                    "main_events": ["事件1", "事件2"],
-                    "character_developments": ["角色发展1"],
-                    "tension_level": 5
-                }}
-            ]
+            "title": "本卷标题",
+            "description": "本卷核心冲突与转折点",
+            "stellar_scenes": ["名场面1描述", "名场面2描述"],
+            "resource_logic": "本卷角色争夺的核心资源及其稀缺性说明",
+            "chapters": [...]
         }}
     ],
     "main_strand": {{
         "name": "主线名称",
-        "description": "主线描述",
-        "main_events": ["事件1", "事件2", "事件3"],
+        "ideological_conflict": "主角代表的价值观 vs 世界规则的冲突点",
         "tension_arc": [3, 5, 7, 9, 10, 8]
     }},
     "sub_strands": [
         {{
             "strand_id": "sub_1",
-            "name": "副线名称",
-            "description": "副线描述",
-            "main_events": ["事件1", "事件2"],
-            "tension_arc": [2, 4, 6, 8]
+            "name": "配角线名称",
+            "soul_moment": "该配角的高光/悲剧时刻描述"
         }}
     ],
     "foreshadowing_strands": [...],
-    "emotional_strands": [...],
-    "weave_points": [
-        {{"chapter": 5, "description": "多条线在此交织"}}
-    ],
-    "high_points": [
-        {{"chapter": {total_chapters // 3}, "description": "前期高潮"}},
-        {{"chapter": {total_chapters * 2 // 3}, "description": "中期高潮"}},
-        {{"chapter": {total_chapters}, "description": "最终高潮"}}
-    ]
+    "high_points": [...]
 }}"""
+
+    def plan_chapter(
+        self,
+        chapter_num: int,
+        world_data: dict,
+        plot_data: dict,
+        previous_summary: str,
+        target_words: int,
+        bible: Any = None,
+    ) -> dict:
+        """规划单个章节的详细情节"""
+        prompt = self._build_chapter_prompt(
+            chapter_num, world_data, plot_data, previous_summary, target_words, bible
+        )
+        result = self.agent.kickoff(messages=prompt)
+        return self._parse_result(result)
 
     def _build_chapter_prompt(
         self,
@@ -210,32 +204,52 @@ class PlotAgent:
         plot_data: dict,
         previous_summary: str,
         target_words: int,
+        bible: Any = None,
     ) -> str:
         """构建章节情节提示词"""
         world_str = self._format_world(world_data)
         plot_str = self._format_plot(plot_data)
 
+        # 获取未使用的 Seed Details 供回调使用
+        seed_callback_section = ""
+        if bible and hasattr(bible, 'seeds_registry') and bible.seeds_registry:
+            # 过滤未使用的细节
+            unused_seeds = [s for s in bible.seeds_registry if not s.is_used]
+            if unused_seeds:
+                import random
+                # 随机抽取 1-2 个细节进行回调，制造‘神来之笔’
+                sample_seeds = random.sample(unused_seeds, min(2, len(unused_seeds)))
+                seed_callback_section = "\n【神来之笔：必须回收的即兴细节】：\n"
+                for s in sample_seeds:
+                    seed_callback_section += f"- 来自第{s.origin_chapter}章的细节：{s.description}\n"
+                    # 标记为已使用（暂定逻辑，实际应在 plan 成功后由外部标记）
+                    s.is_used = True
+                seed_callback_section += "要求：请在本章情节中‘回收’或‘解释’上述细节，使其升华为伏笔。"
+
         return f"""设计第{chapter_num}章的详细情节。
 
-目标字数: {target_words}
+    目标字数: {target_words}
 
-世界观:
-{world_str}
+    世界观:
+    {world_str}
 
-整体情节规划:
-{plot_str}
+    整体情节规划:
+    {plot_str}
 
-前章概要:
-{previous_summary}
+    前章概要:
+    {previous_summary}
+    {seed_callback_section}
 
-请设计本章的：
-1. 章节标题
+    请设计本章的：
+    ... (rest of the prompt)
+
 2. 开篇钩子 (Hook)
 3. 主要情节点 (3-5个)
-4. 高潮点
-5. 结尾悬念/钩子
-6. 角色发展
-7. 与其他章节线的交织点
+4. 【核心奇观/独特卖点】(Signature Specs): 本章必须展现出的、区别于普通章节的独特描写细节（如：特定的科技感场景、某种特殊的法术表现、极其独特的环境互动）。
+5. 高潮点
+6. 结尾悬念/钩子
+7. 角色发展
+8. 与其他章节线的交织点
 
 请直接返回JSON格式，不要包含任何markdown标记（如```、###等）。只返回纯JSON对象：
 {{
@@ -243,6 +257,7 @@ class PlotAgent:
     "title": "章节标题",
     "hook": "开篇钩子",
     "main_events": ["事件1", "事件2", "事件3"],
+    "signature_specs": ["独特细节1", "独特细节2"],
     "climax": "高潮点描述",
     "ending_hook": "结尾悬念",
     "character_developments": ["角色发展1", "角色发展2"],
@@ -373,14 +388,11 @@ class PlotAgent:
         except json.JSONDecodeError:
             pass
 
-        # 尝试提取并修复JSON
+        # 尝试提取并修复JSON - use balanced brace approach
         try:
-            # 查找 JSON 对象
-            json_match = re.search(r"\{[\s\S]*\}", cleaned)
-            if json_match:
-                json_str = json_match.group()
-                # 尝试解析
-                return json.loads(json_str)
+            result = self._extract_json_object(cleaned)
+            if result:
+                return result
         except (json.JSONDecodeError, Exception):
             pass
 
@@ -424,8 +436,11 @@ class PlotAgent:
             else:
                 raw_text = str(result)
 
-            # Remove markdown code block markers if present
+            # Strip thinking prefix (<think>...</think>) as LLM outputs thinking before actual content
             json_text = raw_text.strip()
+            json_text = re.sub(r"<think>[\s\S]*?</think>", "", json_text)
+
+            # Remove markdown code block markers if present
             if json_text.startswith("```"):
                 # Extract content from markdown code block
                 lines = json_text.split("\n")
@@ -466,3 +481,38 @@ class PlotAgent:
             }
 
         return data
+
+    def _is_balanced_json(self, json_str: str) -> bool:
+        """Check if a JSON string has balanced braces."""
+        count = 0
+        for c in json_str:
+            if c == '{':
+                count += 1
+            elif c == '}':
+                count -= 1
+            if count < 0:
+                return False
+        return count == 0
+
+    def _extract_json_object(self, text: str) -> dict:
+        """Extract a properly closed JSON object from text."""
+        import json
+
+        # Find the first opening brace
+        start = text.find('{')
+        if start == -1:
+            return {}
+
+        # Try to extract JSON object starting from each brace position
+        for i in range(start, len(text)):
+            if text[i] != '{':
+                continue
+            # Try progressively larger substrings
+            for j in range(i + 1, len(text) + 1):
+                candidate = text[i:j]
+                if self._is_balanced_json(candidate):
+                    try:
+                        return json.loads(candidate)
+                    except json.JSONDecodeError:
+                        continue
+        return {}

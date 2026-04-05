@@ -81,7 +81,7 @@ class SEOAgent:
     "word_count": 2000
 }}
 """
-        result = self.agent.run(prompt)
+        result = self.agent.kickoff(messages=prompt)
         return self._parse_result(result, body)
 
     def _parse_result(self, result, body: str = "") -> SEOData:

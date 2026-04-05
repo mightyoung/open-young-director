@@ -10,7 +10,12 @@ from crewai.cli.authentication.main import AuthenticationCommand
 from crewai.cli.config import Settings
 from crewai.cli.create_crew import create_crew
 from crewai.cli.create_flow import create_flow
-from crewai.cli.create_content import create_novel, _run_novel_creation
+from crewai.cli.create_content import create_novel, create_blog, create_podcast, create_script
+from crewai.cli.content.status import content_status
+from crewai.cli.content.resume import resume_content
+from crewai.cli.content.tasks import content_tasks
+from crewai.cli.project_memory import project_memory
+from crewai.cli.content.novel_runner import run_novel_creation
 from crewai.cli.crew_chat import run_chat
 from crewai.cli.deploy.main import DeployCommand
 from crewai.cli.enterprise.main import EnterpriseConfigureCommand
@@ -40,6 +45,17 @@ def crewai():
     """Top-level command group for crewai."""
 
 crewai.add_command(short_drama)
+
+# Content generation subcommands - direct entry points for each content type
+# These provide cleaner interfaces than the monolithic "create <type>" command
+crewai.add_command(create_novel)
+crewai.add_command(create_blog)
+crewai.add_command(create_podcast)
+crewai.add_command(create_script)
+crewai.add_command(content_status)
+crewai.add_command(resume_content)
+crewai.add_command(content_tasks)
+crewai.add_command(project_memory)
 
 @crewai.command(
     name="uv",
@@ -82,51 +98,103 @@ def uv(uv_args):
 
 
 @crewai.command()
-@click.argument("type", type=click.Choice(["crew", "flow", "novel"]))
+@click.argument("type", type=click.Choice(["crew", "flow", "novel", "blog", "podcast", "script"]))
 @click.argument("name")
 @click.option("--provider", type=str, help="The provider to use for the crew")
 @click.option("--skip_provider", is_flag=True, help="Skip provider validation")
 @click.option("--words", default=100000, help="Target word count (for novel)")
 @click.option("--chapters", default=0, help="Number of chapters for novel (0=auto)")
-@click.option("--style", default="urban", help="Content style (for novel/script)")
-@click.option("--platforms", default="medium", help="Target platforms (for blog, comma-separated)")
-@click.option("--keywords", default="", help="SEO keywords (for blog, comma-separated)")
+@click.option("--style", default=None, help="Writing style for novel (xianxia/urban/fantasy/scifi/romance/wuxia)")
+@click.option("--platforms", default="medium", help="Target platforms for blog (comma-separated: medium,xiaohongshu,zhihu)")
+@click.option("--keywords", default="", help="SEO keywords for blog (comma-separated)")
+@click.option("--title-style", default=None, help="Title style for blog (seo/sensational/curiosity/list/guide/question/number)")
 @click.option("--duration", default=30, help="Duration in minutes (for podcast/script)")
 @click.option("--hosts", default=2, help="Number of hosts (for podcast)")
+@click.option("--podcast-style", default=None, help="Podcast style (conversational/narrative/interview/educational)")
+@click.option("--include-interview", is_flag=True, help="Include interview segment (for podcast)")
+@click.option("--include-ads", is_flag=True, help="Include ad reads (for podcast)")
+@click.option("--format", "script_format", default=None, help="Script format (film/tv/web_series)")
+@click.option("--acts", default=3, help="Number of acts (for script)")
 @click.option("--resume-from", default=None, help="Resume from stage (evaluation/volume/summary/writing)")
 @click.option("--stop-at", default=None, help="Stop at stage (outline/evaluation/volume/summary)")
+@click.option("--pipeline-state-path", default=None, help="Path to pipeline state file (for resume)")
 @click.option("--interactive", is_flag=True, help="Interactive mode with stage confirmation")
 @click.option("--review-each-chapter", is_flag=True, help="Review each chapter after writing")
-def create(type, name, provider, skip_provider, words, chapters, style, platforms, keywords, duration, hosts, resume_from, stop_at, interactive, review_each_chapter):
+def create(type, name, provider, skip_provider, words, chapters, style, platforms, keywords, title_style, duration, hosts, podcast_style, include_interview, include_ads, script_format, acts, resume_from, stop_at, pipeline_state_path, interactive, review_each_chapter):
     """Create a new crew, flow, or content project.
 
     Supported types:
       - crew: Create a new crew project
       - flow: Create a new flow project
-      - novel: Create a new novel project (EXPERIMENTAL: script, blog, podcast)
+      - novel: Create a new novel project
+      - blog: Create a new blog post (EXPERIMENTAL)
+      - podcast: Create a new podcast (EXPERIMENTAL)
+      - script: Create a new script (EXPERIMENTAL)
 
     Examples:
       crewai create crew my_crew
       crewai create flow my_flow
       crewai create novel "My Novel Title" --words 100000
+      crewai create blog "My Blog Post" --platforms medium --keywords python
+      crewai create podcast "My Podcast" --duration 30 --hosts 2
+      crewai create script "My Script" --format film --duration 120
     """
+    from crewai.cli.content.blog_runner import run_blog
+    from crewai.cli.content.podcast_runner import run_podcast
+    from crewai.cli.content.script_runner import run_script
+
     if type == "crew":
         create_crew(name, provider, skip_provider)
     elif type == "flow":
         create_flow(name)
     elif type == "novel":
-        pipeline_state_path = f"./{name}_novel/pipeline_state.json" if (stop_at or resume_from or interactive) else None
-        _run_novel_creation(
+        # Use explicit pipeline_state_path if provided, otherwise compute default
+        computed_state_path = f"./{name}_novel/pipeline_state.json" if (stop_at or resume_from or interactive or review_each_chapter or pipeline_state_path) else None
+        final_state_path = pipeline_state_path or computed_state_path
+        try:
+            run_novel_creation(
+                topic=name,
+                words=words,
+                style=style or "urban",
+                output=f"./{name}_novel",
+                chapters=chapters,
+                stop_at=stop_at,
+                resume_from=resume_from,
+                pipeline_state_path=final_state_path,
+                interactive=interactive,
+                review_each_chapter=review_each_chapter,
+            )
+        except ValueError as e:
+            click.echo(f"❌ 参数错误: {e}", err=True)
+            raise click.Abort()
+        except Exception as e:
+            click.echo(f"❌ 小说生成失败: {e}", err=True)
+            raise
+    elif type == "blog":
+        run_blog(
             topic=name,
-            words=words,
-            style=style,
-            output=f"./{name}_novel",
-            chapters=chapters,
-            stop_at=stop_at,
-            resume_from=resume_from,
-            pipeline_state_path=pipeline_state_path,
-            interactive=interactive,
-            review_each_chapter=review_each_chapter,
+            platforms=[p.strip() for p in platforms.split(",")] if platforms else ["medium"],
+            keywords=[k.strip() for k in keywords.split(",")] if keywords else [],
+            title_style=title_style or "seo",
+            output=f"./{name}_blog",
+        )
+    elif type == "podcast":
+        run_podcast(
+            topic=name,
+            duration=duration,
+            hosts=hosts,
+            style=podcast_style or "conversational",
+            include_interview=include_interview,
+            include_ads=include_ads,
+            output=f"./{name}_podcast",
+        )
+    elif type == "script":
+        run_script(
+            topic=name,
+            format=script_format or "film",
+            target_runtime=duration,
+            num_acts=acts,
+            output=f"./{name}_script",
         )
 
 

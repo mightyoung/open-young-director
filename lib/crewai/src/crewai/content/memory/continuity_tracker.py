@@ -62,15 +62,8 @@ class ContinuityTracker:
                 )
                 self.entity_state_history[entity_id].append(state)
 
-    def check_continuity(self, new_event: Event) -> list[ContinuityIssue]:
-        """检查新事件是否与历史一致
-
-        Args:
-            new_event: 新事件
-
-        Returns:
-            连续性问题列表
-        """
+    def check_continuity(self, new_event: Event, bible: Any = None) -> list[ContinuityIssue]:
+        """检查新事件是否与历史一致"""
         issues = []
 
         for entity_id in new_event.involved_entities:
@@ -103,6 +96,52 @@ class ContinuityTracker:
                         chapter=new_event.chapter,
                     ))
 
+        # 新增：战力平衡检查
+        if bible and bible.world_rules:
+            issues.extend(self._check_power_balance(new_event, bible))
+
+        return issues
+
+    def _check_power_balance(self, event: Event, bible: Any) -> list[ContinuityIssue]:
+        """检测战斗结果是否符合等级设定"""
+        issues = []
+        text = event.description.lower()
+        world_rules = bible.world_rules
+
+        # 简单启发式：寻找胜负词
+        win_keywords = ["击败", "重创", "斩杀", "胜过", "压制"]
+        for kw in win_keywords:
+            if kw in text:
+                # 尝试提取对战双方
+                parts = text.split(kw)
+                if len(parts) >= 2:
+                    winner_text = parts[0]
+                    loser_text = parts[1]
+                    
+                    # 匹配已知实体
+                    winner = next((e for e in event.involved_entities if e in winner_text), None)
+                    loser = next((e for e in event.involved_entities if e in loser_text), None)
+                    
+                    if winner and loser:
+                        w_state = self.get_entity_state(winner)
+                        l_state = self.get_entity_state(loser)
+                        
+                        w_level = w_state.get("cultivation_realm") or bible.characters.get(winner).cultivation_realm if winner in bible.characters else None
+                        l_level = l_state.get("cultivation_realm") or bible.characters.get(loser).cultivation_realm if loser in bible.characters else None
+                        
+                        w_rank = world_rules.get_level_index(w_level) if w_level else -1
+                        l_rank = world_rules.get_level_index(l_level) if l_level else -1
+                        
+                        # 如果败者等级显著高于胜者且无合理解释，记录问题
+                        if l_rank > w_rank and (l_rank - w_rank) >= 2:
+                            issues.append(ContinuityIssue(
+                                event_id=event.id,
+                                entity_id=winner,
+                                issue_type="power_imbalance",
+                                description=f"战力崩坏：{winner}({w_level}) 击败了等级远高于自己的 {loser}({l_level})，缺乏合理解释。",
+                                severity="high",
+                                chapter=event.chapter,
+                            ))
         return issues
 
     def _is_location_consistent(self, entity_id: str, event: Event) -> bool:

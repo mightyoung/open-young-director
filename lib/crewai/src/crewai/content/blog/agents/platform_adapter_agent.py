@@ -145,7 +145,7 @@ class PlatformAdapterAgent:
     "cover_image_suggestion": "封面图建议"
 }}
 """
-        result = self.agent.run(prompt)
+        result = self.agent.kickoff(messages=prompt)
         return self._parse_result(result, platform, body)
 
     def adapt_multiple(

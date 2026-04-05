@@ -25,19 +25,14 @@ class DraftAgent:
     """
 
     def __init__(self, llm: "LLM" = None, verbose: bool = True):
-        """初始化初稿写作Agent
-
-        Args:
-            llm: 可选的语言模型，默认使用系统配置
-            verbose: 是否输出详细日志
-        """
+        """初始化初稿写作Agent"""
         self.agent = Agent(
-            role="小说写作专家",
-            goal="创作引人入胜的小说内容",
-            backstory="""你是一位才华横溢的小说作家，擅长各种类型的故事创作。
-            你的文笔流畅，描写细腻，对话自然。
-            你深知如何通过文字传递情感，创造鲜活的角色和动人的场景。
-            你对网文节奏和读者爽点有敏锐的把握。""",
+            role="职业叙事执行员",
+            goal="根据结构化约束生成高密度的文字产出",
+            backstory="""你是一个工业级的小说生产终端。你的任务是严格执行大纲和世界观约束。
+            你没有自我意识，不会在输出中包含任何关于创作过程的说明。
+            你只产出纯净的、符合特定文风的小说正文。
+            任何形式的‘作为AI...’或‘我将为你...’都被视为严重的逻辑违规。""",
             verbose=verbose,
             llm=llm,
         )
@@ -101,7 +96,7 @@ class DraftAgent:
         """构建写作提示词"""
         context_str = self._format_context(context, bible_section)
 
-        bible_constraint = self._format_bible_constraint(bible_section) if bible_section else ""
+        bible_constraint = self._format_bible_constraint(bible_section, context.current_chapter_num) if bible_section else ""
 
         return f"""请根据以下大纲和上下文撰写第{context.current_chapter_num}章的初稿。
 
@@ -150,21 +145,25 @@ class DraftAgent:
 - 高潮点: {climax}
 - 结尾悬念: {ending_hook}
 
-【网络小说写作黄金法则】
-1. 字数控制: 标准网文每章2000-2500字，本章目标{context.target_word_count}字，不要超过{context.target_word_count + 500}字
-2. 【开头切入】禁止以"早晨/阳光/天亮/醒来"等开篇，从动作/对话/危机/悬念直接切入
-3. 【情节连贯 - 最高优先级】本章必须以"前章结尾场景"中描述的具体场景为起点继续写作！
-   - 地点：必须与前章结尾相同
-   - 人物状态：必须延续前章结尾时的状态
-   - 情绪：必须自然延续前章结尾时的情绪
-   - 禁止：另起炉灶、时间跳跃、人物状态重置
-4. 【场景控制】每章不超过3个场景，场景切换用过渡句连接
-5. 【节奏公式】对话3成 + 情节叙述3成 + 描写3成
-6. 【打斗描写】七分铺垫，三分打斗
-7. 【高潮设计】每章至少一个小爽点或打脸时刻
-8. 【悬念结尾】章节末尾停在疑问/高潮/转折处，留钩子吸引追读
-9. 【禁止堆砌】开篇300字内必须出现主角，3章内出第一个矛盾冲突
-10. 适度描写内心，但不要过多；保持叙事视角一致
+【网络小说写作黄金法则 - 神作进化版】
+1. 【凡人流：资源与代价】
+   - 拒绝奇遇堆砌。所有修行突破必须伴随：资源的损耗、经脉的剧痛、或心境的磨砺。
+   - 战斗是脑力与资源的博弈：环境利用、底牌交换、杀招代价，禁止单纯的数值对轰。
+2. 【雪中式：气象与侧面】
+   - 名场面必须有“气象”：风卷残云、万剑齐鸣、天地失色。
+   - 通过路人的恐惧、草木的凋零来烘托高手。少用“他很强”，多用“这一剑，让他想起了死亡”。
+3. 【庆余年流：灵魂对话】
+   - 每一句关键对话都应是价值观的交锋。
+   - 主角代表的【独特现代性/不羁信念】应在关键时刻掷地有声（如：“这规矩，该改改了”）。
+4. 【画面特写】
+   - 落实大纲中的 ★Signature Specs。每一处独特细节必须有超过300字的“高清特写”，禁止一笔带过。
+5. 【感官全开】
+   - 每一章必须包含：嗅觉（檀香、血腥）、触觉（刀锋冰冷、地面震颤）、听觉（远处的龙吟、碎裂声）。
+6. 【禁止套路】
+   - 禁止“准备好了吗？”这种废话。从矛盾爆发的前一秒直接切入！
+   - 本章必须以此场景为起点：{context.previous_chapter_ending}
+7. 【悬念收尾】
+   - 章末钩子必须停在：抉择的瞬间、身份暴露的边缘、或不可逆的变局。
 
 请直接输出章节内容。"""
 
@@ -177,10 +176,15 @@ class DraftAgent:
 
         lines.append(f"\n世界观:\n{context.world_description}")
 
+        # --- 注入 RAG 人格快照 ---
+        if hasattr(context, "character_persona_context") and context.character_persona_context:
+            lines.append(context.character_persona_context)
+
         if context.character_profiles:
-            lines.append("\n角色设定:")
+            lines.append("\n已知角色基础背景:")
             for name, profile in context.character_profiles.items():
                 lines.append(f"  - {name}: {profile}")
+
 
         # 【关键】前章结尾场景 - 必须从此场景继续，不得另起炉灶
         if context.previous_chapter_ending:
@@ -247,10 +251,17 @@ class DraftAgent:
         if outline.get("hook"):
             lines.append(f"开篇钩子: {outline['hook']}")
 
+        if outline.get("signature_specs"):
+            lines.append("\n【核心奇观/本章卖点】(必须浓墨重彩描写):")
+            for spec in outline["signature_specs"]:
+                lines.append(f"  ★ {spec}")
+
         if outline.get("main_events"):
-            lines.append("主要事件:")
+            lines.append("\n主要事件:")
             for e in outline["main_events"]:
                 lines.append(f"  - {e}")
+        
+        # ... rest of formatting
 
         if outline.get("climax"):
             lines.append(f"高潮点: {outline['climax']}")
@@ -266,7 +277,15 @@ class DraftAgent:
         return "\n".join(lines)
 
     def _extract_content(self, result) -> str:
-        """从LLM输出中提取内容"""
+        """从LLM输出中提取内容，并剔除思维链标签 <think>...</think>"""
+        import re
+        
+        raw_text = ""
         if hasattr(result, "raw"):
-            return result.raw.strip()
-        return str(result).strip()
+            raw_text = result.raw
+        else:
+            raw_text = str(result)
+            
+        # 剔除 <think>...</think> 标签及其内部内容
+        clean_text = re.sub(r'<think>[\s\S]*?</think>', '', raw_text)
+        return clean_text.strip()

@@ -1,6 +1,6 @@
 """Writing stage service - handles chapter writing and revision."""
 import logging
-from typing import Any, tuple
+from typing import Any, Tuple
 from crewai.content.novel.services.base_stage_service import BaseStageService
 from crewai.content.exceptions import ExecutionResult, ExecutionStatus
 

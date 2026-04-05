@@ -57,17 +57,24 @@ class ShowNotesOutput:
 
 @dataclass
 class PodcastOutput:
-    """播客完整输出"""
+    """播客完整输出
+
+    status字段:
+    - "complete": 所有启用的section都成功生成
+    - "partial": 部分section生成失败（见failed_sections）
+    - "failed": 整体生成失败
+    """
     title: str = ""
-    preshow: str = ""
-    intro: str = ""
-    outro: str = ""
+    status: str = "complete"  # complete/partial/failed
+    preshow: Optional[str] = None  # None means generation failed or section disabled
+    intro: Optional[str] = None    # None means generation failed or section disabled
+    outro: Optional[str] = None    # None means generation failed or section disabled
     shownotes: ShowNotesOutput = field(default_factory=ShowNotesOutput)
     total_duration_minutes: float = 0.0
     segments: List[SegmentOutput] = field(default_factory=list)
-    interview: Optional[InterviewOutput] = None
-    ad_reads: List[AdReadOutput] = field(default_factory=list)
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    interview: Optional[InterviewOutput] = None  # None means not enabled or failed
+    ad_reads: List[AdReadOutput] = field(default_factory=list)  # empty means not enabled or failed
+    metadata: Dict[str, Any] = field(default_factory=dict)  # failed_sections: dict[str, str] on partial failure
 
 
 __all__ = [

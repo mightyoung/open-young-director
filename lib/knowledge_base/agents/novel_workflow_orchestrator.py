@@ -22,9 +22,9 @@ from typing import Any, Dict, List, Optional
 
 from .novel_orchestrator import NovelOrchestrator
 from .reality_checker import RealityChecker, RealityCheckerConfig
-from .protocols.workflow import WorkflowOrchestrator, PipelineConfig, PipelineResult
-from .protocols.context import ContextManager, ExecutionContext, create_pipeline_context
-from .protocols.handoff import AgentHandoff, HandoffResult
+from crewai.content.agents.protocols.workflow import WorkflowOrchestrator, PipelineConfig, PipelineResult
+from crewai.content.agents.protocols.context import ContextManager, ExecutionContext, create_pipeline_context
+from crewai.content.agents.protocols.handoff import AgentHandoff, HandoffResult
 
 logger = logging.getLogger(__name__)
 

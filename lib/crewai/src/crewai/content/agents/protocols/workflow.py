@@ -47,14 +47,12 @@ class PipelineConfig:
         enable_quality_gate: Whether to run quality gates
         stop_on_quality_failure: Stop pipeline if quality gate fails
         quality_gate_interval: Run quality gate every N agents (0 = only at end)
-        parallel_agents: Agents that can run in parallel (not yet implemented)
     """
     max_retries: int = 2
     timeout_seconds: int = 300
     enable_quality_gate: bool = True
     stop_on_quality_failure: bool = True
     quality_gate_interval: int = 0  # 0 = only at end, 1 = every agent, etc.
-    parallel_agents: List[str] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "PipelineConfig":

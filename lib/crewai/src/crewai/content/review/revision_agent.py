@@ -92,7 +92,9 @@ class RevisionAgent:
         return prompt
 
     def _extract_revised_content(self, response: str, original: str) -> str:
-        """从响应中提取修改后的内容"""
+        """从响应中提取修改后的内容，并剔除思维链标签 <think>...</think>"""
+        import re
+
         # 提取文本内容（处理 LiteAgentOutput 对象）
         if hasattr(response, 'raw'):
             response_text = response.raw
@@ -103,9 +105,10 @@ class RevisionAgent:
         else:
             response_text = str(response)
 
-        # 尝试提取markdown代码块中的内容
-        import re
+        # 1. 剔除 <think>...</think> 标签及其内部内容
+        response_text = re.sub(r'<think>[\s\S]*?</think>', '', response_text).strip()
 
+        # 2. 尝试提取markdown代码块中的内容
         # 查找 ```开头和```结尾之间的内容
         code_block_match = re.search(r"```[\w]*\n(.*?)```", response_text, re.DOTALL)
         if code_block_match:

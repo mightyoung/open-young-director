@@ -22,9 +22,10 @@ Usage:
     results = orchestrator.execute_pipeline(["director", "character"], initial_input)
 """
 
-from .handoff import AgentHandoff, HandoffResult, QualityGateError, handoff_to_agent
-from .workflow import WorkflowOrchestrator, PipelineConfig, PipelineResult
-from .context import ContextManager, ExecutionContext, ContextPropagation
+# Re-export from crewai.content.agents.protocols (single source of truth)
+from crewai.content.agents.protocols.handoff import AgentHandoff, HandoffResult, QualityGateError, handoff_to_agent
+from crewai.content.agents.protocols.workflow import WorkflowOrchestrator, PipelineConfig, PipelineResult
+from crewai.content.agents.protocols.context import ContextManager, ExecutionContext, ContextPropagation
 
 __all__ = [
     # Handoff protocol

@@ -216,6 +216,7 @@ class WritingContext:
     current_chapter_num: int = 1
     tension_arc: str = ""  # 格式化的高潮点描述
     bible_section: "BibleSection | None" = field(default=None)  # ProductionBible section for this volume
+    character_persona_context: str = "" # New field: RAG-retrieved personality snapshots
 
     def to_dict(self) -> dict[str, Any]:
         """转换为字典"""

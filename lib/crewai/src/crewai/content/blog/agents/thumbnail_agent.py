@@ -74,7 +74,7 @@ class ThumbnailConceptAgent:
     ]
 }}
 """
-        result = self.agent.run(prompt)
+        result = self.agent.kickoff(messages=prompt)
         return self._parse_result(result)
 
     def _parse_result(self, result) -> list[ThumbnailConcept]:

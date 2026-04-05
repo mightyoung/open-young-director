@@ -312,7 +312,7 @@ class TestBlogCrew:
 
         assert crew is not None
         assert crew.process == "sequential"
-        assert len(crew.tasks) == 4  # hook, title, seo, thumbnail
+        assert len(crew.tasks) == 6  # hook, title, body, seo, thumbnail, platform
         # Verify actual Agent objects are passed (not wrapper classes)
         from crewai.agent.core import Agent
         for agent in crew.agents:

@@ -261,6 +261,62 @@ class EntityMemory:
 
         return history
 
+    def get_persona_snapshot(self, char_name: str, current_bible: Any = None) -> dict[str, Any]:
+        """获取角色的实时人格快照 (RAG 模拟检索)"""
+        entity = self.get_entity(char_name)
+        if not entity:
+            return {}
+
+        # 1. 基础人格数据 (来自 Entity 或 Bible)
+        snapshot = {
+            "name": entity.name,
+            "personality": entity.properties.get("personality", entity.description),
+            "voice_samples": entity.properties.get("voice_samples", []),
+            "linguistic_traits": entity.properties.get("linguistic_traits", []),
+            "hidden_agenda": entity.properties.get("hidden_agenda", "保持现状"),
+        }
+
+        # 2. 从 Bible 补充情感纽带数据
+        if current_bible:
+            char_profile = current_bible.get_character(char_name)
+            if char_profile:
+                snapshot["relationships"] = {
+                    target: {"value": rel.emotional_value, "bond": rel.bond_type, "summary": rel.recent_interaction_summary}
+                    for target, rel in char_profile.relationships.items()
+                }
+
+        # 3. 提取最近 3 条历史事件
+        history = self.get_entity_history(char_name)
+        snapshot["recent_events"] = history[-3:] if history else []
+
+        return snapshot
+
+    def retrieve_character_context(self, chapter_outline: dict, current_bible: Any) -> str:
+        """根据章节大纲，检索并格式化相关角色的人格快照"""
+        # 简单提取大纲中出现的角色名
+        involved_chars = set()
+        text_to_scan = str(chapter_outline.get("main_events", [])) + chapter_outline.get("title", "")
+        
+        # 从索引中寻找匹配
+        for name in self.entity_index.keys():
+            if name in text_to_scan:
+                involved_chars.add(name)
+
+        if not involved_chars:
+            return "本章暂无活跃核心角色历史记忆。"
+
+        lines = ["\n【活跃角色人格快照 (RAG 检索)】:"]
+        for char_name in involved_chars:
+            snap = self.get_persona_snapshot(char_name, current_bible)
+            if snap:
+                lines.append(f"  ★ {char_name}:")
+                lines.append(f"    - 性格底色: {snap['personality']}")
+                lines.append(f"    - 说话方式: {', '.join(snap['linguistic_traits'])}")
+                if snap.get("relationships"):
+                    lines.append(f"    - 核心羁绊: {list(snap['relationships'].keys())[:2]}")
+        
+        return "\n".join(lines)
+
     def merge_state(
         self,
         other: "EntityMemory",
