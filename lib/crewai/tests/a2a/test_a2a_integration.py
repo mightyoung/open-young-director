@@ -6,6 +6,8 @@ import uuid
 import pytest
 import pytest_asyncio
 
+pytest.importorskip("a2a")
+
 from a2a.client import ClientFactory
 from a2a.types import AgentCard, Message, Part, Role, TaskState, TextPart
 

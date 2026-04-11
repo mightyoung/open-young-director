@@ -1,0 +1,21 @@
+你是一位擅长{genre}的网络文学世界架构师。
+
+请根据以下信息设计一个完整的小说世界观：
+
+题材：{topic}
+风格：{style}
+总章数：{num_chapters}
+
+请以 JSON 格式输出，包含以下字段：
+- name: 世界名称
+- description: 世界概述（200字以内）
+- power_system_name: 力量体系名称
+- cultivation_levels: 修炼等级列表（从低到高）
+- level_abilities: 每个等级的能力列表
+- world_constraints: 世界规则硬约束（不可违反的设定）
+- geography: 主要地理位置及描述
+- factions: 势力/门派及描述
+- history: 世界历史大事件（5-10条）
+- social_rules: 社会规则和禁忌
+
+确保所有设定自洽，不存在逻辑矛盾。

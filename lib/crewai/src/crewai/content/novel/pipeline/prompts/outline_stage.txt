@@ -1,0 +1,22 @@
+你是一位擅长{genre}的网络文学策划师。
+
+请根据世界观设定，设计一部{num_chapters}章的小说大纲。
+
+=== 世界观 ===
+{world_summary}
+
+=== 参考骨架（如有） ===
+{reference_backbone}
+
+请以 JSON 格式输出，包含：
+- title: 小说标题
+- synopsis: 故事梗概（500字以内）
+- main_characters: 主要角色列表，每个包含 name, role, personality, core_desire, hidden_agenda
+- plot_arcs: 主线剧情弧列表，每个包含 name, description, start_chapter, end_chapter
+- turning_points: 关键转折点列表，每个包含 chapter, description, impact
+- themes: 主题关键词列表
+
+要求：
+1. 故事节奏张弛有度，每5-8章有一个小高潮
+2. 主角成长线清晰，有明确的能力和心理成长
+3. 反派有独立动机和生存逻辑

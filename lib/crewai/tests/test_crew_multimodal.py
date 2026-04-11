@@ -230,6 +230,8 @@ class TestCrewMultimodalGemini:
     @pytest.mark.parametrize("model", GEMINI_MODELS)
     def test_image_file(self, model: str, image_file: ImageFile) -> None:
         """Test crew can process an image file."""
+        pytest.importorskip("google.genai")
+
         llm = LLM(model=model)
         crew = _create_analyst_crew(llm)
 
@@ -242,6 +244,8 @@ class TestCrewMultimodalGemini:
     @pytest.mark.parametrize("model", GEMINI_MODELS)
     def test_text_file(self, model: str, text_file: TextFile) -> None:
         """Test crew can process a text file."""
+        pytest.importorskip("google.genai")
+
         llm = LLM(model=model)
         crew = _create_analyst_crew(llm)
 
@@ -254,6 +258,8 @@ class TestCrewMultimodalGemini:
     @pytest.mark.parametrize("model", GEMINI_MODELS)
     def test_video_file(self, model: str, video_file: VideoFile) -> None:
         """Test crew can process a video file."""
+        pytest.importorskip("google.genai")
+
         llm = LLM(model=model)
         crew = _create_analyst_crew(llm)
 
@@ -266,6 +272,8 @@ class TestCrewMultimodalGemini:
     @pytest.mark.parametrize("model", GEMINI_MODELS)
     def test_audio_file(self, model: str, audio_file: AudioFile) -> None:
         """Test crew can process an audio file."""
+        pytest.importorskip("google.genai")
+
         llm = LLM(model=model)
         crew = _create_analyst_crew(llm)
 
@@ -283,6 +291,8 @@ class TestCrewMultimodalGemini:
         text_file: TextFile,
     ) -> None:
         """Test crew can process multiple file types together."""
+        pytest.importorskip("google.genai")
+
         llm = LLM(model=model)
         crew = _create_analyst_crew(llm)
 
@@ -301,6 +311,8 @@ class TestCrewMultimodalBedrock:
     @pytest.mark.parametrize("model", BEDROCK_MODELS)
     def test_image_file(self, model: str, image_file: ImageFile) -> None:
         """Test crew can process an image file."""
+        pytest.importorskip("boto3")
+
         llm = LLM(model=model)
         crew = _create_analyst_crew(llm)
 
@@ -313,6 +325,8 @@ class TestCrewMultimodalBedrock:
     @pytest.mark.parametrize("model", BEDROCK_MODELS)
     def test_pdf_file(self, model: str, pdf_file: PDFFile) -> None:
         """Test crew can process a PDF file."""
+        pytest.importorskip("boto3")
+
         llm = LLM(model=model)
         crew = _create_analyst_crew(llm)
 
@@ -352,6 +366,8 @@ class TestCrewMultimodalFileTypes:
     @pytest.mark.vcr()
     def test_text_gemini(self, text_file: TextFile) -> None:
         """Test text file with Gemini."""
+        pytest.importorskip("google.genai")
+
         llm = LLM(model="gemini/gemini-2.0-flash")
         crew = _create_analyst_crew(llm)
         result = crew.kickoff(input_files={"readme": text_file})
@@ -360,6 +376,8 @@ class TestCrewMultimodalFileTypes:
     @pytest.mark.vcr()
     def test_video_gemini(self, video_file: VideoFile) -> None:
         """Test video file with Gemini."""
+        pytest.importorskip("google.genai")
+
         llm = LLM(model="gemini/gemini-2.0-flash")
         crew = _create_analyst_crew(llm)
         result = crew.kickoff(input_files={"video": video_file})
@@ -368,6 +386,8 @@ class TestCrewMultimodalFileTypes:
     @pytest.mark.vcr()
     def test_audio_gemini(self, audio_file: AudioFile) -> None:
         """Test audio file with Gemini."""
+        pytest.importorskip("google.genai")
+
         llm = LLM(model="gemini/gemini-2.0-flash")
         crew = _create_analyst_crew(llm)
         result = crew.kickoff(input_files={"audio": audio_file})

@@ -314,6 +314,7 @@ def test_anthropic_completion_with_tools():
 
 def test_anthropic_raises_error_when_model_not_supported():
     """Test that AnthropicCompletion raises ValueError when model not supported"""
+    pytest.importorskip("litellm")
 
     # Mock the Anthropic client to raise an error
     with patch('crewai.llms.providers.anthropic.completion.Anthropic') as mock_anthropic_class:

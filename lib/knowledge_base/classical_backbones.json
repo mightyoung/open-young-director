@@ -1,0 +1,604 @@
+{
+  "西游记": {
+    "title_en": "Journey to the West",
+    "theme": "取经悟道",
+    "backbone_events": [
+      {
+        "order": 1,
+        "name": "石猴出世",
+        "content": "石猴从仙石中迸裂而出，朝代在混沌中开辟，生灵初现",
+        "archetype": "英雄诞生"
+      },
+      {
+        "order": 2,
+        "name": "大闹天宫",
+        "content": "孙悟空反抗权威与压制，挑战既有秩序，展现无限潜力与傲气",
+        "archetype": "反抗权威"
+      },
+      {
+        "order": 3,
+        "name": "被压五行山",
+        "content": "孙悟空因骄傲而被镇压，经历五百年磨难，学会谦卑与等待",
+        "archetype": "惩罚与救赎"
+      },
+      {
+        "order": 4,
+        "name": "取经出发",
+        "content": "唐僧受命西行取经，开启漫漫西天之旅，肩负宗教使命",
+        "archetype": "任务开始"
+      },
+      {
+        "order": 5,
+        "name": "收白龙马",
+        "content": "龙王之子化为白马，成为唐僧的坐骑，形成第一个同伴",
+        "archetype": "伙伴加入"
+      },
+      {
+        "order": 6,
+        "name": "收猪八戒",
+        "content": "曾为天蓬元帅的猪八戒与唐僧相遇，贪心与色欲使其堕落，后被收为弟子",
+        "archetype": "堕落者救赎"
+      },
+      {
+        "order": 7,
+        "name": "收沙僧",
+        "content": "被贬下凡的卷帘大将沙和尚在流沙河现身，因取经机缘而改过自新",
+        "archetype": "失宠者重生"
+      },
+      {
+        "order": 8,
+        "name": "三打白骨精",
+        "content": "白骨精三次变化迷惑唐僧，悟空连番识破击杀，信任危机浮现",
+        "archetype": "考验与怀疑"
+      },
+      {
+        "order": 9,
+        "name": "女儿国",
+        "content": "唐僧一行进入女儿国，面临诱惑与欲望，国王欲招驸马留他，信心受考",
+        "archetype": "欲望诱惑"
+      },
+      {
+        "order": 10,
+        "name": "火焰山",
+        "content": "孙悟空为借芭蕉扇而向铁扇公主低眉顺眼，展现克制与忍耐",
+        "archetype": "自我克制"
+      },
+      {
+        "order": 11,
+        "name": "真假美猴王",
+        "content": "六耳猕猴冒充孙悟空，引发身份与信任危机，真假难辨的终极考验",
+        "archetype": "身份认同"
+      },
+      {
+        "order": 12,
+        "name": "狮驼岭",
+        "content": "面对历代最强妖魔，唐僧生死有命，悟空等人全力对抗，考验合作",
+        "archetype": "终极挑战"
+      },
+      {
+        "order": 13,
+        "name": "灵山取经",
+        "content": "一行四人到达灵山雷音寺，在如来处获得真经，修成正果",
+        "archetype": "目标达成"
+      },
+      {
+        "order": 14,
+        "name": "功德圆满",
+        "content": "唐僧证得佛果，悟空成为斗战胜佛，八戒成为净坛使者，沙僧成为金身罗汉",
+        "archetype": "彻底蜕变"
+      }
+    ],
+    "character_archetypes": ["导师", "弟子", "妖魔", "施主", "守护者"],
+    "structure_pattern": "取经模式（出发→磨难→顿悟→归来）",
+    "pacing": [3, 8, 7, 6, 8, 7, 8, 6, 7, 8, 9, 8, 7, 2],
+    "act_structure": "章回体（100回）",
+    "core_conflict": "凡人修行，克服欲望与执着，达成精神觉悟"
+  },
+  "水浒传": {
+    "title_en": "The Water Margin",
+    "theme": "官逼民反",
+    "backbone_events": [
+      {
+        "order": 1,
+        "name": "高俅发迹",
+        "content": "因蹴鞠技艺被宋徽宗赏识，高俅从市井小人一跃成为高官，权力腐蚀其心",
+        "archetype": "奸雄起点"
+      },
+      {
+        "order": 2,
+        "name": "林冲逼上梁山",
+        "content": "八十万禁军教头林冲遭高俅陷害，妻子被欺陵，最终被逼投靠梁山",
+        "archetype": "冤案与复仇"
+      },
+      {
+        "order": 3,
+        "name": "武松打虎",
+        "content": "武松赤手空拳打死景阳冈猛虎，成名天下，展现英雄豪气",
+        "archetype": "英雄初现"
+      },
+      {
+        "order": 4,
+        "name": "宋江杀惜",
+        "content": "及时雨宋江因妾侍阎惜娇泄露秘密而杀其，犯下死罪，被迫上梁山",
+        "archetype": "英雄堕落"
+      },
+      {
+        "order": 5,
+        "name": "智取生辰纲",
+        "content": "吴用等人设计劫杀生辰纲，官府追捕，众人齐聚梁山，起义故事展开",
+        "archetype": "壮举与聚集"
+      },
+      {
+        "order": 6,
+        "name": "梁山聚义",
+        "content": "108位英雄在宋江、卢俊义等人领导下，齐聚梁山，排座次定等级",
+        "archetype": "团队形成"
+      },
+      {
+        "order": 7,
+        "name": "三打祝家庄",
+        "content": "梁山众人与祝家庄多次交手，最终智取其庄，扩大势力范围",
+        "archetype": "军事胜利"
+      },
+      {
+        "order": 8,
+        "name": "排座次",
+        "content": "梁山一百零八将排定座次，宋江排为第一位，明确等级制度与权力结构",
+        "archetype": "权力确立"
+      },
+      {
+        "order": 9,
+        "name": "招安",
+        "content": "宋江向往朝代，接受招安，108人成为官军，背弃起义本心",
+        "archetype": "理想妥协"
+      },
+      {
+        "order": 10,
+        "name": "征方腊",
+        "content": "招安后的梁山好汉征讨方腊，浴血奋战，死伤过半，胜利代价沉重",
+        "archetype": "异化与磨难"
+      },
+      {
+        "order": 11,
+        "name": "英雄末路",
+        "content": "战后幸存者或被害死，或被贬谪，或隐遁山林，曾经的英雄走向悲剧",
+        "archetype": "英雄末路"
+      }
+    ],
+    "character_archetypes": ["反抗者", "义士", "朝廷鹰犬", "江湖人"],
+    "structure_pattern": "聚义模式（个体→集结→鼎盛→覆灭）",
+    "pacing": [2, 8, 7, 8, 8, 9, 8, 7, 6, 9, 3],
+    "act_structure": "章回体（120回）",
+    "core_conflict": "正义与权力的冲突，理想与现实的妥协"
+  },
+  "三国演义": {
+    "title_en": "Romance of the Three Kingdoms",
+    "theme": "天下大势",
+    "backbone_events": [
+      {
+        "order": 1,
+        "name": "桃园结义",
+        "content": "刘备、关羽、张飞三人在桃园举义，誓同生死，是为兄弟，大义凝聚",
+        "archetype": "盟约与信念"
+      },
+      {
+        "order": 2,
+        "name": "三顾茅庐",
+        "content": "刘备三次登门访贤，诚心感动卧龙诸葛亮，智者为之效力",
+        "archetype": "贤人降世"
+      },
+      {
+        "order": 3,
+        "name": "赤壁之战",
+        "content": "曹操百万大军南下，诸葛亮借东风，周瑜赤壁用火攻击败曹军，三分天下局定",
+        "archetype": "关键战役"
+      },
+      {
+        "order": 4,
+        "name": "借荆州",
+        "content": "刘备向孙权借荆州用于发展，诸葛亮巧妙周旋，埋下日后矛盾种子",
+        "archetype": "权力谋划"
+      },
+      {
+        "order": 5,
+        "name": "关羽走麦城",
+        "content": "关羽守荆州被孙权所围，腹背受敌，最终被擒杀，英雄陨落引发连锁反应",
+        "archetype": "英雄陨落"
+      },
+      {
+        "order": 6,
+        "name": "夷陵之战",
+        "content": "刘备为报关羽之死，发动对孙权的战争，被陆逊用火攻大败，元气大伤",
+        "archetype": "复仇战争"
+      },
+      {
+        "order": 7,
+        "name": "白帝托孤",
+        "content": "临终的刘备将儿子刘禅与国家托付给诸葛亮，权力交接，新时代开启",
+        "archetype": "权力继承"
+      },
+      {
+        "order": 8,
+        "name": "六出祁山",
+        "content": "诸葛亮北伐曹魏，六次出兵，虽无法统一，但坚守蜀汉气节，最终病逝军中",
+        "archetype": "坚守信念"
+      },
+      {
+        "order": 9,
+        "name": "三国归晋",
+        "content": "蜀汉、东吴相继被晋朝灭亡，三国归一，新的统一时代到来",
+        "archetype": "历史循环"
+      }
+    ],
+    "character_archetypes": ["明主", "军师", "猛将", "奸雄"],
+    "structure_pattern": "争霸模式（乱世→崛起→鼎立→统一）",
+    "pacing": [2, 5, 9, 7, 8, 8, 6, 7, 2],
+    "act_structure": "章回体（120回）",
+    "core_conflict": "分裂与统一，英雄与时代的张力"
+  },
+  "红楼梦": {
+    "title_en": "A Dream of Red Mansions",
+    "theme": "繁华幻灭",
+    "backbone_events": [
+      {
+        "order": 1,
+        "name": "黛玉进贾府",
+        "content": "林黛玉自苏州来贾府投亲，娇弱孤独的女子进入权贵之家，命运之轮转动",
+        "archetype": "命运降临"
+      },
+      {
+        "order": 2,
+        "name": "元春省亲",
+        "content": "贾府女儿元春被选为妃子，荣归故里，贾家权势达到顶峰，繁华璀璨",
+        "archetype": "荣光顶点"
+      },
+      {
+        "order": 3,
+        "name": "共读西厢",
+        "content": "宝玉、黛玉偷读禁书《西厢记》，爱情的种子破土而出，禁忌的关系萌发",
+        "archetype": "禁忌之爱"
+      },
+      {
+        "order": 4,
+        "name": "宝钗进府",
+        "content": "薛宝钗进入贾府，端庄贤淑，成为黛玉的对立面，爱情三角形成",
+        "archetype": "竞争者出现"
+      },
+      {
+        "order": 5,
+        "name": "抄检大观园",
+        "content": "贾家发现园中丑闻，进行彻底搜查，少女们的隐私与尊严被践踏，秩序破裂",
+        "archetype": "秩序崩坏"
+      },
+      {
+        "order": 6,
+        "name": "黛玉焚稿",
+        "content": "黛玉焚毁与宝玉的往来信稿，绝望的爱情在火焰中消亡，生命走向终点",
+        "archetype": "绝望与死亡"
+      },
+      {
+        "order": 7,
+        "name": "宝玉出家",
+        "content": "林黛玉去世，宝玉最终看破红尘，独自走入山林出家修行，人生圆满却悲凉",
+        "archetype": "出世觉悟"
+      }
+    ],
+    "character_archetypes": ["贵族子弟", "才女", "世俗权贵", "出世者"],
+    "structure_pattern": "盛衰模式（繁华→暗流→崩塌→觉悟）",
+    "pacing": [3, 9, 7, 6, 8, 9, 2],
+    "act_structure": "章回体（120回）",
+    "core_conflict": "青春与衰老，爱情与现实，个人与家族"
+  },
+  "荷马史诗·奥德赛": {
+    "title_en": "The Odyssey",
+    "theme": "归乡之路",
+    "backbone_events": [
+      {
+        "order": 1,
+        "name": "特洛伊战后出发",
+        "content": "奥德修斯在特洛伊战争胜利后，启航返回故乡伊萨卡，开启十年漂泊之旅",
+        "archetype": "英雄凯旋"
+      },
+      {
+        "order": 2,
+        "name": "独眼巨人",
+        "content": "奥德修斯等人进入独眼巨人波吕斐摩斯之洞，同伴被吞食，靠机智与勇气逃脱",
+        "archetype": "怪物考验"
+      },
+      {
+        "order": 3,
+        "name": "女巫岛",
+        "content": "奥德修斯到达女巫喀耳刻之岛，同伴被变为猪，自己被诱惑，最终救出伙伴",
+        "archetype": "诱惑与救赎"
+      },
+      {
+        "order": 4,
+        "name": "冥府之旅",
+        "content": "奥德修斯下至冥府，与亡灵对话，得知故乡消息，坚定归乡之心",
+        "archetype": "冥界探寻"
+      },
+      {
+        "order": 5,
+        "name": "海妖塞壬",
+        "content": "奥德修斯经过塞壬岛，塞壬的歌声致命迷人，他绑缚自己以抵抗诱惑",
+        "archetype": "自我约束"
+      },
+      {
+        "order": 6,
+        "name": "太阳神牛群",
+        "content": "奥德修斯的同伴违背警告，宰杀太阳神赫利俄斯的圣牛，招致天罚",
+        "archetype": "人为灾难"
+      },
+      {
+        "order": 7,
+        "name": "卡吕普索",
+        "content": "奥德修斯在仙女卡吕普索岛上被困七年，最终因神旨才得以离开，失去年月",
+        "archetype": "被困与救赎"
+      },
+      {
+        "order": 8,
+        "name": "归乡复仇",
+        "content": "奥德修斯终于回到伊萨卡，发现追求者盘踞宫殿，与儿子联手诛灭恶棍",
+        "archetype": "正义复仇"
+      }
+    ],
+    "character_archetypes": ["英雄", "诱惑者", "忠贞伴侣", "引路人"],
+    "structure_pattern": "英雄归乡（冒险→磨难→诱惑→归家）",
+    "pacing": [2, 8, 7, 6, 8, 7, 6, 9],
+    "act_structure": "史诗体（24卷）",
+    "core_conflict": "英雄的归家之路，与命运与诱惑的抗争"
+  },
+  "哈姆雷特": {
+    "title_en": "Hamlet",
+    "theme": "复仇犹豫",
+    "backbone_events": [
+      {
+        "order": 1,
+        "name": "鬼魂现身",
+        "content": "丹麦王子哈姆雷特在城堡偶遇父王鬼魂，得知被叔父克劳迪斯毒杀真相",
+        "archetype": "使命降临"
+      },
+      {
+        "order": 2,
+        "name": "装疯试探",
+        "content": "哈姆雷特假装疯癫，观察众人反应，验证克劳迪斯的罪行，疯狂成为伪装",
+        "archetype": "伪装与侦查"
+      },
+      {
+        "order": 3,
+        "name": "戏中戏",
+        "content": "哈姆雷特安排演员重演父王之死，克劳迪斯的反应确实证明其犯罪事实",
+        "archetype": "真相大白"
+      },
+      {
+        "order": 4,
+        "name": "误杀波洛涅斯",
+        "content": "哈姆雷特在母亲房间，听闻声响误以为是克劳迪斯，刺杀躲藏的波洛涅斯",
+        "archetype": "错误杀害"
+      },
+      {
+        "order": 5,
+        "name": "奥菲利亚之死",
+        "content": "父亲被杀，心爱之人背弃，少女奥菲利亚精神崩溃，在溪流中溺水身亡",
+        "archetype": "无辜牺牲"
+      },
+      {
+        "order": 6,
+        "name": "决斗终局",
+        "content": "克劳迪斯与莱尔特斯设局，以毒剑与毒酒灭杀哈姆雷特，最终全部在毒剑下丧生",
+        "archetype": "终极对决"
+      }
+    ],
+    "character_archetypes": ["复仇者", "篡位者", "无辜牺牲者", "忠友"],
+    "structure_pattern": "复仇模式（使命→伪装→验证→行动→灭亡）",
+    "pacing": [4, 6, 7, 8, 7, 10],
+    "act_structure": "五幕剧",
+    "core_conflict": "复仇与良知的对立，行动与思考的平衡"
+  },
+  "基督山伯爵": {
+    "title_en": "The Count of Monte Cristo",
+    "theme": "复仇与救赎",
+    "backbone_events": [
+      {
+        "order": 1,
+        "name": "陷害入狱",
+        "content": "青年水手埃德蒙遭嫉妒者陷害，被控违反拿破仑法令，冤狱终身，前程尽毁",
+        "archetype": "冤案与陷害"
+      },
+      {
+        "order": 2,
+        "name": "狱中得师",
+        "content": "狱中遇见狱友法利亚神父，学得多国语言、科学与复仇之道，精神获得救赎",
+        "archetype": "导师出现"
+      },
+      {
+        "order": 3,
+        "name": "获藏宝图",
+        "content": "神父临终赠予蒙地基督岛藏宝图，埃德蒙获得巨大财富与全新身份的钥匙",
+        "archetype": "命运转机"
+      },
+      {
+        "order": 4,
+        "name": "越狱重生",
+        "content": "埃德蒙趁神父死后被装麻布丢入海中之机越狱，在海岛挖得宝藏，重获自由",
+        "archetype": "重生与蜕变"
+      },
+      {
+        "order": 5,
+        "name": "化身伯爵",
+        "content": "埃德蒙以巨额财富为后盾，改名基督山伯爵，进入巴黎上流社会，身份大变",
+        "archetype": "复仇者降临"
+      },
+      {
+        "order": 6,
+        "name": "逐个复仇",
+        "content": "伯爵逐一复仇陷害他的三人及其家属，用精妙计划让他们自我毁灭，尝尽痛苦",
+        "archetype": "复仇实施"
+      },
+      {
+        "order": 7,
+        "name": "最终宽恕",
+        "content": "目睹无辜者因复仇而苦，伯爵终于放下仇恨与执念，与所爱之人携手人生新篇",
+        "archetype": "救赎与和解"
+      }
+    ],
+    "character_archetypes": ["复仇者", "背叛者", "无辜者", "贵人"],
+    "structure_pattern": "复仇模式（含冤→脱困→蓄力→复仇→放下）",
+    "pacing": [8, 6, 5, 7, 6, 9, 3],
+    "act_structure": "五幕结构（46章）",
+    "core_conflict": "复仇与良知的终极对话，执念与救赎的平衡"
+  },
+  "封神演义": {
+    "title_en": "Investiture of the Gods",
+    "theme": "改朝换代",
+    "backbone_events": [
+      {
+        "order": 1,
+        "name": "纣王无道",
+        "content": "商纣王为狐妖蛊惑，荒淫无度，失去民心，天下思变，天命将转",
+        "archetype": "暴君统治"
+      },
+      {
+        "order": 2,
+        "name": "哪吒闹海",
+        "content": "龙王三太子哪吒反抗父权与天命，大闹龙宫东海，展现叛逆精神",
+        "archetype": "少年反抗"
+      },
+      {
+        "order": 3,
+        "name": "姜子牙下山",
+        "content": "隐士姜子牙离开昆仑山，下山辅佐周文王，成为历史的推动者",
+        "archetype": "智者出山"
+      },
+      {
+        "order": 4,
+        "name": "文王访贤",
+        "content": "周文王三请姜子牙，以礼贤下士的诚心感动天下奇人，贤能为之效力",
+        "archetype": "求贤若渴"
+      },
+      {
+        "order": 5,
+        "name": "武王伐纣",
+        "content": "周武王继承父志，在姜子牙辅佐下，率军讨伐商纣，推翻暴政",
+        "archetype": "仁义之战"
+      },
+      {
+        "order": 6,
+        "name": "万仙阵",
+        "content": "截教门徒设置万仙大阵阻挡周军，诸仙大战，法力碰撞，场面宏大",
+        "archetype": "仙界大战"
+      },
+      {
+        "order": 7,
+        "name": "封神榜定",
+        "content": "大战结束，阵亡诸仙上榜，被册封为神灵，旧的秩序消亡，新的秩序建立",
+        "archetype": "秩序重构"
+      }
+    ],
+    "character_archetypes": ["天命之子", "妖后", "仙人", "忠臣"],
+    "structure_pattern": "封神模式（衰亡→觉醒→大战→新秩序）",
+    "pacing": [3, 7, 5, 6, 8, 9, 4],
+    "act_structure": "章回体（120回）",
+    "core_conflict": "天命的转移，新旧秩序的更替"
+  },
+  "悟空传": {
+    "title_en": "The Monkey King",
+    "theme": "反抗宿命",
+    "backbone_events": [
+      {
+        "order": 1,
+        "name": "觉醒质疑",
+        "content": "孙悟空开始质疑被赋予的英雄身份与命运，反思自我，思想萌芽",
+        "archetype": "意识觉醒"
+      },
+      {
+        "order": 2,
+        "name": "反抗天命",
+        "content": "悟空不再接受既定的命运安排，选择自主的人生道路，与宇宙秩序抗争",
+        "archetype": "反抗权威"
+      },
+      {
+        "order": 3,
+        "name": "失去同伴",
+        "content": "为了坚持反抗，悟空失去了紫霞仙子等亲近之人，代价沉重，孤独加深",
+        "archetype": "牺牲与失去"
+      },
+      {
+        "order": 4,
+        "name": "孤独战斗",
+        "content": "悟空独自对抗整个宇宙秩序，虽知不敌，仍坚持战斗，这是精神的胜利",
+        "archetype": "绝望坚守"
+      },
+      {
+        "order": 5,
+        "name": "最终抉择",
+        "content": "面对最终的抉择，悟空不再屈从，接受自己的选择与后果，完成精神救赎",
+        "archetype": "自我救赎"
+      }
+    ],
+    "character_archetypes": ["反叛者", "宿命论者", "牺牲者", "守望者"],
+    "structure_pattern": "反叛模式（觉醒→反抗→失去→坚守→救赎）",
+    "pacing": [5, 8, 7, 9, 6],
+    "act_structure": "现代小说体",
+    "core_conflict": "个人自由与既定命运的对抗，精神独立的追求"
+  },
+  "斗破苍穹": {
+    "title_en": "Battle Through the Heavens",
+    "theme": "废柴逆袭",
+    "backbone_events": [
+      {
+        "order": 1,
+        "name": "三年之约",
+        "content": "天才少年萧炎因修为突然下降沦为废柴，被未婚妻退婚，背负三年之约的耻辱",
+        "archetype": "陨落英雄"
+      },
+      {
+        "order": 2,
+        "name": "获得药老",
+        "content": "戒指中出现灵魂形态的药老，传授修炼之法，废柴获得逆天机遇，命运改变",
+        "archetype": "金手指降临"
+      },
+      {
+        "order": 3,
+        "name": "斗气修炼",
+        "content": "萧炎刻苦修炼斗气，突破境界，从废柴逐步蜕变为天才，实力飙升",
+        "archetype": "实力提升"
+      },
+      {
+        "order": 4,
+        "name": "迦南学院",
+        "content": "萧炎进入迦南学院，参加激烈竞争，与各路天才较劲，扩大影响力",
+        "archetype": "天才汇聚"
+      },
+      {
+        "order": 5,
+        "name": "与云岚宗决战",
+        "content": "萧炎与云岚宗妖女云韵对峙，挑战身份高贵的对手，为荣誉而战",
+        "archetype": "身份挑战"
+      },
+      {
+        "order": 6,
+        "name": "中州闯荡",
+        "content": "萧炎踏上中州，面对更强的对手与组织，见识更广阔的斗气大陆",
+        "archetype": "世界扩展"
+      },
+      {
+        "order": 7,
+        "name": "炼药比赛",
+        "content": "萧炎以炼药天赋参加大陆顶级比赛，与炼药宗师对决，展现多元能力",
+        "archetype": "技能展示"
+      },
+      {
+        "order": 8,
+        "name": "最终决战",
+        "content": "萧炎面对终极敌人，汇聚所有能力与同伴力量，为最高荣誉而战",
+        "archetype": "最终对决"
+      }
+    ],
+    "character_archetypes": ["废柴主角", "金手指", "红颜", "强敌"],
+    "structure_pattern": "升级模式（废柴→奇遇→崛起→称霸）",
+    "pacing": [2, 4, 6, 7, 8, 8, 8, 9],
+    "act_structure": "网络文学体（多部连载）",
+    "core_conflict": "弱者向强者的蜕变，个人梦想的追逐"
+  }
+}

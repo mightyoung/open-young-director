@@ -66,7 +66,7 @@ class WorldRules:
         return -1
 
 
-@dataclass
+@dataclass(init=False)
 class TimelineEvent:
     """Canonical event in story timeline."""
 
@@ -76,6 +76,81 @@ class TimelineEvent:
     description: str
     involved_entities: list[str]  # character names
     impact: str  # how this changes the world or characters
+    chapter_range: tuple[int, int]
+    involved_characters: list[str]
+    consequences: list[str]
+
+    def __init__(
+        self,
+        id: str,
+        chapter: int | None = None,
+        volume: int | None = None,
+        description: str = "",
+        involved_entities: list[str] | None = None,
+        impact: str = "",
+        chapter_range: tuple[int, int] | list[int] | None = None,
+        volume_num: int | None = None,
+        involved_characters: list[str] | None = None,
+        consequences: list[str] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        self.id = id
+        if chapter_range is not None:
+            start, end = chapter_range
+            self.chapter_range = (int(start), int(end))
+            self.chapter = int(chapter if chapter is not None else start)
+        else:
+            chapter_value = int(chapter if chapter is not None else 0)
+            self.chapter = chapter_value
+            self.chapter_range = (chapter_value, chapter_value)
+
+        self.volume = int(volume_num if volume_num is not None else (volume if volume is not None else 1))
+        self.description = description
+        entities = involved_characters if involved_characters is not None else involved_entities
+        self.involved_entities = list(entities or [])
+        self.involved_characters = list(self.involved_entities)
+        self.impact = impact
+        self.consequences = list(consequences or [])
+
+        # Preserve useful legacy aliases if present.
+        if "chapter_num" in kwargs and not self.chapter:
+            self.chapter = int(kwargs["chapter_num"])
+        if "volume_num" in kwargs and not self.volume:
+            self.volume = int(kwargs["volume_num"])
+
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典"""
+        return {
+            "id": self.id,
+            "chapter": self.chapter,
+            "chapter_range": list(self.chapter_range),
+            "volume": self.volume,
+            "volume_num": self.volume,
+            "description": self.description,
+            "involved_entities": self.involved_entities,
+            "involved_characters": self.involved_characters,
+            "impact": self.impact,
+            "consequences": self.consequences,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> TimelineEvent:
+        """从字典创建"""
+        chapter_range = data.get("chapter_range")
+        if chapter_range is not None:
+            chapter_range = tuple(chapter_range)
+        return cls(
+            id=data["id"],
+            chapter=data.get("chapter"),
+            volume=data.get("volume"),
+            description=data.get("description", ""),
+            involved_entities=data.get("involved_entities") or data.get("involved_characters", []),
+            impact=data.get("impact", ""),
+            chapter_range=chapter_range,
+            volume_num=data.get("volume_num"),
+            involved_characters=data.get("involved_characters"),
+            consequences=data.get("consequences", []),
+        )
 
 
 @dataclass
@@ -132,7 +207,7 @@ class SentimentPoint:
     comment: str
     predicted_churn_rate: float # probability of stopping reading
 
-@dataclass
+@dataclass(init=False)
 class ProductionBible:
     """Complete production bible - the single source of truth for all story facts."""
 
@@ -147,6 +222,42 @@ class ProductionBible:
     reader_sentiments: list[dict[str, Any]] = field(default_factory=list) # New field: Global feedback log
     current_global_chapter: int = 1
     volume_boundaries: dict[int, dict] = field(default_factory=dict)
+    canonical_relationships: dict[str, list[str]] = field(default_factory=dict)
+    visual_style: str = ""
+    tone: str = ""
+
+    def __init__(
+        self,
+        characters: dict[str, CharacterProfile] | None = None,
+        world_rules: Optional[WorldRules] = None,
+        timeline: list[TimelineEvent] | None = None,
+        foreshadowing_registry: dict[str, ForeshadowingEntry] | None = None,
+        seeds_registry: list[SeedDetail] | None = None,
+        pacing_state: PacingState | None = None,
+        character_gps: dict[str, LocationState] | None = None,
+        visual_assets: list[VisualAsset] | None = None,
+        reader_sentiments: list[dict[str, Any]] | None = None,
+        current_global_chapter: int = 1,
+        volume_boundaries: dict[int, dict] | None = None,
+        canonical_relationships: dict[str, list[str]] | None = None,
+        visual_style: str = "",
+        tone: str = "",
+        **kwargs: Any,
+    ) -> None:
+        self.characters = characters or {}
+        self.world_rules = world_rules
+        self.timeline = timeline or []
+        self.foreshadowing_registry = foreshadowing_registry or {}
+        self.seeds_registry = seeds_registry or []
+        self.pacing_state = pacing_state or PacingState()
+        self.character_gps = character_gps or {}
+        self.visual_assets = visual_assets or []
+        self.reader_sentiments = reader_sentiments or []
+        self.current_global_chapter = current_global_chapter
+        self.volume_boundaries = volume_boundaries or {}
+        self.canonical_relationships = canonical_relationships or kwargs.get("relationships", {}) or {}
+        self.visual_style = visual_style or kwargs.get("visual_style", "")
+        self.tone = tone or kwargs.get("tone", "")
 
     def get_character(self, name: str) -> Optional[CharacterProfile]:
         """Get a character profile by name."""

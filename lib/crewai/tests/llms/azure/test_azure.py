@@ -4,6 +4,8 @@ import types
 from unittest.mock import patch, MagicMock, Mock
 import pytest
 
+pytest.importorskip("azure.ai.inference")
+
 from crewai.llm import LLM
 from crewai.crew import Crew
 from crewai.agent import Agent

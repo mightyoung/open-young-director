@@ -10,6 +10,11 @@
         revised = evaluator.revise(world_data, plot_data, result)
 """
 
+from __future__ import annotations
+
+import json
+import logging
+import re
 from typing import TYPE_CHECKING
 
 from crewai.agent import Agent
@@ -41,16 +46,33 @@ class OutlineEvaluator:
             llm: 可选的语言模型，默认使用系统配置
             verbose: 是否输出详细日志
         """
-        self.agent = Agent(
-            role="故事架构评审专家",
-            goal="确保大纲质量达到专业标准",
-            backstory="""你是一个资深的故事架构师，拥有丰富的剧本评审经验。
-            你精通叙事结构、世界观构建、情节设计，能够从宏观角度评估故事大纲的质量。
-            你尤其擅长发现逻辑漏洞、节奏问题和结构失衡。
-            你的评审标准严格但建设性，重在帮助故事达到最佳状态。""",
-            verbose=verbose,
-            llm=llm,
-        )
+        self.llm = llm
+        self.verbose = verbose
+        self.agent: Agent | None = None
+
+    def _get_agent(self) -> Agent:
+        """按需初始化评估 Agent，避免在只做本地启发式评估时触发 LLM 依赖。"""
+        if self.agent is None:
+            self.agent = Agent(
+                role="故事架构评审专家",
+                goal="确保大纲质量达到专业标准",
+                backstory="""你是一个资深的故事架构师，拥有丰富的剧本评审经验。
+                你精通叙事结构、世界观构建、情节设计，能够从宏观角度评估故事大纲的质量。
+                你尤其擅长发现逻辑漏洞、节奏问题和结构失衡。
+                你的评审标准严格但建设性，重在帮助故事达到最佳状态。""",
+                verbose=self.verbose,
+                llm=self.llm,
+            )
+        return self.agent
+
+    def check(
+        self,
+        world_data: dict,
+        plot_data: dict,
+        context: dict | None = None,
+    ) -> ReviewCheckResult:
+        """Backward-compatible alias used by service-layer code."""
+        return self.evaluate(world_data, plot_data, context)
 
     def evaluate(
         self,
@@ -68,16 +90,40 @@ class OutlineEvaluator:
         Returns:
             ReviewCheckResult: 评估结果，包含通过/失败状态、问题列表、修改建议
         """
-        # 暂时跳过评估，直接通过以加快开发迭代
-        # TODO: 重新启用正式评估
         result = ReviewCheckResult(check_type="outline", passed=True)
-        result.score = 8.0
-        result.issues = []
-        result.suggestions = ["评估已跳过，快速通道模式"]
+
+        dimensions = {
+            "world_consistency": self._score_world_consistency(world_data),
+            "plot_completeness": self._score_plot_completeness(plot_data),
+            "strand_weave_ratio": self._score_strand_weave_ratio(plot_data),
+            "volume_structure": self._score_volume_structure(plot_data),
+            "foreshadowing": self._score_foreshadowing(plot_data),
+        }
+
+        issues: list[str] = []
+        suggestions: list[str] = []
+        scores: list[float] = []
+        dimension_breakdown: dict[str, dict[str, object]] = {}
+
+        for name, (score, dimension_issues, dimension_suggestions) in dimensions.items():
+            scores.append(score)
+            issues.extend(dimension_issues)
+            suggestions.extend(dimension_suggestions)
+            dimension_breakdown[name] = {
+                "score": round(score, 2),
+                "issues": dimension_issues,
+            }
+
+        result.score = round(sum(scores) / len(scores), 2) if scores else 0.0
+        result.issues = issues
+        result.suggestions = suggestions
+
+        # Keep the result self-describing for callers that inspect extra attrs.
+        result.dimensions = dimension_breakdown  # type: ignore[attr-defined]
+
+        critical = any(score < 5.0 for score in scores)
+        result.passed = result.score >= 7.0 and not critical
         return result
-        # prompt = self._build_evaluation_prompt(world_data, plot_data, context)
-        # response = self.agent.kickoff(messages=prompt)
-        # return self._parse_response(response)
 
     def revise(
         self,
@@ -98,7 +144,7 @@ class OutlineEvaluator:
             dict: 修正后的 plot_data
         """
         prompt = self._build_revision_prompt(world_data, plot_data, evaluation, context)
-        response = self.agent.kickoff(messages=prompt)
+        response = self._get_agent().kickoff(messages=prompt)
         return self._parse_revision_response(response)
 
     def evaluate_and_revise(
@@ -277,6 +323,187 @@ class OutlineEvaluator:
             return s
 
         return truncate(plot_data)
+
+    def _score_world_consistency(self, world_data: dict) -> tuple[float, list[str], list[str]]:
+        issues: list[str] = []
+        suggestions: list[str] = []
+
+        if not world_data:
+            return 3.0, ["世界观数据为空"], ["补充世界名称、力量体系、地理与势力设定"]
+
+        score = 10.0
+        required_fields = ("name", "description", "world_constraints", "geography", "factions")
+        missing = [field for field in required_fields if not world_data.get(field)]
+        if missing:
+            score -= min(3.0, 0.8 * len(missing))
+            issues.append(f"世界观字段缺失: {', '.join(missing)}")
+            suggestions.append("补足世界观基础字段，避免设定空洞")
+
+        power_system = world_data.get("power_system") or world_data.get("power_system_name")
+        if not power_system:
+            score -= 1.5
+            issues.append("缺少力量体系或修炼体系名称")
+            suggestions.append("补充力量体系与升级规则")
+
+        geography = world_data.get("geography", [])
+        factions = world_data.get("factions", [])
+        if not geography or not factions:
+            score -= 0.5
+            issues.append("地理与势力结构不够完整")
+            suggestions.append("明确关键地点与势力分布")
+
+        return max(0.0, score), issues, suggestions
+
+    def _score_plot_completeness(self, plot_data: dict) -> tuple[float, list[str], list[str]]:
+        issues: list[str] = []
+        suggestions: list[str] = []
+
+        if not plot_data:
+            return 3.0, ["情节数据为空"], ["补充主线、转折点和角色列表"]
+
+        score = 10.0
+        plot_arcs = plot_data.get("plot_arcs", [])
+        turning_points = plot_data.get("turning_points", [])
+        themes = plot_data.get("themes", [])
+        main_characters = plot_data.get("main_characters", [])
+
+        if not plot_arcs:
+            score -= 2.0
+            issues.append("缺少主线剧情弧 plot_arcs")
+            suggestions.append("拆分出至少一条清晰主线")
+        if not turning_points:
+            score -= 2.0
+            issues.append("缺少关键转折点 turning_points")
+            suggestions.append("补足前中后期转折点")
+        if not main_characters:
+            score -= 1.0
+            issues.append("缺少主要角色 main_characters")
+            suggestions.append("补全角色卡与成长线")
+        if not themes:
+            score -= 1.0
+            issues.append("缺少主题关键词 themes")
+            suggestions.append("明确作品主题，以免情节发散")
+
+        return max(0.0, score), issues, suggestions
+
+    def _score_strand_weave_ratio(self, plot_data: dict) -> tuple[float, list[str], list[str]]:
+        issues: list[str] = []
+        suggestions: list[str] = []
+
+        strands = self._extract_strands(plot_data)
+        if not strands:
+            return 6.0, ["未能识别 Strand Weave 结构"], ["补充主线/支线/伏笔线索信息"]
+
+        total_events = sum(max(1, len(self._strand_events(strand))) for strand in strands)
+        if total_events <= 0:
+            return 5.0, ["Strand 数据缺少事件"], ["为每条线索补充 main_events"]
+
+        ratios: dict[str, float] = {}
+        for strand in strands:
+            strand_type = str(strand.get("strand_type", "main")).lower()
+            count = max(1, len(self._strand_events(strand)))
+            ratios[strand_type] = ratios.get(strand_type, 0.0) + count / total_events
+
+        main_ratio = ratios.get("main", 0.0)
+        emotional_ratio = ratios.get("romance", 0.0) + ratios.get("fire", 0.0)
+        foreshadow_ratio = ratios.get("sub", 0.0) + ratios.get("subplot", 0.0) + ratios.get("constellation", 0.0)
+
+        score = 10.0
+        if not 0.50 <= main_ratio <= 0.70:
+            score -= 2.0
+            issues.append(f"主线比例异常: {main_ratio:.0%}")
+            suggestions.append("将主线控制在约60%上下")
+        if emotional_ratio and not 0.15 <= emotional_ratio <= 0.35:
+            score -= 1.0
+            issues.append(f"情感线比例异常: {emotional_ratio:.0%}")
+            suggestions.append("将情感线控制在约25%上下")
+        if foreshadow_ratio and not 0.05 <= foreshadow_ratio <= 0.25:
+            score -= 1.0
+            issues.append(f"伏笔线比例异常: {foreshadow_ratio:.0%}")
+            suggestions.append("将伏笔线控制在约15%上下")
+
+        return max(0.0, score), issues, suggestions
+
+    def _score_volume_structure(self, plot_data: dict) -> tuple[float, list[str], list[str]]:
+        issues: list[str] = []
+        suggestions: list[str] = []
+
+        volumes = plot_data.get("volumes", []) or plot_data.get("volume_outlines", [])
+        if not volumes:
+            if plot_data.get("plot_arcs"):
+                return 7.0, ["缺少分卷结构 volumes"], ["为主线拆分分卷大纲"]
+            return 5.0, ["缺少分卷结构 volumes"], ["为故事添加分卷结构"]
+
+        score = 10.0
+        for idx, volume in enumerate(volumes, 1):
+            if not isinstance(volume, dict):
+                score -= 0.5
+                issues.append(f"第{idx}卷结构格式不合法")
+                continue
+
+            title = volume.get("title", f"第{idx}卷")
+            start = volume.get("start_chapter")
+            end = volume.get("end_chapter")
+            if start is None or end is None or int(end) < int(start):
+                score -= 1.5
+                issues.append(f"{title} 章节范围不完整或不合法")
+                suggestions.append(f"修正 {title} 的起止章节")
+            if not volume.get("chapters_summary") and not volume.get("chapter_summaries"):
+                score -= 1.0
+                issues.append(f"{title} 缺少章节概要")
+                suggestions.append(f"为 {title} 补充章节概要")
+
+        return max(0.0, score), issues, suggestions
+
+    def _score_foreshadowing(self, plot_data: dict) -> tuple[float, list[str], list[str]]:
+        issues: list[str] = []
+        suggestions: list[str] = []
+
+        foreshadowing = plot_data.get("foreshadowing_strands", [])
+        if not foreshadowing:
+            if plot_data.get("turning_points"):
+                return 6.0, ["缺少伏笔线索 foreshadowing_strands"], ["补充伏笔铺设与回收计划"]
+            return 5.0, ["缺少伏笔与转折设计"], ["补充伏笔与回收节点"]
+
+        score = 10.0
+        for strand in foreshadowing:
+            if not isinstance(strand, dict):
+                continue
+            setup = strand.get("setup_chapter") or strand.get("planted_chapter") or strand.get("start_chapter")
+            payoff = strand.get("payoff_chapter") or strand.get("reveal_chapter") or strand.get("end_chapter")
+            if setup and payoff:
+                try:
+                    gap = int(payoff) - int(setup)
+                except Exception:
+                    gap = 0
+                if gap < 5:
+                    score -= 1.0
+                    issues.append(f"伏笔回收间隔过短: 第{setup}章 -> 第{payoff}章")
+                    suggestions.append("伏笔回收间隔建议保持 N+5~20 章")
+            else:
+                score -= 0.5
+                issues.append("存在缺少铺设/回收章节的伏笔条目")
+                suggestions.append("为伏笔补全铺设与回收章节")
+
+        return max(0.0, score), issues, suggestions
+
+    @staticmethod
+    def _extract_strands(plot_data: dict) -> list[dict]:
+        strands: list[dict] = []
+        for key in ("plot_arcs", "strands", "main_strands", "sub_strands", "foreshadowing_strands", "emotional_strands"):
+            value = plot_data.get(key)
+            if isinstance(value, list):
+                strands.extend(item for item in value if isinstance(item, dict))
+        return strands
+
+    @staticmethod
+    def _strand_events(strand: dict) -> list:
+        events = strand.get("main_events")
+        if isinstance(events, list):
+            return events
+        if "description" in strand and strand["description"]:
+            return [strand["description"]]
+        return []
 
     def _parse_response(self, response) -> ReviewCheckResult:
         """解析评估响应"""

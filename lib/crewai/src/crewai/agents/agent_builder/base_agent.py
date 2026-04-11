@@ -147,7 +147,7 @@ class BaseAgent(BaseModel, ABC, metaclass=AgentMeta):
         default_factory=list, description="Tools at agents' disposal"
     )
     max_iter: int = Field(
-        default=25, description="Maximum iterations for an agent to execute a task"
+        default=5, description="Maximum iterations for an agent to execute a task"
     )
     agent_executor: Any = Field(
         default=None, description="An instance of the CrewAgentExecutor class."

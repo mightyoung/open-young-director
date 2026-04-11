@@ -1,0 +1,12 @@
+你是一位资深网络文学编辑，请评估以下小说大纲的质量。
+
+=== 大纲 ===
+{outline_json}
+
+请从以下四个维度评分（0-10分），并以 JSON 格式输出：
+- plot_coherence: 情节连贯性（是否有逻辑漏洞）
+- character_development: 角色发展（成长线是否清晰）
+- pacing: 节奏控制（张弛是否得当）
+- originality: 创新性（是否有新意）
+- comments: 详细评语
+- suggestions: 改进建议列表

@@ -96,6 +96,8 @@ def bedrock_mocks():
 
     Use this fixture for tests that explicitly need to test mock behavior.
     """
+    pytest.importorskip("boto3")
+
     with patch.dict(os.environ, {
         "AWS_ACCESS_KEY_ID": "test-access-key",
         "AWS_SECRET_ACCESS_KEY": "test-secret-key",
@@ -132,6 +134,8 @@ def test_bedrock_completion_is_used_when_bedrock_provider():
     """
     Test that BedrockCompletion from completion.py is used when LLM uses provider 'bedrock'
     """
+    pytest.importorskip("boto3")
+
     llm = LLM(model="bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0")
 
     assert llm.__class__.__name__ == "BedrockCompletion"
@@ -437,6 +441,8 @@ def test_bedrock_aws_credentials_configuration():
     """
     Test that AWS credentials configuration works properly
     """
+    pytest.importorskip("boto3")
+
     aws_access_key_id = "test-access-key"
     aws_secret_access_key = "test-secret-key"
     aws_region_name = "us-east-1"
@@ -835,6 +841,8 @@ def test_bedrock_client_error_handling():
 
 def test_bedrock_stop_sequences_sync():
     """Test that stop and stop_sequences attributes stay synchronized."""
+    pytest.importorskip("boto3")
+
     llm = LLM(model="bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0")
 
     # Test setting stop as a list

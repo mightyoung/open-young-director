@@ -991,6 +991,8 @@ def test_crew_kickoff_usage_metrics():
 
 @pytest.mark.vcr()
 def test_crew_kickoff_streaming_usage_metrics():
+    pytest.importorskip("litellm")
+
     inputs = [
         {"topic": "dog"},
         {"topic": "cat"},

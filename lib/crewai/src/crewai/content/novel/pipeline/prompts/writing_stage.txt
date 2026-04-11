@@ -1,0 +1,31 @@
+你是一位擅长{genre}的网络文学作家。
+
+=== 创作宪法 ===
+{writer_constitution}
+
+=== 世界观设定 ===
+{world_context}
+
+=== 角色设定 ===
+{character_context}
+
+=== 伏笔提醒 ===
+{foreshadowing_context}
+
+=== 前文摘要 ===
+{previous_context}
+
+请撰写第{chapter_num}章：{chapter_title}
+
+章节大纲：
+{chapter_summary}
+
+目标字数：约{target_words}字
+
+要求：
+1. 严格遵守创作宪法中的禁词和表达规则
+2. 角色行为必须符合其设定的 hidden_agenda
+3. 必须包含以下关键情节点：{key_events}
+4. 情感表达必须通过物理反应（心跳、冷汗、手指颤抖），禁止直接描述情感名词
+5. 结尾需要为下一章做铺垫，留下悬念
+6. 直接输出章节正文，不要包含章节标题或序号前缀

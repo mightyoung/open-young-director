@@ -4,6 +4,8 @@ import types
 from unittest.mock import patch, MagicMock
 import pytest
 
+pytest.importorskip("google.genai")
+
 from crewai.llm import LLM
 from crewai.crew import Crew
 from crewai.agent import Agent

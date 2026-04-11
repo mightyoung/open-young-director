@@ -363,6 +363,70 @@ def create_llm_from_env():
     return None
 
 
+# ==================== v2 Pipeline Runner ====================
+
+
+def run_novel_v2(
+    topic: str,
+    words: int,
+    style: str,
+    output: str,
+    chapters: int,
+    resume_from: str | None = None,
+    pipeline_state_path: str | None = None,
+) -> None:
+    """Run novel generation using the v2 pure-Python pipeline.
+
+    Args:
+        topic: 小说主题
+        words: 目标字数
+        style: 小说风格
+        output: 输出目录
+        chapters: 章节数（0表示自动）
+        resume_from: 从指定阶段恢复
+        pipeline_state_path: 流水线状态文件路径
+    """
+    from crewai.content.novel.pipeline import PipelineRunner
+    from crewai.content.novel.pipeline_state import PipelineState
+
+    load_env_from_project_root()
+
+    api_key = os.environ.get("DEEPSEEK_API_KEY", "")
+    if not api_key:
+        raise ValueError("DEEPSEEK_API_KEY is required for v2 engine")
+
+    from crewai.llm.deepseek_client import DeepSeekClient
+    llm = DeepSeekClient(api_key=api_key)
+    runner = PipelineRunner(llm=llm)
+
+    # Load or create state
+    if pipeline_state_path and Path(pipeline_state_path).exists():
+        state = PipelineState.load(pipeline_state_path)
+    else:
+        state = PipelineState()
+
+    # Set config on state
+    state.config = {
+        "topic": topic,
+        "style": style,
+        "genre": style,
+        "target_words": words,
+        "num_chapters": chapters if chapters > 0 else max(1, words // 5000),
+        "words_per_chapter": 5000,
+        "output_dir": output,
+    }
+
+    # Run pipeline
+    state = runner.run(state, resume_from=resume_from)
+
+    # Save final state
+    output_dir = Path(output)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    state.save(str(output_dir / "pipeline_state.json"))
+
+    click.echo(f"✅ [v2] Novel generated: {output_dir}")
+
+
 # ==================== Novel 核心执行逻辑 ====================
 
 
@@ -463,6 +527,7 @@ def run_novel_creation(
     interactive: bool = False,
     review_each_chapter: bool = False,
     seed_variant: str | None = None,
+    engine: str = "v1",
 ) -> None:
     """Core novel creation logic — usable both from CLI and programmatic calls.
 
@@ -476,7 +541,12 @@ def run_novel_creation(
         resume_from: 从指定阶段恢复 (outline/evaluation/volume/summary)
         pipeline_state_path: 流水线状态文件路径（用于 resume）
         seed_variant: 可选的 seed 变体，用于生成同一主题的不同变体
+        engine: 执行引擎 (v1=CrewAI, v2=纯Python流水线)
     """
+    if engine == "v2":
+        run_novel_v2(topic, words, style, output, chapters, resume_from, pipeline_state_path)
+        return
+
     from crewai.content.novel import NovelCrew
 
     # Validate inputs early with clear error messages (P1-17: strict contract testing)

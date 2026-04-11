@@ -3,6 +3,9 @@
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+
+pytest.importorskip("qdrant_client")
+
 from crewai.rag.core.exceptions import ClientMethodMismatchError
 from crewai.rag.qdrant.client import QdrantClient
 from crewai.rag.types import BaseRecord

@@ -227,6 +227,8 @@ def test_get_conversion_instructions_gpt() -> None:
 
 
 def test_get_conversion_instructions_non_gpt() -> None:
+    pytest.importorskip("litellm")
+
     llm = LLM(model="ollama/llama3.1", base_url="http://localhost:11434")
     with patch.object(LLM, "supports_function_calling", return_value=False):
         instructions = get_conversion_instructions(SimpleModel, llm)
@@ -244,6 +246,8 @@ def test_supports_function_calling_true() -> None:
 
 
 def test_supports_function_calling_false() -> None:
+    pytest.importorskip("litellm")
+
     llm = LLM(model="non-existent-model", is_litellm=True)
     assert llm.supports_function_calling() is False
 
@@ -368,6 +372,8 @@ def test_convert_with_instructions() -> None:
 
 @pytest.mark.vcr()
 def test_converter_with_llama3_2_model() -> None:
+    pytest.importorskip("litellm")
+
     llm = LLM(model="openrouter/meta-llama/llama-3.2-3b-instruct")
     sample_text = "Name: Alice Llama, Age: 30"
     instructions = get_conversion_instructions(SimpleModel, llm)

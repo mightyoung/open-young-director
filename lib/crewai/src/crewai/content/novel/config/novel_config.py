@@ -226,3 +226,34 @@ class NovelConfig:
         )
 
 
+# ============================================================================
+# Global Configuration Constants (Pipeline Memory System)
+# ============================================================================
+
+# Context window budget for chapter writing
+# Increased from 4000 to 12000 to support richer cross-chapter context
+CONTEXT_TOKEN_BUDGET = 12000
+
+# Default words per chapter by genre
+WORDS_PER_CHAPTER = {
+    "xianxia": 6000,
+    "xuanhuan": 5000,
+    "urban": 4000,
+    "romance": 3500,
+    "default": 5000,
+}
+
+# Memory management
+SNIP_HISTORY_INTERVAL = 5  # Snip every N chapters
+SNIP_KEEP_LAST_N = 3  # Keep last N chapters in full
+
+# Review thresholds
+REVIEW_SCORE_THRESHOLD = 6.5  # Minimum passing score
+MAX_HEAL_ATTEMPTS = 2  # Maximum quality gate retries
+
+# Agent limits
+MAX_AGENT_ITERATIONS = 5  # Max iterations per agent
+
+# Timeout
+CHAPTER_TIMEOUT_SECONDS = 300  # 5 minutes per chapter
+

@@ -520,3 +520,46 @@ class TestContinuityTracker:
         tracker.clear()
         assert tracker.get_total_events() == 0
         assert tracker.get_entity_state("char1") == {}
+
+    def test_get_plot_threads_summarizes_future_events(self):
+        """Test get_plot_threads groups future hooks, conflicts, and reveals."""
+        tracker = ContinuityTracker()
+        tracker.add_event(Event(
+            id="past",
+            timestamp="第1章",
+            description="前章已经落幕",
+            involved_entities=["char0"],
+            chapter=1,
+        ))
+        tracker.add_event(Event(
+            id="hook",
+            timestamp="第3章",
+            description="主角发现城墙下的神秘符号？",
+            involved_entities=["char1"],
+            chapter=3,
+            metadata={"thread_type": "hook"},
+        ))
+        tracker.add_event(Event(
+            id="conflict",
+            timestamp="第4章",
+            description="双方冲突升级，追杀正式开始",
+            involved_entities=["char1", "char2"],
+            chapter=4,
+            metadata={"thread_type": "conflict"},
+        ))
+        tracker.add_event(Event(
+            id="reveal",
+            timestamp="第5章",
+            description="真相即将揭晓，幕后黑手浮出水面",
+            involved_entities=["char2"],
+            chapter=5,
+            metadata={"thread_type": "reveal"},
+        ))
+
+        threads = tracker.get_plot_threads(2)
+
+        assert threads["active_hooks"]
+        assert threads["active_hooks"][0].startswith("第3章")
+        assert threads["unresolved_conflicts"]
+        assert threads["pending_reveals"]
+        assert threads["entities_in_play"] == ["char1", "char2"]

@@ -658,6 +658,8 @@ class TestGeminiNativeToolCalling:
     def test_gemini_parallel_native_tool_calling_test_agent_kickoff(
         self, parallel_tools: list[BaseTool]
     ) -> None:
+        pytest.importorskip("google.genai")
+
         agent = Agent(
             role="Parallel Tool Agent",
             goal="Use both tools exactly as instructed",
@@ -727,6 +729,8 @@ class TestAzureNativeToolCalling:
         self, calculator_tool: CalculatorTool
     ) -> None:
         """Test Azure agent kickoff with mocked LLM call."""
+        pytest.importorskip("azure.ai.inference")
+
         llm = LLM(
             model="azure/gpt-5-nano",
             api_key="test-key",
@@ -782,6 +786,8 @@ class TestAzureNativeToolCalling:
     def test_azure_parallel_native_tool_calling_test_agent_kickoff(
         self, parallel_tools: list[BaseTool]
     ) -> None:
+        pytest.importorskip("azure.ai.inference")
+
         agent = Agent(
             role="Parallel Tool Agent",
             goal="Use both tools exactly as instructed",
@@ -925,6 +931,8 @@ class TestNativeToolCallingBehavior:
 
     def test_gemini_supports_function_calling(self) -> None:
         """Test that Gemini models support function calling."""
+        pytest.importorskip("google.genai")
+
         llm = LLM(model="gemini/gemini-2.5-flash")
         assert hasattr(llm, "supports_function_calling")
         assert llm.supports_function_calling() is True
