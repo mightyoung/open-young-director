@@ -3,6 +3,8 @@ import os
 from time import sleep
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from crewai.agents.agent_builder.utilities.base_token_process import TokenProcess
 from crewai.events.event_types import (
     LLMCallCompletedEvent,
@@ -15,7 +17,8 @@ from crewai.llm import CONTEXT_WINDOW_USAGE_RATIO, LLM
 from crewai.llms.providers.anthropic.completion import AnthropicCompletion
 from crewai.utilities.token_counter_callback import TokenCalcHandler
 from pydantic import BaseModel
-import pytest
+
+pytest.importorskip("litellm")
 
 
 # TODO: This test fails without print statement, which makes me think that something is happening asynchronously that we need to eventually fix and dive deeper into at a later date

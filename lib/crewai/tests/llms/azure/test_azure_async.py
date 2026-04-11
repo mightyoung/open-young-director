@@ -3,6 +3,8 @@
 import pytest
 import tiktoken
 
+pytest.importorskip("azure.ai.inference")
+
 from crewai import Agent, Task, Crew
 from crewai.llm import LLM
 

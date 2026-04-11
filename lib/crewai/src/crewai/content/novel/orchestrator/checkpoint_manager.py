@@ -63,6 +63,11 @@ class CheckpointManager:
             self._cached_output_dir = f"novels/{safe_topic}_{timestamp}"
         return self._cached_output_dir
 
+    def set_output_dir(self, output_dir: str) -> None:
+        """Override the checkpoint output directory."""
+        self._output_dir = output_dir
+        self._cached_output_dir = output_dir
+
     def save_chapter_checkpoint(self, chapter_output: "ChapterOutput") -> None:
         output_dir = self.output_dir
         topic = self.config.get("topic", "未命名小说")
@@ -89,8 +94,14 @@ word_count: {word_count}
 
 {content}
 """
-        self.atomic_write(chapter_file, markdown_content)
-        self._update_result_json(chapter_num, word_count)
+        previous_stage = self._current_stage
+        if previous_stage == "init":
+            self._current_stage = "writing"
+        try:
+            self.atomic_write(chapter_file, markdown_content)
+            self._update_result_json(chapter_num, word_count)
+        finally:
+            self._current_stage = previous_stage
 
     def save_outline_checkpoint(self, world_data: dict, plot_data: dict, stage: str) -> None:
         output_dir = self.output_dir
@@ -134,6 +145,23 @@ word_count: {word_count}
 阶段: {stage}
 """
         self.atomic_write(outline_dir / "world.md", world_content)
+
+        outline_content = f"""# 大纲: {world_data.get('name', topic)}
+
+## 主线
+{plot_data.get('main_strand', '待补充')}
+
+## 分卷
+{plot_data.get('volumes', '待补充')}
+
+## 高潮点
+{plot_data.get('high_points', '待补充')}
+
+---
+生成时间: {datetime.now().isoformat()}
+阶段: {stage}
+"""
+        self.atomic_write(outline_dir / "outline.md", outline_content)
 
         metadata = {
             "topic": topic, "stage": stage, "generated_at": datetime.now().isoformat(),

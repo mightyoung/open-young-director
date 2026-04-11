@@ -463,20 +463,112 @@ class ContinuityTracker:
         Returns:
             包含 active_hooks, unresolved_conflicts, pending_reveals 的字典
         """
-        # 获取本章之后的事件中涉及的实体
-        future_events = [e for e in self.events if e.chapter > chapter]
+        future_events = sorted(
+            (event for event in self.events if event.chapter > chapter),
+            key=lambda event: (event.chapter, event.timestamp, event.id),
+        )
 
-        # 收集所有涉及的实体
-        involved_entities = set()
+        active_hooks: list[str] = []
+        unresolved_conflicts: list[str] = []
+        pending_reveals: list[str] = []
+        involved_entities: set[str] = set()
+
         for event in future_events:
             involved_entities.update(event.involved_entities)
+            summary = self._summarize_event_thread(event)
+            text = f"{event.description} {event.metadata}".lower()
+
+            if self._matches_thread_keywords(
+                text,
+                (
+                    "悬念",
+                    "线索",
+                    "谜",
+                    "谜团",
+                    "谜题",
+                    "钩子",
+                    "伏笔",
+                    "引子",
+                    "待办",
+                    "未解",
+                    "问题",
+                ),
+            ) or "?" in event.description or "？" in event.description:
+                active_hooks.append(summary)
+
+            if self._matches_thread_keywords(
+                text,
+                (
+                    "冲突",
+                    "对峙",
+                    "争夺",
+                    "危机",
+                    "战",
+                    "矛盾",
+                    "仇",
+                    "追杀",
+                    "阻止",
+                    "调查",
+                    "失败",
+                ),
+            ):
+                unresolved_conflicts.append(summary)
+
+            if self._matches_thread_keywords(
+                text,
+                (
+                    "揭晓",
+                    "真相",
+                    "原来",
+                    "秘密",
+                    "身份",
+                    "身世",
+                    "幕后",
+                    "反转",
+                    "答案",
+                    "揭露",
+                    "发现",
+                    "回收",
+                ),
+            ):
+                pending_reveals.append(summary)
+
+            metadata = event.metadata if isinstance(event.metadata, dict) else {}
+            thread_kind = str(metadata.get("thread_type", "")).lower()
+            if thread_kind in {"hook", "mystery", "teaser"} and summary not in active_hooks:
+                active_hooks.append(summary)
+            if thread_kind in {"conflict", "battle", "tension"} and summary not in unresolved_conflicts:
+                unresolved_conflicts.append(summary)
+            if thread_kind in {"reveal", "payoff", "resolution"} and summary not in pending_reveals:
+                pending_reveals.append(summary)
 
         return {
-            "active_hooks": [],  # TODO: 需要从dianting_checker集成
-            "unresolved_conflicts": [],  # TODO: 需要从dianting_checker集成
-            "pending_reveals": [],  # TODO: 需要从dianting_checker集成
-            "entities_in_play": list(involved_entities),
+            "active_hooks": self._dedupe_preserve_order(active_hooks),
+            "unresolved_conflicts": self._dedupe_preserve_order(unresolved_conflicts),
+            "pending_reveals": self._dedupe_preserve_order(pending_reveals),
+            "entities_in_play": sorted(involved_entities),
         }
+
+    @staticmethod
+    def _summarize_event_thread(event: Event) -> str:
+        """为线程列表生成简短可读的条目。"""
+        entity_part = f" [{'、'.join(event.involved_entities)}]" if event.involved_entities else ""
+        return f"第{event.chapter}章: {event.description}{entity_part}"
+
+    @staticmethod
+    def _matches_thread_keywords(text: str, keywords: tuple[str, ...]) -> bool:
+        return any(keyword in text for keyword in keywords)
+
+    @staticmethod
+    def _dedupe_preserve_order(items: list[str]) -> list[str]:
+        seen: set[str] = set()
+        deduped: list[str] = []
+        for item in items:
+            if item in seen:
+                continue
+            seen.add(item)
+            deduped.append(item)
+        return deduped
 
     def validate_timeline(self) -> list[ContinuityIssue]:
         """验证整个时间线的连续性

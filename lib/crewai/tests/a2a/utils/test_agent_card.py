@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import pytest
+
+pytest.importorskip("a2a")
+
 from a2a.types import AgentCard, AgentSkill
 
 from crewai import Agent

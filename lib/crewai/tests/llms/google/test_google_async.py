@@ -3,6 +3,8 @@
 import pytest
 import tiktoken
 
+pytest.importorskip("google.genai")
+
 from crewai import Agent, Task, Crew
 from crewai.llm import LLM
 from crewai.llms.providers.gemini.completion import GeminiCompletion

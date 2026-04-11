@@ -1,6 +1,7 @@
 """NovelCrew - 主编排"""
 
 import logging
+import signal
 from typing import TYPE_CHECKING, Any
 
 
@@ -455,6 +456,20 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
             path: 状态文件路径
         """
         self.pipeline_state.save(path)
+
+    def _save_pipeline_state_snapshot(self) -> str:
+        """Persist the current PipelineState using the configured or default path.
+
+        Returns:
+            The filesystem path the state was written to.
+        """
+        from pathlib import Path
+
+        pipeline_state_path = self.config.get("pipeline_state_path")
+        if not pipeline_state_path:
+            pipeline_state_path = str(Path(self.checkpoint_manager.output_dir) / "pipeline_state.json")
+        self.pipeline_state.save(pipeline_state_path)
+        return pipeline_state_path
 
     def _init_pipeline_state(
         self,
@@ -1639,6 +1654,7 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
                     if len(expanded) > len(polished_draft):
                         polished_draft = expanded
                         word_count = len(polished_draft) // 2
+                        logger.info(f"After expansion attempt {expansion_attempts}: word_count = {word_count}, min_required = {min_word_count:.0f}")
                 except Exception as e:
                     logger.warning(f"Expansion attempt {expansion_attempts} failed: {e}")
                     break
@@ -1808,33 +1824,38 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
         for i, chapter_summary in enumerate(chapter_summaries):
             chapter_num = chapter_summary.get("chapter_num", i + 1)
 
+            # 【新增】每 5 章自动进行内存折叠
+            if chapter_num % 5 == 0 and chapter_num > 0:
+                logger.info(f"Snipping history at chapter {chapter_num}")
+                self.pipeline_state.snip_history(keep_last_n=3)
+
             # 如果有脏章节过滤，只重写脏章节；否则重写全部
             if self._chapters_to_regenerate is not None:
-                if chapter_num not in self._chapters_to_regenerate:
-                    # 保留已有章节（从 pipeline_state.chapters 恢复，存储为dict）
-                    existing = [c for c in self.pipeline_state.chapters if c.get("chapter_num") == chapter_num]
-                    if existing:
-                        # 重建 ChapterOutput dataclass 以保持类型一致（local chapters 期望 ChapterOutput）
-                        preserved = ChapterOutput(
-                            chapter_num=existing[0].get("chapter_num", chapter_num),
-                            title=existing[0].get("title", f"第{chapter_num}章"),
-                            content=existing[0].get("content", ""),
-                            word_count=existing[0].get("word_count", 0),
-                            key_events=existing[0].get("key_events", []),
-                            character_appearances=existing[0].get("character_appearances", []),
-                            setting=existing[0].get("setting", ""),
-                            notes=existing[0].get("notes", ""),
-                        )
-                        chapters.append(preserved)
-                        # 更新 previous_summary 以保持连续性
-                        prev_content = existing[0].get("content", "") or ""
-                        prev_summary = f"第{chapter_num}章结尾: {prev_content[-500:]}"
-                        previous_summary = f"第{chapter_num}章结尾: {prev_summary}"
-                        previous_chapter_ending = previous_summary
-                        logger.info(f"Skipping clean chapter {chapter_num}, preserving from state")
-                    else:
-                        logger.warning(f"Chapter {chapter_num} marked clean but not in state, will generate")
-                    continue
+                    if chapter_num not in self._chapters_to_regenerate:
+                        # 保留已有章节（从 pipeline_state.chapters 恢复，存储为dict）
+                        existing = [c for c in self.pipeline_state.chapters if c.get("chapter_num") == chapter_num]
+                        if existing:
+                            # 重建 ChapterOutput dataclass 以保持类型一致（local chapters 期望 ChapterOutput）
+                            preserved = ChapterOutput(
+                                chapter_num=existing[0].get("chapter_num", chapter_num),
+                                title=existing[0].get("title", f"第{chapter_num}章"),
+                                content=existing[0].get("content", ""),
+                                word_count=existing[0].get("word_count", 0),
+                                key_events=existing[0].get("key_events", []),
+                                character_appearances=existing[0].get("character_appearances", []),
+                                setting=existing[0].get("setting", ""),
+                                notes=existing[0].get("notes", ""),
+                            )
+                            chapters.append(preserved)
+                            # 更新 previous_summary 以保持连续性
+                            prev_content = existing[0].get("content", "") or ""
+                            prev_summary = f"第{chapter_num}章结尾: {prev_content[-500:]}"
+                            previous_summary = f"第{chapter_num}章结尾: {prev_summary}"
+                            previous_chapter_ending = previous_summary
+                            logger.info(f"Skipping clean chapter {chapter_num}, preserving from state")
+                        else:
+                            logger.warning(f"Chapter {chapter_num} marked clean but not in state, will generate")
+                        continue
 
             # --- MACRO DESTINY REWRITER (Volume Boundary Optimization) ---
             vol_num = chapter_summary.get("volume_num") or chapter_to_volume.get(chapter_num, 1)
@@ -1935,7 +1956,9 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
             max_heals = 2
             polished_draft = ""
             current_fixup_directive = ""
-            
+            prev_score = None
+            no_improvement_count = 0
+
             # 确定是否触发 A/B 测试 (仅限高潮章节且全局开启时)
             do_ab_test = (chapter_outline.get("tension_level", 0) >= 8 and self.config.get("ab_test_mode", False))
 
@@ -1989,7 +2012,19 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
                     critique_result, revised_draft, polished_draft = self.review_crew.critique_and_revise(
                         draft, review_context, suggest_only=suggest_only
                     )
-                    
+
+                    # 2.5. 收敛性检测 (Quality Gate 质量分数无进展则强制退出)
+                    if prev_score is not None and critique_result.score <= prev_score + 0.1:
+                        no_improvement_count += 1
+                        logger.warning(f"Quality score plateaued at {critique_result.score:.1f} (prev: {prev_score:.1f}), no_improvement_count={no_improvement_count}")
+                        if no_improvement_count >= 2:
+                            logger.warning(f"Quality score has plateaued for 2 consecutive attempts, forcing exit")
+                            chapter_task.complete(result=f"Exited after {attempts} attempts due to score plateau")
+                            break
+                    else:
+                        no_improvement_count = 0
+                    prev_score = critique_result.score
+
                     # 3. 质量门禁校验
                     if not suggest_only and critique_result.has_high_severity_issues() and attempts <= max_heals:
                         logger.warning(f"Quality Gate Failed. Healing...")
@@ -2052,6 +2087,7 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
                     if len(expanded) > len(polished_draft):
                         polished_draft = expanded
                         word_count = len(polished_draft) // 2
+                        logger.info(f"After expansion attempt {expansion_attempts}: word_count = {word_count}, min_required = {min_word_count:.0f}")
                 except Exception as e:
                     logger.warning(f"Expansion attempt {expansion_attempts} failed: {e}")
                     break
@@ -2091,6 +2127,17 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
 
             # Save checkpoint immediately to disk (enables recovery on crash)
             self._save_chapter_checkpoint(chapter_output)
+
+            # 【新增】每章落盘后立即释放内存，防止内存累积
+            chapter_output.content = "[SAVED to disk]"
+            if hasattr(chapter_output, '_draft_phases'):
+                chapter_output._draft_phases = {}  # 释放 5 个阶段的副本
+            logger.info(f"Chapter {chapter_num} persisted and memory released")
+
+            # 【新增】每章自动保存 PipelineState，防止 crash 导致状态丢失
+            if hasattr(self.pipeline_state, 'save'):
+                pipeline_state_path = self._save_pipeline_state_snapshot()
+                logger.info(f"Chapter {chapter_num}: PipelineState saved to disk at {pipeline_state_path}")
 
             # Update entity memory
             character_names = chapter_output.character_appearances or []

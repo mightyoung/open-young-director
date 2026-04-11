@@ -65,6 +65,9 @@ class PipelineState:
 
     world_data: dict = field(default_factory=dict)
     plot_data: dict = field(default_factory=dict)
+    treatment: str = ""
+    # Beat Sheet stage output (Save the Cat 15 beats)
+    beat_sheet: list = field(default_factory=list)
     volume_outlines: list = field(default_factory=list)
     chapter_summaries: list = field(default_factory=list)
     chapters: list = field(default_factory=list)
@@ -157,6 +160,8 @@ class PipelineState:
         result = {
             "world_data": self._safe_copy(self.world_data),
             "plot_data": self._safe_copy(self.plot_data),
+            "treatment": self.treatment,
+            "beat_sheet": self._safe_copy(self.beat_sheet),
             "volume_outlines": self._safe_copy(self.volume_outlines),
             "chapter_summaries": self._safe_copy(self.chapter_summaries),
             "chapters": self._safe_copy(self.chapters),

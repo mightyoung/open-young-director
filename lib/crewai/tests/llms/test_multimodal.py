@@ -91,6 +91,8 @@ class TestLiteLLMMultimodal:
 
     def test_format_multimodal_content_image(self) -> None:
         """Test formatting image content."""
+        pytest.importorskip("litellm")
+
         llm = LLM(model="gpt-4o", is_litellm=True)
         files = {"chart": ImageFile(source=MINIMAL_PNG)}
 
@@ -194,11 +196,15 @@ class TestGeminiMultimodal:
 
     def test_supports_multimodal_always_true(self) -> None:
         """Test Gemini always supports multimodal."""
+        pytest.importorskip("google.genai")
+
         llm = LLM(model="gemini/gemini-pro")
         assert llm.supports_multimodal() is True
 
     def test_format_multimodal_content_image(self) -> None:
         """Test Gemini uses inlineData format."""
+        pytest.importorskip("google.genai")
+
         llm = LLM(model="gemini/gemini-pro")
         files = {"chart": ImageFile(source=MINIMAL_PNG)}
 
@@ -211,6 +217,8 @@ class TestGeminiMultimodal:
 
     def test_format_text_content(self) -> None:
         """Test Gemini text format uses simple text key."""
+        pytest.importorskip("google.genai")
+
         llm = LLM(model="gemini/gemini-pro")
 
         result = llm.format_text_content("Hello world")

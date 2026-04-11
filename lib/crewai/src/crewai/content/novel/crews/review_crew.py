@@ -98,7 +98,7 @@ class ReviewCrew(BaseContentCrew):
 
         # 2. Revise (if needed)
         revised_draft = draft
-        if critique_result.score < 8.0:
+        if critique_result.score < 6.5:
             revised_draft = self._revision_agent.revise(draft, critique_result)
         
         # 3. Persona Alignment Pass

@@ -21,6 +21,7 @@ from crewai.cli.content.script_runner import run_script
 @click.option("--interactive", is_flag=True, help="交互模式：每阶段完成后等待确认再继续")
 @click.option("--review-each-chapter", is_flag=True, help="逐章审核：每章写完后等待确认再继续")
 @click.option("--seed-variant", default=None, help="Seed变体：用于生成同一主题的不同变体")
+@click.option("--engine", default="v1", type=click.Choice(["v1", "v2"]), help="执行引擎 (v1=CrewAI, v2=纯Python流水线)")
 def create_novel(
     topic: str,
     words: int,
@@ -33,6 +34,7 @@ def create_novel(
     interactive: bool,
     review_each_chapter: bool,
     seed_variant: str | None,
+    engine: str,
 ):
     """创建小说项目 (Create a new novel project).
 
@@ -84,6 +86,7 @@ def create_novel(
             interactive=interactive,
             review_each_chapter=review_each_chapter,
             seed_variant=seed_variant,
+            engine=engine,
         )
     except ValueError as e:
         click.echo(f"❌ 参数错误: {e}", err=True)

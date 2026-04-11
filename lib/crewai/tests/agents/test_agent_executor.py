@@ -1221,6 +1221,8 @@ class TestResponseFormatWithKickoff:
         The response_format should be respected by the synthesis LLM call,
         NOT by intermediate step executions.
         """
+        pytest.importorskip("exa_py")
+
         from pydantic import BaseModel, Field
         from crewai import Agent, PlanningConfig
         from crewai.llm import LLM
