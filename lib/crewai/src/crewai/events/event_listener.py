@@ -105,7 +105,7 @@ from crewai.events.types.tool_usage_events import (
     ToolUsageStartedEvent,
 )
 from crewai.events.utils.console_formatter import ConsoleFormatter
-from crewai.llm import LLM
+from crewai.llm import DeepSeekClient
 from crewai.task import Task
 from crewai.telemetry.telemetry import Telemetry
 from crewai.utilities import Logger
@@ -392,7 +392,7 @@ class EventListener(BaseEventListener):
         # ----------- TOOL USAGE EVENTS -----------
         @crewai_event_bus.on(ToolUsageStartedEvent)
         def on_tool_usage_started(source: Any, event: ToolUsageStartedEvent) -> None:
-            if isinstance(source, LLM):
+            if isinstance(source, DeepSeekClient):
                 self.formatter.handle_llm_tool_usage_started(
                     event.tool_name,
                     event.tool_args,
@@ -406,7 +406,7 @@ class EventListener(BaseEventListener):
 
         @crewai_event_bus.on(ToolUsageFinishedEvent)
         def on_tool_usage_finished(source: Any, event: ToolUsageFinishedEvent) -> None:
-            if isinstance(source, LLM):
+            if isinstance(source, DeepSeekClient):
                 self.formatter.handle_llm_tool_usage_finished(
                     event.tool_name,
                 )
@@ -419,7 +419,7 @@ class EventListener(BaseEventListener):
 
         @crewai_event_bus.on(ToolUsageErrorEvent)
         def on_tool_usage_error(source: Any, event: ToolUsageErrorEvent) -> None:
-            if isinstance(source, LLM):
+            if isinstance(source, DeepSeekClient):
                 self.formatter.handle_llm_tool_usage_error(
                     event.tool_name,
                     event.error,
