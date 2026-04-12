@@ -108,9 +108,10 @@ mode: FILM_DRAMA
             Dict with 'output' and 'state_update'
         """
         prompt = self._build_act_prompt(beat, context)
+        llm_fn = context.get("llm_fn")
 
         try:
-            output = await self._generate_response(prompt)
+            output = await self._generate_response(prompt, llm_fn=llm_fn)
 
             # Enforce capacity limits on history
             if len(self._response_history) >= MAX_RESPONSE_HISTORY:
@@ -280,8 +281,18 @@ time_of_day: {scene_info.get('time_of_day', '未知')}
 
         return prompt
 
-    async def _generate_response(self, prompt: str) -> str:
+    async def _generate_response(self, prompt: str, llm_fn=None) -> str:
         """Generate response using LLM with retry and timeout."""
+        if llm_fn is not None:
+            result = llm_fn(prompt)
+            if hasattr(result, "__await__"):
+                result = await result
+            if isinstance(result, str):
+                return result
+            if hasattr(result, "content") and isinstance(result.content, str):
+                return result.content
+            return str(result)
+
         if self.llm_client is None:
             return f"[{self.name}的回应]"
 
@@ -296,11 +307,18 @@ time_of_day: {scene_info.get('time_of_day', '未知')}
                 async with asyncio.timeout(timeout_seconds):
                     if hasattr(self.llm_client, "generate"):
                         messages = [{"role": "user", "content": prompt}]
-                        return self.llm_client.generate(messages)
+                        result = self.llm_client.generate(messages)
                     elif hasattr(self.llm_client, "chat"):
-                        return self.llm_client.chat(prompt)
+                        result = self.llm_client.chat(prompt)
                     else:
                         return f"[{self.name}的回应]"
+                    if hasattr(result, "__await__"):
+                        result = await result
+                    if isinstance(result, str):
+                        return result
+                    if hasattr(result, "content") and isinstance(result.content, str):
+                        return result.content
+                    return str(result)
             except asyncio.TimeoutError:
                 logger.warning(f"[{self.name}] LLM call timed out after {timeout_seconds}s (attempt {attempt + 1}/{max_retries})")
                 if attempt < max_retries - 1:

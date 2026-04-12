@@ -22,27 +22,71 @@ Usage:
 """
 
 import argparse
+from datetime import datetime
 import hashlib
 import json
 import logging
-import re
-import sys
-import uuid
-from datetime import datetime
+import os
 from pathlib import Path
+import sys
+from typing import Any
+import uuid
+
 
 # 添加项目路径
 sys.path.insert(0, str(Path(__file__).parent))
 
 from dotenv import load_dotenv
+
+
 load_dotenv(Path(__file__).parent / ".env")
 
-from agents.config_manager import get_config_manager
-from agents.novel_generator import get_novel_generator
-from agents.chapter_manager import get_chapter_manager, ChapterPlotSummary
-from agents.derivative_generator import get_derivative_generator
-from agents.feedback_loop import get_feedback_loop, FeedbackMode, FeedbackStrategy
-from agents.novel_orchestrator import NovelOrchestrator, OrchestratorConfig
+from agents.chapter_manager import ChapterPlotSummary, get_chapter_manager  # noqa: E402
+from agents.config_manager import get_config_manager  # noqa: E402
+from agents.derivative_generator import get_derivative_generator  # noqa: E402
+from agents.feedback_loop import FeedbackMode, FeedbackStrategy, get_feedback_loop  # noqa: E402
+from agents.novel_generator import get_novel_generator  # noqa: E402
+from agents.novel_orchestrator import NovelOrchestrator, OrchestratorConfig  # noqa: E402
+from services.longform_run import (  # noqa: E402
+    CHECKPOINT_OUTLINE,
+    CHECKPOINT_VOLUME,
+    STAGE_FINALIZE_EXPORT,
+    STAGE_OUTLINE_GENERATE,
+    STAGE_OUTLINE_REVIEW,
+    STAGE_VOLUME_PLAN,
+    STAGE_VOLUME_REVIEW,
+    STAGE_VOLUME_WRITE,
+    approval_payload_from_input,
+    apply_outline_revision,
+    clear_pause,
+    initial_longform_state,
+    load_json_file,
+    load_longform_state,
+    next_volume,
+    record_pause,
+    review_payload_for_outline,
+    review_payload_for_volume,
+    save_longform_state,
+    should_pause_for_stage,
+)
+from services.run_storage import create_run, ensure_run_dir, read_status, update_status  # noqa: E402
+from writing_options import (  # noqa: E402
+    DEFAULT_WRITING_OPTIONS,
+    WRITING_OPTION_GROUPS,
+    normalize_writing_options,
+)
+
+
+BASE_STYLE_CHOICES = ["literary", "concise", "dramatic"]
+STYLE_PRESET_CHOICES = [
+    "fanren_flow",
+    "face_slapping",
+    "cthulhu_mystery",
+    "cinematic_youth",
+    "epic_rebel",
+    "new_wuxia",
+    "sword_philosophy",
+]
 
 
 def setup_logging(level: str = "INFO"):
@@ -56,13 +100,20 @@ def setup_logging(level: str = "INFO"):
 
 class GenerationError(Exception):
     """章节生成失败的异常."""
-    pass
 
 
 # 反馈循环自动触发阈值
 FEEDBACK_LIGHT_INTERVAL = 5   # 每5章
 FEEDBACK_DEEP_INTERVAL = 20  # 每20章
 FEEDBACK_VOLUME_SIZE = 20     # 一卷20章
+
+STAGE_INIT = "init"
+STAGE_CONTEXT_BUILD = "context.build"
+STAGE_CHAPTER_GENERATE = "chapter.generate"
+STAGE_CHAPTER_SAVE = "chapter.save"
+STAGE_DERIVATIVES_SYNC = "derivatives.sync"
+STAGE_FEEDBACK_AUTO = "feedback.auto"
+STAGE_FINALIZE = "finalize"
 
 
 def _run_auto_feedback(project_id: str, generated_chapters: list, total_current: int, llm_client=None) -> None:
@@ -86,7 +137,7 @@ def _run_auto_feedback(project_id: str, generated_chapters: list, total_current:
     end_ch = generated_chapters[-1].number
     count = len(generated_chapters)
 
-    print(f"\n🔄 检查反馈循环触发条件...")
+    print("\n🔄 检查反馈循环触发条件...")
     print(f"   本次生成: 第{start_ch}-{end_ch}章 (共{count}章)")
     print(f"   当前项目总章节: {total_current}")
 
@@ -136,6 +187,104 @@ def _run_auto_feedback(project_id: str, generated_chapters: list, total_current:
         print(f"   结果: {status}")
 
 
+def _project_dir(config_mgr) -> Path:
+    """Return the canonical project output directory."""
+    return Path(config_mgr.generation.output_dir).resolve()
+
+
+def _build_results_file(project_dir: Path) -> Path:
+    """Return the canonical generation results path."""
+    return project_dir / "generation_results.json"
+
+
+def _telemetry_run_dir(args, project_dir: Path) -> Path | None:
+    """Return the enabled telemetry run directory, if requested."""
+    if not getattr(args, "run_id", None) and not getattr(args, "run_dir", None):
+        return None
+
+    if getattr(args, "run_dir", None):
+        run_dir = Path(args.run_dir).resolve()
+        run_dir.mkdir(parents=True, exist_ok=True)
+        return run_dir
+
+    return ensure_run_dir(project_dir, args.run_id)
+
+
+def _estimate_eta_seconds(
+    run_started_at: datetime,
+    chapters_total: int,
+    chapters_completed: int,
+    current_stage: str,
+) -> int | None:
+    """Estimate remaining time for the current generation run."""
+    if chapters_total <= 0:
+        return None
+    remaining_chapters = max(chapters_total - chapters_completed, 0)
+    if remaining_chapters == 0:
+        return 0
+
+    elapsed = max((datetime.now() - run_started_at).total_seconds(), 1.0)
+    if chapters_completed > 0:
+        per_chapter = elapsed / chapters_completed
+    else:
+        per_chapter = 180.0
+
+    stage_overhead = {
+        STAGE_INIT: 30,
+        STAGE_CONTEXT_BUILD: 20,
+        STAGE_CHAPTER_GENERATE: 45,
+        STAGE_CHAPTER_SAVE: 10,
+        STAGE_DERIVATIVES_SYNC: 60,
+        STAGE_FEEDBACK_AUTO: 90,
+        STAGE_FINALIZE: 15,
+    }.get(current_stage, 15)
+    return int((per_chapter * remaining_chapters) + stage_overhead)
+
+
+def _update_run_progress(
+    run_dir: Path | None,
+    *,
+    project_id: str,
+    command: list[str],
+    status: str,
+    current_stage: str,
+    current_step: str,
+    chapters_total: int,
+    chapters_completed: int,
+    run_started_at: datetime,
+    failed_stage: str | None = None,
+    error_message: str | None = None,
+    finished_at: str | None = None,
+    return_code: int | None = None,
+) -> None:
+    """Persist the current telemetry snapshot when run storage is enabled."""
+    if run_dir is None:
+        return
+
+    update_status(
+        run_dir,
+        project_id=project_id,
+        command=command,
+        status=status,
+        started_at=run_started_at.isoformat(),
+        finished_at=finished_at,
+        current_stage=current_stage,
+        current_step=current_step,
+        chapters_total=chapters_total,
+        chapters_completed=chapters_completed,
+        eta_seconds=_estimate_eta_seconds(
+            run_started_at=run_started_at,
+            chapters_total=chapters_total,
+            chapters_completed=chapters_completed,
+            current_stage=current_stage,
+        ),
+        error_message=error_message,
+        failed_stage=failed_stage,
+        pid=os.getpid(),
+        return_code=return_code,
+    )
+
+
 def cmd_new_project(args):
     """创建新项目."""
     config_mgr = get_config_manager()
@@ -150,12 +299,15 @@ def cmd_new_project(args):
         total_chapters=args.chapters or 100,
     )
 
-    print(f"\n✅ 项目创建成功!")
+    writing_options = _collect_writing_options_from_args(args)
+    config_mgr.update_project_metadata({"writing_options": writing_options})
+
+    print("\n✅ 项目创建成功!")
     print(f"   项目ID: {project.id}")
     print(f"   标题: {project.title}")
     print(f"   题材: {project.genre}")
     print(f"   计划章节: {project.total_chapters}")
-    print(f"\n目录: ./lib/knowledge_base/novels/{project.title}/")
+    print(f"\n目录: {_project_dir(config_mgr)}")
 
 
 
@@ -218,11 +370,14 @@ def cmd_generate(args):
 
     project = config_mgr.current_project
     project_id = project.id
+    project_dir = _project_dir(config_mgr)
+    project_dir.mkdir(parents=True, exist_ok=True)
+    command = sys.argv[1:]
+    run_started_at = datetime.now()
+    run_dir = _telemetry_run_dir(args, project_dir)
 
     # 使用标题目录而非ID目录
-    from pathlib import Path
-    # base_dir_override 直接使用 output_dir，因为 ChapterManager 会自动添加 project_title
-    base_dir_override = str(Path(config_mgr.generation.output_dir).absolute())
+    base_dir_override = str(project_dir)
     chapter_mgr = get_chapter_manager(project_id, base_dir_override=base_dir_override)
 
     # 创建 orchestrator (仅支持 FILM_DRAMA 模式)
@@ -241,9 +396,10 @@ def cmd_generate(args):
     count = args.count
     dry_run = getattr(args, 'dry_run', False)
     mode = "incremental" if continue_from is not None else "full"
+    active_writing_options = _resolve_active_writing_options(config_mgr, args)
 
     # 读取已有的 generation_results.json 获取已成功的章节（用于断点续传）
-    results_file = Path(f"lib/knowledge_base/novels/{project_id}/generation_results.json")
+    results_file = _build_results_file(project_dir)
     existing_results = None
     chapters_to_skip = set()
     checkpoints = []
@@ -266,10 +422,24 @@ def cmd_generate(args):
         print(f"\n🚀 开始生成 {count} 章...")
         print(f"   起始章节: {start}")
         print(f"   项目: {config_mgr.current_project.title}")
+    _print_writing_options(active_writing_options)
+
+    _update_run_progress(
+        run_dir,
+        project_id=project_id,
+        command=command,
+        status="running",
+        current_stage=STAGE_INIT,
+        current_step="初始化生成任务",
+        chapters_total=count,
+        chapters_completed=0,
+        run_started_at=run_started_at,
+        return_code=None,
+    )
 
     if dry_run:
-        print(f"\n🔍 Dry-run 模式: 仅预览，不实际生成")
-        print(f"   将生成章节: ", end="")
+        print("\n🔍 Dry-run 模式: 仅预览，不实际生成")
+        print("   将生成章节: ", end="")
         preview = []
         for i in range(count):
             ch_num = start + i
@@ -279,12 +449,25 @@ def cmd_generate(args):
                 preview.append(f"第{ch_num}章")
         print(", ".join(preview))
         print(f"\n✅ Dry-run 完成，共 {count} 章需处理")
+        _update_run_progress(
+            run_dir,
+            project_id=project_id,
+            command=command,
+            status="succeeded",
+            current_stage=STAGE_FINALIZE,
+            current_step="Dry-run 完成",
+            chapters_total=count,
+            chapters_completed=0,
+            run_started_at=run_started_at,
+            finished_at=datetime.now().isoformat(),
+            return_code=0,
+        )
         return 0
 
     print("-" * 50)
 
     # 初始化追踪结果
-    generation_run_id = str(uuid.uuid4())
+    generation_run_id = getattr(args, "run_id", None) or str(uuid.uuid4())
     generation_results = {
         "project_id": project_id,
         "generation_run_id": generation_run_id,
@@ -312,8 +495,7 @@ def cmd_generate(args):
     generated = []
     failed_chapters = []
     previous_summary = ""
-    run_start_time = datetime.now()
-
+    last_failed_stage: str | None = None
     for i in range(count):
         chapter_num = start + i
 
@@ -323,18 +505,43 @@ def cmd_generate(args):
             continue
 
         start_time = datetime.now()
+        current_stage = STAGE_CONTEXT_BUILD
 
         try:
             print(f"\n📝 生成第 {chapter_num} 章...")
+            _update_run_progress(
+                run_dir,
+                project_id=project_id,
+                command=command,
+                status="running",
+                current_stage=STAGE_CONTEXT_BUILD,
+                current_step=f"第 {chapter_num} 章上下文构建",
+                chapters_total=count,
+                chapters_completed=len(generated),
+                run_started_at=run_started_at,
+            )
 
             # 构建上下文
             context = chapter_mgr.build_context(chapter_num)
 
             # 生成章节
+            current_stage = STAGE_CHAPTER_GENERATE
+            _update_run_progress(
+                run_dir,
+                project_id=project_id,
+                command=command,
+                status="running",
+                current_stage=STAGE_CHAPTER_GENERATE,
+                current_step=f"第 {chapter_num} 章正文生成",
+                chapters_total=count,
+                chapters_completed=len(generated),
+                run_started_at=run_started_at,
+            )
             chapter = generator.generate_chapter(
                 chapter_number=chapter_num,
                 context=context,
                 previous_summary=previous_summary,
+                writing_options=active_writing_options,
             )
 
             # 计算内容校验和
@@ -350,7 +557,19 @@ def cmd_generate(args):
                 actual_summary = chapter.metadata.get("outline_summary", "")
 
             # 保存
-            metadata = chapter_mgr.save_chapter(
+            current_stage = STAGE_CHAPTER_SAVE
+            _update_run_progress(
+                run_dir,
+                project_id=project_id,
+                command=command,
+                status="running",
+                current_stage=STAGE_CHAPTER_SAVE,
+                current_step=f"第 {chapter_num} 章保存输出",
+                chapters_total=count,
+                chapters_completed=len(generated),
+                run_started_at=run_started_at,
+            )
+            chapter_mgr.save_chapter(
                 number=chapter.number,
                 title=chapter.title,
                 content=chapter.content,
@@ -421,8 +640,19 @@ def cmd_generate(args):
 
             # 保存 checkpoint（每成功一章就保存）
             generation_results['checkpoints'].append(chapter_num)
-            _save_checkpoint(results_file, generation_results, project_id)
+            _save_checkpoint(results_file, generation_results)
             print(f"   💾 Checkpoint 已保存 (第 {chapter_num} 章)")
+            _update_run_progress(
+                run_dir,
+                project_id=project_id,
+                command=command,
+                status="running",
+                current_stage=STAGE_CHAPTER_SAVE,
+                current_step=f"第 {chapter_num} 章已完成",
+                chapters_total=count,
+                chapters_completed=len(generated),
+                run_started_at=run_started_at,
+            )
 
         except GenerationError as e:
             logger.error(f"Chapter {chapter_num} generation failed: {e}")
@@ -441,6 +671,20 @@ def cmd_generate(args):
                 "time_seconds": (datetime.now() - start_time).total_seconds(),
                 "timestamp": datetime.now().isoformat(),
             })
+            _update_run_progress(
+                run_dir,
+                project_id=project_id,
+                command=command,
+                status="running",
+                current_stage=current_stage,
+                current_step=f"第 {chapter_num} 章失败，继续后续章节",
+                chapters_total=count,
+                chapters_completed=len(generated),
+                run_started_at=run_started_at,
+                failed_stage=current_stage,
+                error_message=str(e),
+            )
+            last_failed_stage = current_stage
             continue  # 继续处理其他章节
 
         except Exception as e:
@@ -461,9 +705,34 @@ def cmd_generate(args):
                 "time_seconds": (datetime.now() - start_time).total_seconds(),
                 "timestamp": datetime.now().isoformat(),
             })
+            _update_run_progress(
+                run_dir,
+                project_id=project_id,
+                command=command,
+                status="running",
+                current_stage=current_stage,
+                current_step=f"第 {chapter_num} 章失败，继续后续章节",
+                chapters_total=count,
+                chapters_completed=len(generated),
+                run_started_at=run_started_at,
+                failed_stage=current_stage,
+                error_message=str(e),
+            )
+            last_failed_stage = current_stage
             continue  # 继续处理其他章节
 
     # 保存最终结果到 JSON 文件
+    _update_run_progress(
+        run_dir,
+        project_id=project_id,
+        command=command,
+        status="running",
+        current_stage=STAGE_FINALIZE,
+        current_step="写入最终结果",
+        chapters_total=count,
+        chapters_completed=len(generated),
+        run_started_at=run_started_at,
+    )
     generation_results['completed_at'] = datetime.now().isoformat()
     results_file.parent.mkdir(parents=True, exist_ok=True)
     with open(results_file, 'w', encoding='utf-8') as f:
@@ -475,13 +744,24 @@ def cmd_generate(args):
     # 同步生成衍生内容（播客、视频Prompt、角色/场景描述）
     if generated:
         print("\n🔄 开始同步生成衍生内容...")
+        _update_run_progress(
+            run_dir,
+            project_id=project_id,
+            command=command,
+            status="running",
+            current_stage=STAGE_DERIVATIVES_SYNC,
+            current_step="同步衍生内容",
+            chapters_total=count,
+            chapters_completed=len(generated),
+            run_started_at=run_started_at,
+        )
         try:
             scripts_dir = config_mgr.generation.scripts_dir
             derivative_gen = get_derivative_generator(project_id, kimi_client=kimi_client, base_dir_override=base_dir_override, scripts_dir_override=scripts_dir)
             # 使用已生成章节的范围
             chapter_range = f"{generated[0].number}-{generated[-1].number}"
             sync_results = derivative_gen.sync_derivatives(chapter_range)
-            print(f"   ✅ 衍生内容同步完成:")
+            print("   ✅ 衍生内容同步完成:")
             print(f"      - 视频Prompt: {len(sync_results.get('video_prompts', []))} 个")
             print(f"      - 角色描述: {len(sync_results.get('character_descriptions', []))} 个")
             print(f"      - 场景描述: {len(sync_results.get('scene_descriptions', []))} 个")
@@ -497,27 +777,67 @@ def cmd_generate(args):
     if generated and not no_auto_feedback:
         # 获取当前项目总章节数
         current_total = config_mgr.current_project.current_chapter
+        _update_run_progress(
+            run_dir,
+            project_id=project_id,
+            command=command,
+            status="running",
+            current_stage=STAGE_FEEDBACK_AUTO,
+            current_step="运行自动反馈",
+            chapters_total=count,
+            chapters_completed=len(generated),
+            run_started_at=run_started_at,
+        )
         _run_auto_feedback(project_id, generated, current_total, llm_client=kimi_client)
 
     if failed_chapters:
+        _update_run_progress(
+            run_dir,
+            project_id=project_id,
+            command=command,
+            status="failed",
+            current_stage=STAGE_FINALIZE,
+            current_step=f"任务结束，但有 {len(failed_chapters)} 章失败",
+            chapters_total=count,
+            chapters_completed=len(generated),
+            run_started_at=run_started_at,
+            failed_stage=last_failed_stage,
+            error_message=f"共有 {len(failed_chapters)} 章生成失败",
+            finished_at=datetime.now().isoformat(),
+            return_code=1,
+        )
         return 1
-    else:
-        return 0
+    _update_run_progress(
+        run_dir,
+        project_id=project_id,
+        command=command,
+        status="succeeded",
+        current_stage=STAGE_FINALIZE,
+        current_step="生成完成",
+        chapters_total=count,
+        chapters_completed=len(generated),
+        run_started_at=run_started_at,
+        finished_at=datetime.now().isoformat(),
+        return_code=0,
+    )
+    return 0
 
 
-def _save_checkpoint(results_file: Path, results: dict, project_id: str) -> None:
+def _save_checkpoint(results_file: Path, results: dict) -> None:
     """保存 checkpoint 到文件."""
-    checkpoint_file = Path(f"lib/knowledge_base/novels/{project_id}/generation_checkpoint.json")
+    checkpoint_file = results_file.parent / "generation_checkpoint.json"
     checkpoint_file.parent.mkdir(parents=True, exist_ok=True)
     with open(checkpoint_file, 'w', encoding='utf-8') as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
 
 
-def _print_statistics(results: dict, failed_chapters: list, results_file: Path, project_id: str) -> None:
+def _print_statistics(results: dict, failed_chapters: list, results_file: Path, project_title: str) -> None:
     """打印生成统计信息."""
     total_words = results.get('total_words_generated', 0)
     total_time = results.get('total_time_seconds', 0.0)
     speed = total_words / total_time if total_time > 0 else 0
+    chapters_dir = results_file.parent / "chapters"
+    checkpoint_file = results_file.parent / "generation_checkpoint.json"
 
     print(f"""
 📊 生成统计:
@@ -534,12 +854,13 @@ def _print_statistics(results: dict, failed_chapters: list, results_file: Path, 
         for ch in failed_chapters:
             print(f"   - 第 {ch} 章失败")
         print(f"\n可使用 --continue-from {min(failed_chapters)} 重新运行")
-        print(f"   存储位置: ./lib/knowledge_base/novels/{project_id}/chapters/")
+        print(f"   存储位置: {chapters_dir}")
         print(f"   结果文件: {results_file}")
-        print(f"   检查点文件: ./lib/knowledge_base/novels/{project_id}/generation_checkpoint.json")
+        print(f"   检查点文件: {checkpoint_file}")
     else:
         print(f"✅ 生成完成! 共 {results.get('successful', 0)} 章")
-        print(f"   存储位置: ./lib/knowledge_base/novels/{project_id}/chapters/")
+        print(f"   项目: {project_title}")
+        print(f"   存储位置: {chapters_dir}")
 
 
 def cmd_status(args):
@@ -552,18 +873,20 @@ def cmd_status(args):
 
     summary = config_mgr.get_project_summary()
 
-    print(f"\n📊 项目状态")
+    print("\n📊 项目状态")
     print("-" * 50)
     print(f"   标题: {summary.get('title')}")
     print(f"   作者: {summary.get('author')}")
     print(f"   题材: {summary.get('genre')}")
     print(f"   进度: {summary.get('current_chapter')}/{summary.get('total_chapters')} 章")
     print(f"   完成度: {summary.get('progress_percent')}%")
+    writing_options = normalize_writing_options(summary.get("metadata", {}).get("writing_options", {}))
+    print(f"   写作参数: {', '.join(f'{k}={v}' for k, v in writing_options.items() if v)}")
 
     if summary.get("fanqie_enabled"):
         print(f"   番茄发布: ✅ 已配置 (书号: {summary.get('fanqie_book_id')})")
     else:
-        print(f"   番茄发布: ❌ 未配置")
+        print("   番茄发布: ❌ 未配置")
 
     return 0
 
@@ -577,9 +900,8 @@ def cmd_list_chapters(args):
         return 1
 
     # 使用标题目录而非ID目录
-    from pathlib import Path
     output_dir = getattr(config_mgr.generation, 'output_dir', None)
-    base_dir_override = str(Path(output_dir).parent) if output_dir else None
+    base_dir_override = str(Path(output_dir).resolve()) if output_dir else None
     chapter_mgr = get_chapter_manager(config_mgr.current_project.id, base_dir_override=base_dir_override)
     chapters = chapter_mgr.get_chapter_list()
 
@@ -606,14 +928,13 @@ def cmd_export(args):
         return 1
 
     # 使用标题目录而非ID目录
-    from pathlib import Path
     output_dir = getattr(config_mgr.generation, 'output_dir', None)
-    base_dir_override = str(Path(output_dir).parent) if output_dir else None
+    base_dir_override = str(Path(output_dir).resolve()) if output_dir else None
     chapter_mgr = get_chapter_manager(config_mgr.current_project.id, base_dir_override=base_dir_override)
 
     # 导出到标题目录
     if output_dir:
-        base_path = Path(output_dir).parent
+        base_path = Path(output_dir).resolve()
     else:
         base_path = Path(f"./lib/knowledge_base/novels/{config_mgr.current_project.id}")
     output_path = args.output or str(base_path / f"{config_mgr.current_project.title}.txt")
@@ -639,9 +960,8 @@ def cmd_load_project(args):
     if project:
         print(f"\n✅ 项目加载成功: {project.title}")
         return 0
-    else:
-        print(f"❌ 项目加载失败: {args.project_id}")
-        return 1
+    print(f"❌ 项目加载失败: {args.project_id}")
+    return 1
 
 
 def cmd_publish(args):
@@ -671,15 +991,14 @@ def cmd_publish(args):
         print("   请检查 cookies/fanqie_cookies.json 文件")
         return 1
 
-    print(f"\n📤 开始发布到番茄小说网...")
+    print("\n📤 开始发布到番茄小说网...")
     print(f"   书号: {fanqie_config.book_id}")
     print(f"   项目: {config_mgr.current_project.title}")
     print("-" * 50)
 
     # 获取章节列表 - 使用标题目录
-    from pathlib import Path
     output_dir = getattr(config_mgr.generation, 'output_dir', None)
-    base_dir_override = str(Path(output_dir).parent) if output_dir else None
+    base_dir_override = str(Path(output_dir).resolve()) if output_dir else None
     chapter_mgr = get_chapter_manager(config_mgr.current_project.id, base_dir_override=base_dir_override)
     chapters = chapter_mgr.get_chapter_list()
 
@@ -774,7 +1093,7 @@ def cmd_sync_derivatives(args):
     except Exception:
         kimi_client = None
 
-    print(f"\n🔄 开始同步衍生内容...")
+    print("\n🔄 开始同步衍生内容...")
     print(f"   项目: {config_mgr.current_project.title}")
     print("-" * 50)
 
@@ -783,7 +1102,7 @@ def cmd_sync_derivatives(args):
     try:
         results = derivative_gen.sync_derivatives(args.range)
 
-        print(f"\n📊 同步结果:")
+        print("\n📊 同步结果:")
         print(f"   固定章节: {len(results['fixed_chapters'])} 章")
         print(f"   视频Prompt: {len(results['video_prompts'])} 个")
         print(f"   角色描述: {len(results['character_descriptions'])} 个")
@@ -795,7 +1114,7 @@ def cmd_sync_derivatives(args):
             for err in results['errors'][:5]:
                 print(f"      - {err}")
 
-        print(f"\n✅ 同步完成!")
+        print("\n✅ 同步完成!")
         return 0
 
     except Exception as e:
@@ -821,7 +1140,7 @@ def cmd_list_derivatives(args):
     derivative_gen = get_derivative_generator(config_mgr.current_project.id, kimi_client=kimi_client, scripts_dir_override=config_mgr.generation.scripts_dir)
     info = derivative_gen.list_derivatives()
 
-    print(f"\n📚 衍生内容列表")
+    print("\n📚 衍生内容列表")
     print("-" * 50)
     print(f"   固定章节: {len(info['fixed_chapters'])} 章")
     print(f"   视频Prompt: {info['video_prompt_count']} 个")
@@ -848,7 +1167,7 @@ def cmd_generate_podcast(args):
     except Exception:
         kimi_client = None
 
-    print(f"\n🎙️ 生成播客脚本...")
+    print("\n🎙️ 生成播客脚本...")
     print(f"   章节范围: {args.range}")
     print("-" * 50)
 
@@ -856,7 +1175,7 @@ def cmd_generate_podcast(args):
 
     try:
         script = derivative_gen.generate_podcast_script(args.range)
-        print(f"\n✅ 播客脚本生成成功!")
+        print("\n✅ 播客脚本生成成功!")
         print(f"   标题: {script.title}")
         print(f"   时长: {script.duration_minutes} 分钟")
         print(f"   主持人: {', '.join(script.speakers)}")
@@ -881,7 +1200,7 @@ def cmd_generate_video_prompt(args):
     except Exception:
         kimi_client = None
 
-    print(f"\n🎬 生成视频提示词...")
+    print("\n🎬 生成视频提示词...")
     print(f"   章节: 第{args.chapter}章")
     print("-" * 50)
 
@@ -889,7 +1208,7 @@ def cmd_generate_video_prompt(args):
 
     try:
         prompt = derivative_gen.generate_video_prompt(args.chapter)
-        print(f"\n✅ 视频提示词生成成功!")
+        print("\n✅ 视频提示词生成成功!")
         print(f"   场景: {prompt.scene_name}")
         print(f"   风格: {', '.join(prompt.style_tags)}")
         print(f"   人物: {', '.join(prompt.characters)}")
@@ -909,14 +1228,13 @@ def cmd_verify(args):
         print("❌ 未设置当前项目")
         return 1
 
-    print(f"\n🔍 验证项目完整性...")
+    print("\n🔍 验证项目完整性...")
     print(f"   项目: {config_mgr.current_project.title}")
     print("-" * 50)
 
     # 使用标题目录而非ID目录
-    from pathlib import Path
     output_dir = getattr(config_mgr.generation, 'output_dir', None)
-    base_dir_override = str(Path(output_dir).parent) if output_dir else None
+    base_dir_override = str(Path(output_dir).resolve()) if output_dir else None
     chapter_mgr = get_chapter_manager(config_mgr.current_project.id, base_dir_override=base_dir_override)
 
     # 执行完整性检查
@@ -924,11 +1242,11 @@ def cmd_verify(args):
     result = chapter_mgr.verify_project_integrity(declared_latest)
 
     # 打印结果
-    print(f"\n📊 完整性检查结果:")
+    print("\n📊 完整性检查结果:")
     print(f"   状态: {'✅ 通过' if result['valid'] else '❌ 存在问题'}")
 
     stats = result.get('stats', {})
-    print(f"\n📈 统计信息:")
+    print("\n📈 统计信息:")
     print(f"   章节总数: {stats.get('total_chapters', 0)}")
     print(f"   实际最新: 第{stats.get('actual_latest', 0)}章")
     print(f"   声明最新: 第{stats.get('declared_latest', 0)}章")
@@ -949,7 +1267,7 @@ def cmd_verify(args):
 
     # 执行章节连续性检查
     seq_result = chapter_mgr.validate_chapter_sequence()
-    print(f"\n📚 章节序列检查:")
+    print("\n📚 章节序列检查:")
     print(f"   状态: {'✅ 连续' if seq_result['valid'] else '❌ 不连续'}")
     seq_stats = seq_result.get('stats', {})
     print(f"   范围内章节: {seq_stats.get('existing_count', 0)}/{seq_stats.get('total_in_range', 0)}")
@@ -957,17 +1275,16 @@ def cmd_verify(args):
     print(f"   跳跃次数: {seq_stats.get('gap_count', 0)}")
 
     if seq_result.get('gaps'):
-        print(f"\n   跳跃详情:")
+        print("\n   跳跃详情:")
         for gap in seq_result['gaps']:
             print(f"     - 第{gap['from_chapter']}章 → 第{gap['to_chapter']}章 (缺失 {gap['gap_size']} 章)")
 
     # 返回状态
     if result['valid'] and seq_result['valid']:
-        print(f"\n✅ 项目验证通过!")
+        print("\n✅ 项目验证通过!")
         return 0
-    else:
-        print(f"\n⚠️ 项目验证发现问题，请检查上述信息")
-        return 1
+    print("\n⚠️ 项目验证发现问题，请检查上述信息")
+    return 1
 
 
 def cmd_generate_character(args):
@@ -985,7 +1302,7 @@ def cmd_generate_character(args):
     except Exception:
         kimi_client = None
 
-    print(f"\n👤 生成角色描述...")
+    print("\n👤 生成角色描述...")
     print(f"   角色: {args.name}")
     print("-" * 50)
 
@@ -993,7 +1310,7 @@ def cmd_generate_character(args):
 
     try:
         char = derivative_gen.generate_character_description(args.name)
-        print(f"\n✅ 角色描述生成成功!")
+        print("\n✅ 角色描述生成成功!")
         print(f"   姓名: {char.name}")
         print(f"   外貌: {char.appearance[:100]}...")
         print(f"   性格: {char.personality[:100]}...")
@@ -1024,7 +1341,11 @@ def cmd_feedback_loop(args):
     project_id = config_mgr.current_project.id
 
     # 导入反馈循环模块
-    from agents.feedback_loop import get_feedback_loop, FeedbackLoop, FeedbackMode, FeedbackStrategy
+    from agents.feedback_loop import (
+        FeedbackMode,
+        FeedbackStrategy,
+        get_feedback_loop,
+    )
 
     # 获取 KIMI client
     try:
@@ -1033,7 +1354,7 @@ def cmd_feedback_loop(args):
     except Exception:
         llm_client = None
 
-    print(f"\n🔄 反馈循环")
+    print("\n🔄 反馈循环")
     print(f"   项目: {config_mgr.current_project.title}")
     print(f"   项目ID: {project_id}")
     print("-" * 50)
@@ -1074,7 +1395,7 @@ def cmd_feedback_loop(args):
         # 根据不同模式处理不同的结果结构
         if 'final_status' in result:
             # FULL模式 (run_full_cycle结构)
-            print(f"   模式: full")
+            print("   模式: full")
             print(f"   状态: {result['final_status']}")
             print(f"   迭代次数: {len(result.get('iterations', []))}")
             print(f"   开始时间: {result.get('start_time', 'N/A')}")
@@ -1134,11 +1455,11 @@ def cmd_feedback_loop(args):
         # 根据模式确定返回状态
         if 'final_status' in result:
             return 0 if result['final_status'] == 'passed' else 1
-        elif 'status' in result:
+        if 'status' in result:
             return 0 if result['status'] == 'passed' else 1
         return 0
 
-    elif args.feedback_discover:
+    if args.feedback_discover:
         # 发现问题
         print("\n🔍 运行发现问题检查...")
         print("   检查项: 境界进度、角色状态、大纲一致性")
@@ -1150,7 +1471,7 @@ def cmd_feedback_loop(args):
             check_character_state=True,
         )
 
-        print(f"\n📊 发现问题报告:")
+        print("\n📊 发现问题报告:")
         print(f"   本次迭代: {result['iteration']}")
         print(f"   发现问题数: {result['issues_found']}")
 
@@ -1177,7 +1498,7 @@ def cmd_feedback_loop(args):
 
         return 0
 
-    elif args.feedback_analyze:
+    if args.feedback_analyze:
         # 分析问题
         print("\n🔬 运行问题分析...")
         print("   分析方法: 5-Why根因分析 + LLM深入分析")
@@ -1185,7 +1506,7 @@ def cmd_feedback_loop(args):
 
         result = feedback.run_analysis(use_llm=True)
 
-        print(f"\n📊 问题分析报告:")
+        print("\n📊 问题分析报告:")
         print(f"   本次迭代: {result['iteration']}")
         print(f"   分析问题数: {len(result['analyses'])}")
 
@@ -1205,7 +1526,7 @@ def cmd_feedback_loop(args):
 
         return 0
 
-    elif args.feedback_fix:
+    if args.feedback_fix:
         # 修复错误
         print("\n🔧 运行错误修复...")
         print("   策略: 推荐方案")
@@ -1213,7 +1534,7 @@ def cmd_feedback_loop(args):
 
         result = feedback.run_fix(strategy="recommended")
 
-        print(f"\n📊 修复报告:")
+        print("\n📊 修复报告:")
         print(f"   本次迭代: {result['iteration']}")
         print(f"   干运行: {'是' if result.get('dry_run') else '否'}")
 
@@ -1235,7 +1556,7 @@ def cmd_feedback_loop(args):
 
         return 0
 
-    elif args.feedback_verify:
+    if args.feedback_verify:
         # 验证结果
         print("\n✅ 运行结果验证...")
         print("   验证项: 文件完整性、检查点验证")
@@ -1243,7 +1564,7 @@ def cmd_feedback_loop(args):
 
         result = feedback.run_verification(full=True)
 
-        print(f"\n📊 验证报告:")
+        print("\n📊 验证报告:")
         print(f"   本次迭代: {result['iteration']}")
         print(f"   验证通过: {'是 ✅' if result['verification_passed'] else '否 ❌'}")
 
@@ -1253,13 +1574,13 @@ def cmd_feedback_loop(args):
             print(f"   {status_emoji} {check_name}")
 
         summary = result.get('summary', {})
-        print(f"\n   问题统计:")
+        print("\n   问题统计:")
         print(f"      总计: {summary.get('total_issues', 0)}")
         print(f"      已修复: {summary.get('fixed', 0)}")
         print(f"      待处理: {summary.get('open', 0)}")
 
         if result.get('open_issues'):
-            print(f"\n   待处理问题:")
+            print("\n   待处理问题:")
             for issue in result['open_issues'][:5]:
                 print(f"      - [{issue.get('severity')}] {issue.get('title')}")
 
@@ -1269,7 +1590,7 @@ def cmd_feedback_loop(args):
 
         return 0 if result['verification_passed'] else 1
 
-    elif args.feedback_report:
+    if args.feedback_report:
         # 导出报告
         print("\n📄 导出反馈报告...")
         report_path = feedback.export_report()
@@ -1277,7 +1598,7 @@ def cmd_feedback_loop(args):
 
         # 同时显示摘要
         summary = feedback.get_issues_summary()
-        print(f"\n📊 问题摘要:")
+        print("\n📊 问题摘要:")
         print(f"   总计: {summary.get('total', 0)}")
         print(f"   按严重程度: {summary.get('by_severity', {})}")
         print(f"   按类别: {summary.get('by_category', {})}")
@@ -1285,9 +1606,443 @@ def cmd_feedback_loop(args):
 
         return 0
 
-    else:
-        print("❌ 未指定反馈循环操作")
+    print("❌ 未指定反馈循环操作")
+    return 1
+
+
+def _collect_writing_options_from_args(args) -> dict:
+    """Collect writing options from argparse namespace."""
+    return normalize_writing_options(
+        {
+            "style": getattr(args, "style", DEFAULT_WRITING_OPTIONS["style"]),
+            "style_preset": getattr(args, "style_preset", ""),
+            "perspective": getattr(args, "perspective", DEFAULT_WRITING_OPTIONS["perspective"]),
+            "narrative_mode": getattr(args, "narrative_mode", DEFAULT_WRITING_OPTIONS["narrative_mode"]),
+            "pace": getattr(args, "pace", DEFAULT_WRITING_OPTIONS["pace"]),
+            "dialogue_density": getattr(args, "dialogue_density", DEFAULT_WRITING_OPTIONS["dialogue_density"]),
+            "prose_style": getattr(args, "prose_style", DEFAULT_WRITING_OPTIONS["prose_style"]),
+            "world_building_density": getattr(args, "world_building_density", DEFAULT_WRITING_OPTIONS["world_building_density"]),
+            "emotion_intensity": getattr(args, "emotion_intensity", DEFAULT_WRITING_OPTIONS["emotion_intensity"]),
+            "combat_style": getattr(args, "combat_style", DEFAULT_WRITING_OPTIONS["combat_style"]),
+            "hook_strength": getattr(args, "hook_strength", DEFAULT_WRITING_OPTIONS["hook_strength"]),
+        }
+    )
+
+
+def _resolve_active_writing_options(config_mgr, args) -> dict:
+    """Merge project defaults with current CLI args."""
+    project_defaults = {}
+    if config_mgr.current_project:
+        project_defaults = config_mgr.current_project.metadata.get("writing_options", {})
+    cli_options = _collect_writing_options_from_args(args)
+    merged = dict(normalize_writing_options(project_defaults))
+    merged.update(cli_options)
+    merged = normalize_writing_options(merged)
+    if config_mgr.current_project:
+        config_mgr.update_project_metadata({"writing_options": merged})
+    return merged
+
+
+def _print_writing_options(options: dict) -> None:
+    """Print active writing options."""
+    print("   写作参数:")
+    for key, value in options.items():
+        if value:
+            print(f"      - {key}: {value}")
+
+
+def _print_writing_option_catalog() -> None:
+    """Print available writing option values."""
+    print("\n🧭 写作参数可选值")
+    print("-" * 50)
+    for group, options in WRITING_OPTION_GROUPS.items():
+        print(f"\n[{group}]")
+        for key, desc in options.items():
+            print(f"  - {key}: {desc}")
+
+
+def _ensure_run_tracking(project_dir: Path, run_id: str, project_id: str, command: list[str], run_dir: Path | None) -> Path:
+    """Create the run directory and baseline status if they do not exist yet."""
+    resolved_run_dir = run_dir or ensure_run_dir(project_dir, run_id)
+    if not read_status(resolved_run_dir):
+        create_run(project_dir=project_dir, run_id=run_id, project_id=project_id, command=command)
+    return resolved_run_dir
+
+
+def _append_writing_options_to_command(cmd: list[str], options: dict[str, str]) -> None:
+    cli_flag_map = {
+        "style": "--style",
+        "style_preset": "--style-preset",
+        "perspective": "--perspective",
+        "narrative_mode": "--narrative-mode",
+        "pace": "--pace",
+        "dialogue_density": "--dialogue-density",
+        "prose_style": "--prose-style",
+        "world_building_density": "--world-building-density",
+        "emotion_intensity": "--emotion-intensity",
+        "combat_style": "--combat-style",
+        "hook_strength": "--hook-strength",
+    }
+    for key, value in options.items():
+        if key in cli_flag_map and value:
+            cmd.extend([cli_flag_map[key], value])
+
+
+def _run_volume_generation_subprocess(
+    args,
+    *,
+    project_id: str,
+    run_id: str,
+    run_dir: Path,
+    start: int,
+    count: int,
+    writing_options: dict[str, str],
+) -> int:
+    """Reuse the existing incremental generator for one volume slice."""
+    cmd = [
+        sys.executable,
+        str(Path(__file__).resolve()),
+        "--load",
+        project_id,
+        "--generate",
+        str(count),
+        "--start",
+        str(start),
+        "--run-id",
+        run_id,
+        "--run-dir",
+        str(run_dir),
+        "--no-auto-feedback",
+        "--log-level",
+        getattr(args, "log_level", "INFO"),
+    ]
+    _append_writing_options_to_command(cmd, writing_options)
+    result = subprocess.run(cmd, cwd=str(Path(__file__).resolve().parent), check=False)  # noqa: S603
+    return int(result.returncode)
+
+
+def _finalize_longform_run(
+    *,
+    run_dir: Path,
+    state: dict[str, Any],
+    project_id: str,
+    command: list[str],
+    run_started_at: datetime,
+    config_mgr,
+) -> int:
+    config_mgr.load_project(project_id)
+    export_args = argparse.Namespace(
+        output=None,
+        start=1,
+        end=None,
+    )
+    cmd_export(export_args)
+    state["status"] = "succeeded"
+    state["current_stage"] = STAGE_FINALIZE_EXPORT
+    state["pending_state_path"] = None
+    save_longform_state(run_dir, state)
+    _update_run_progress(
+        run_dir,
+        project_id=project_id,
+        command=command,
+        status="succeeded",
+        current_stage=STAGE_FINALIZE_EXPORT,
+        current_step="长篇生成完成并导出",
+        chapters_total=state.get("total_chapters", 0),
+        chapters_completed=state.get("chapters_completed", 0),
+        run_started_at=run_started_at,
+        finished_at=datetime.now().isoformat(),
+        return_code=0,
+    )
+    return 0
+
+
+def _continue_longform_run(args, *, state: dict[str, Any], run_dir: Path, run_started_at: datetime) -> int:
+    config_mgr = get_config_manager()
+    project = config_mgr.current_project
+    if not project:
+        print("❌ 未设置当前项目. 请先使用 --load 或 --new")
         return 1
+
+    project_id = project.id
+    command = sys.argv[1:]
+    writing_options = _resolve_active_writing_options(config_mgr, args)
+
+    while True:
+        current_volume = int(state.get("current_volume") or 0)
+        start_chapter = int(state.get("current_volume_start_chapter") or 0)
+        end_chapter = int(state.get("current_volume_end_chapter") or 0)
+
+        if current_volume <= 0 or start_chapter <= 0 or end_chapter <= 0:
+            return _finalize_longform_run(
+                run_dir=run_dir,
+                state=state,
+                project_id=project_id,
+                command=command,
+                run_started_at=run_started_at,
+                config_mgr=config_mgr,
+            )
+
+        next_start = max(int(state.get("chapters_completed", 0)) + 1, start_chapter)
+        if next_start > end_chapter:
+            state["last_completed_volume"] = current_volume
+            if current_volume >= int(state.get("total_volumes", 0)):
+                return _finalize_longform_run(
+                    run_dir=run_dir,
+                    state=state,
+                    project_id=project_id,
+                    command=command,
+                    run_started_at=run_started_at,
+                    config_mgr=config_mgr,
+                )
+            state = next_volume(state)
+            save_longform_state(run_dir, state)
+            continue
+
+        _update_run_progress(
+            run_dir,
+            project_id=project_id,
+            command=command,
+            status="running",
+            current_stage=STAGE_VOLUME_PLAN,
+            current_step=f"准备第 {current_volume} 卷 ({start_chapter}-{end_chapter})",
+            chapters_total=state.get("total_chapters", 0),
+            chapters_completed=state.get("chapters_completed", 0),
+            run_started_at=run_started_at,
+        )
+
+        state["current_stage"] = STAGE_VOLUME_WRITE
+        save_longform_state(run_dir, state)
+        return_code = _run_volume_generation_subprocess(
+            args,
+            project_id=project_id,
+            run_id=state["run_id"],
+            run_dir=run_dir,
+            start=next_start,
+            count=end_chapter - next_start + 1,
+            writing_options=writing_options,
+        )
+        if return_code != 0:
+            state["status"] = "failed"
+            save_longform_state(run_dir, state)
+            _update_run_progress(
+                run_dir,
+                project_id=project_id,
+                command=command,
+                status="failed",
+                current_stage=STAGE_VOLUME_WRITE,
+                current_step=f"第 {current_volume} 卷生成失败",
+                chapters_total=state.get("total_chapters", 0),
+                chapters_completed=state.get("chapters_completed", 0),
+                run_started_at=run_started_at,
+                failed_stage=STAGE_VOLUME_WRITE,
+                error_message=f"第 {current_volume} 卷生成失败",
+                finished_at=datetime.now().isoformat(),
+                return_code=return_code,
+            )
+            return return_code
+
+        refreshed_project = config_mgr.load_project(project_id) or project
+        state["chapters_completed"] = max(int(getattr(refreshed_project, "current_chapter", 0)), end_chapter)
+        state["current_stage"] = STAGE_VOLUME_REVIEW
+        save_longform_state(run_dir, state)
+
+        if should_pause_for_stage(state["approval_mode"], state["auto_approve"], "volume"):
+            paused_state = record_pause(
+                run_dir=run_dir,
+                longform_state=state,
+                checkpoint_type=CHECKPOINT_VOLUME,
+                current_stage=STAGE_VOLUME_REVIEW,
+                review_payload=review_payload_for_volume(state),
+            )
+            _update_run_progress(
+                run_dir,
+                project_id=project_id,
+                command=command,
+                status="paused",
+                current_stage=STAGE_VOLUME_REVIEW,
+                current_step=f"等待第 {current_volume} 卷审批",
+                chapters_total=paused_state.get("total_chapters", 0),
+                chapters_completed=paused_state.get("chapters_completed", 0),
+                run_started_at=run_started_at,
+                error_message=None,
+                failed_stage=None,
+            )
+            update_status(
+                run_dir,
+                pending_state_path=paused_state.get("pending_state_path"),
+                longform_state_path=paused_state.get("longform_state_path"),
+                pause_reason=CHECKPOINT_VOLUME,
+            )
+            return 0
+
+        state["last_completed_volume"] = current_volume
+        if current_volume >= int(state.get("total_volumes", 0)):
+            return _finalize_longform_run(
+                run_dir=run_dir,
+                state=state,
+                project_id=project_id,
+                command=command,
+                run_started_at=run_started_at,
+                config_mgr=config_mgr,
+            )
+        state = next_volume(state)
+        save_longform_state(run_dir, state)
+
+
+def cmd_generate_full(args):
+    """Generate a full novel with outline/volume pause-resume checkpoints."""
+    config_mgr = get_config_manager()
+    if not config_mgr.current_project:
+        print("❌ 未设置当前项目. 请先使用 --new 或 --load")
+        return 1
+
+    project = config_mgr.current_project
+    project_id = project.id
+    project_dir = _project_dir(config_mgr)
+    project_dir.mkdir(parents=True, exist_ok=True)
+    run_id = getattr(args, "run_id", None) or str(uuid.uuid4())
+    run_started_at = datetime.now()
+    command = sys.argv[1:]
+    run_dir = _ensure_run_tracking(
+        project_dir=project_dir,
+        run_id=run_id,
+        project_id=project_id,
+        command=command,
+        run_dir=_telemetry_run_dir(args, project_dir),
+    )
+
+    if getattr(args, "resume_state", None):
+        pending_state = load_json_file(args.resume_state)
+        state = load_longform_state(pending_state.get("longform_state_path"))
+        if not state:
+            print("❌ 无法加载 longform_state.v1.json")
+            return 1
+
+        action = getattr(args, "submit_approval", None) or "approve"
+        approval_payload = approval_payload_from_input(getattr(args, "approval_payload", None))
+        approval_entry = {
+            "checkpoint_type": pending_state.get("checkpoint_type"),
+            "action": action,
+            "payload": approval_payload,
+            "submitted_at": datetime.now().isoformat(),
+        }
+        state.setdefault("approval_history", []).append(approval_entry)
+
+        if pending_state.get("checkpoint_type") == CHECKPOINT_OUTLINE:
+            if action == "reject":
+                save_longform_state(run_dir, state)
+                _update_run_progress(
+                    run_dir,
+                    project_id=project_id,
+                    command=command,
+                    status="paused",
+                    current_stage=STAGE_OUTLINE_REVIEW,
+                    current_step="大纲审批被拒绝，等待修订",
+                    chapters_total=state.get("total_chapters", 0),
+                    chapters_completed=state.get("chapters_completed", 0),
+                    run_started_at=run_started_at,
+                )
+                return 0
+            if action == "revise":
+                apply_outline_revision(project, approval_payload)
+                config_mgr._save_project(project)
+            state["approved_outline"] = True
+            state["outline_snapshot"] = review_payload_for_outline(project)
+            state["current_stage"] = STAGE_VOLUME_PLAN
+            state = clear_pause(run_dir, state)
+            update_status(run_dir, pending_state_path=None, pause_reason=None)
+            return _continue_longform_run(args, state=state, run_dir=run_dir, run_started_at=run_started_at)
+
+        if pending_state.get("checkpoint_type") == CHECKPOINT_VOLUME:
+            current_volume = int(state.get("current_volume", 0))
+            if action == "reject":
+                save_longform_state(run_dir, state)
+                _update_run_progress(
+                    run_dir,
+                    project_id=project_id,
+                    command=command,
+                    status="paused",
+                    current_stage=STAGE_VOLUME_REVIEW,
+                    current_step=f"第 {current_volume} 卷审批被拒绝，等待处理",
+                    chapters_total=state.get("total_chapters", 0),
+                    chapters_completed=state.get("chapters_completed", 0),
+                    run_started_at=run_started_at,
+                )
+                return 0
+            state["last_completed_volume"] = current_volume
+            state["current_stage"] = STAGE_VOLUME_PLAN
+            state = clear_pause(run_dir, state)
+            if current_volume >= int(state.get("total_volumes", 0)):
+                return _finalize_longform_run(
+                    run_dir=run_dir,
+                    state=state,
+                    project_id=project_id,
+                    command=command,
+                    run_started_at=run_started_at,
+                    config_mgr=config_mgr,
+                )
+            state = next_volume(state)
+            save_longform_state(run_dir, state)
+            update_status(run_dir, pending_state_path=None, pause_reason=None)
+            return _continue_longform_run(args, state=state, run_dir=run_dir, run_started_at=run_started_at)
+
+        print("❌ 不支持的审批检查点")
+        return 1
+
+    state = initial_longform_state(
+        project=project,
+        run_id=run_id,
+        run_dir=run_dir,
+        chapters_per_volume=max(int(getattr(args, "chapters_per_volume", config_mgr.generation.chapters_per_volume)), 1),
+        approval_mode=getattr(args, "approval_mode", "outline+volume"),
+        auto_approve=bool(getattr(args, "auto_approve", False)),
+    )
+    _update_run_progress(
+        run_dir,
+        project_id=project_id,
+        command=command,
+        status="running",
+        current_stage=STAGE_OUTLINE_GENERATE,
+        current_step="初始化整本小说生成",
+        chapters_total=state.get("total_chapters", 0),
+        chapters_completed=state.get("chapters_completed", 0),
+        run_started_at=run_started_at,
+        return_code=None,
+    )
+    update_status(run_dir, longform_state_path=state.get("longform_state_path"))
+
+    if should_pause_for_stage(state["approval_mode"], state["auto_approve"], "outline"):
+        paused_state = record_pause(
+            run_dir=run_dir,
+            longform_state=state,
+            checkpoint_type=CHECKPOINT_OUTLINE,
+            current_stage=STAGE_OUTLINE_REVIEW,
+            review_payload=review_payload_for_outline(project),
+        )
+        _update_run_progress(
+            run_dir,
+            project_id=project_id,
+            command=command,
+            status="paused",
+            current_stage=STAGE_OUTLINE_REVIEW,
+            current_step="等待大纲审批",
+            chapters_total=paused_state.get("total_chapters", 0),
+            chapters_completed=paused_state.get("chapters_completed", 0),
+            run_started_at=run_started_at,
+        )
+        update_status(
+            run_dir,
+            pending_state_path=paused_state.get("pending_state_path"),
+            longform_state_path=paused_state.get("longform_state_path"),
+            pause_reason=CHECKPOINT_OUTLINE,
+        )
+        return 0
+
+    state["approved_outline"] = True
+    state["outline_snapshot"] = review_payload_for_outline(project)
+    save_longform_state(run_dir, state)
+    return _continue_longform_run(args, state=state, run_dir=run_dir, run_started_at=run_started_at)
 
 
 def main():
@@ -1311,6 +2066,13 @@ def main():
 
   # 从第5章开始生成5章
   python run_novel_generation.py --generate 5 --start 5
+
+  # 指定风格参数
+  python run_novel_generation.py --generate 3 --style-preset fanren_flow --pace fast --combat-style epic
+
+  # 整本长篇生成（大纲 + 分卷检查点）
+  python run_novel_generation.py --generate-full --chapters-per-volume 60
+  python run_novel_generation.py --generate-full --resume-state /path/to/pending.json --submit-approval approve
 
   # 查看状态
   python run_novel_generation.py --status
@@ -1360,13 +2122,55 @@ def main():
 
     # 生成命令
     parser.add_argument("--generate", type=int, metavar="COUNT", help="生成章节数量")
+    parser.add_argument("--generate-full", action="store_true", help="按整本长篇流程生成并在大纲/分卷节点暂停审批")
     parser.add_argument("--start", type=int, help="起始章节号")
+    parser.add_argument("--run-id", help="运行任务ID（用于写入任务状态）")
+    parser.add_argument("--run-dir", help="运行任务目录（用于写入 status.json 和日志）")
+    parser.add_argument("--chapters-per-volume", type=int, default=60, help="长篇模式每卷章节数")
+    parser.add_argument(
+        "--approval-mode",
+        choices=["outline+volume", "outline", "volume", "none"],
+        default="outline+volume",
+        help="长篇模式的人审节点",
+    )
+    parser.add_argument("--auto-approve", action="store_true", help="长篇模式自动跳过所有审批节点")
+    parser.add_argument("--resume-state", help="恢复长篇运行时使用的 pending state 文件")
+    parser.add_argument(
+        "--submit-approval",
+        choices=["approve", "revise", "reject"],
+        help="提交对 pending state 的审批动作",
+    )
+    parser.add_argument("--approval-payload", help="审批补充 JSON，可传文件路径或 JSON 字符串")
     parser.add_argument("--continue-from", type=int,
                         help="从指定章节号继续生成（跳过已成功的章节）")
     parser.add_argument("--dry-run", action="store_true",
                         help="仅预览要生成的章节，不实际生成")
     parser.add_argument("--no-auto-feedback", action="store_true",
                         help="禁用自动反馈循环")
+    parser.add_argument("--show-writing-options", action="store_true",
+                        help="显示所有写作参数可选值并退出")
+    parser.add_argument("--style", choices=BASE_STYLE_CHOICES,
+                        default=DEFAULT_WRITING_OPTIONS["style"], help="基础写作风格")
+    parser.add_argument("--style-preset", choices=[""] + STYLE_PRESET_CHOICES,
+                        default="", help="知识库风格预设")
+    parser.add_argument("--perspective", choices=sorted(WRITING_OPTION_GROUPS["perspective"].keys()),
+                        default=DEFAULT_WRITING_OPTIONS["perspective"], help="叙事视角")
+    parser.add_argument("--narrative-mode", choices=sorted(WRITING_OPTION_GROUPS["narrative_mode"].keys()),
+                        default=DEFAULT_WRITING_OPTIONS["narrative_mode"], help="叙事写法")
+    parser.add_argument("--pace", choices=sorted(WRITING_OPTION_GROUPS["pace"].keys()),
+                        default=DEFAULT_WRITING_OPTIONS["pace"], help="节奏")
+    parser.add_argument("--dialogue-density", choices=sorted(WRITING_OPTION_GROUPS["dialogue_density"].keys()),
+                        default=DEFAULT_WRITING_OPTIONS["dialogue_density"], help="对白密度")
+    parser.add_argument("--prose-style", choices=sorted(WRITING_OPTION_GROUPS["prose_style"].keys()),
+                        default=DEFAULT_WRITING_OPTIONS["prose_style"], help="行文质感")
+    parser.add_argument("--world-building-density", choices=sorted(WRITING_OPTION_GROUPS["world_building_density"].keys()),
+                        default=DEFAULT_WRITING_OPTIONS["world_building_density"], help="设定密度")
+    parser.add_argument("--emotion-intensity", choices=sorted(WRITING_OPTION_GROUPS["emotion_intensity"].keys()),
+                        default=DEFAULT_WRITING_OPTIONS["emotion_intensity"], help="情绪强度")
+    parser.add_argument("--combat-style", choices=sorted(WRITING_OPTION_GROUPS["combat_style"].keys()),
+                        default=DEFAULT_WRITING_OPTIONS["combat_style"], help="战斗写法")
+    parser.add_argument("--hook-strength", choices=sorted(WRITING_OPTION_GROUPS["hook_strength"].keys()),
+                        default=DEFAULT_WRITING_OPTIONS["hook_strength"], help="开篇抓力")
 
     # 状态命令
     parser.add_argument("--status", action="store_true", help="查看项目状态")
@@ -1417,10 +2221,12 @@ def main():
     # 设置日志
     setup_logging(args.log_level)
 
+    if args.show_writing_options:
+        _print_writing_option_catalog()
+        return 0
+
     # 根据命令执行
     # 注意: --load 可以和其他生成命令组合使用，所以单独处理
-    exit_code = 0
-
     if args.new:
         args.title = args.new
         return cmd_new_project(args)
@@ -1435,7 +2241,10 @@ def main():
     if args.generate:
         args.count = args.generate
         # 如果同时指定了 --start 和 --continue-from，优先使用 --continue-from
-        exit_code = cmd_generate(args)
+        return cmd_generate(args)
+
+    if args.generate_full:
+        return cmd_generate_full(args)
 
     if args.status:
         return cmd_status(args)

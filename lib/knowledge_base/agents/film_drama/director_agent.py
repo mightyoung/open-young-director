@@ -238,7 +238,7 @@ emoji: "🎬"
         """
         chain = MiddlewareChain()
         chain.add(EmotionalStateMiddleware())  # First: read-only
-        chain.add(SubagentLimitMiddleware(self.memory_queue))  # Second: read-only
+        chain.add(SubagentLimitMiddleware(self.config.max_concurrent_character_agents))  # Second: read-only
         chain.add(MemoryQueueMiddleware(self.memory_queue))  # Third: has side effects
         chain.add(ClarificationMiddleware())  # Last: may trigger retry
         return chain
@@ -625,6 +625,7 @@ emoji: "🎬"
             "memory": memory_context,
             "global_tension": self.memory_queue.get_global_tension(),
             "protagonist_constraint": self._protagonist_constraint,
+            "llm_fn": llm_fn,
         }
 
         # Act as the character
