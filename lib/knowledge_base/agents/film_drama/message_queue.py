@@ -81,7 +81,7 @@ class InMemoryMessageQueue:
                 # Check global queue for broadcasts (protected by same lock)
                 for i, msg in enumerate(self._global_queue):
                     if msg.recipient == "broadcast" or msg.recipient == recipient:
-                        self._global_queue.pop(i)
+                        del self._global_queue[i]
                         return msg
 
             # Check timeout BEFORE sleeping to avoid race condition

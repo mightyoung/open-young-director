@@ -1,5 +1,6 @@
 """Middleware for FILM_DRAMA character agent processing."""
 
+import inspect
 import logging
 from abc import ABC, abstractmethod
 from typing import Dict, List, Any, Optional, Callable, Awaitable
@@ -180,7 +181,9 @@ class MiddlewareChain:
                 if hasattr(middleware, 'clear_batch'):
                     middleware.clear_batch()
                 if hasattr(middleware, 'clear_clarification'):
-                    middleware.clear_clarification()
+                    signature = inspect.signature(middleware.clear_clarification)
+                    if len(signature.parameters) == 0:
+                        middleware.clear_clarification()
                 if hasattr(middleware, 'reset'):
                     middleware.reset()
             except Exception as e:

@@ -1,0 +1,883 @@
+#!/usr/bin/env python3
+"""Local Streamlit console for novel generation."""
+
+from __future__ import annotations
+
+from datetime import datetime
+import json
+from pathlib import Path
+import subprocess
+import sys
+from typing import Any
+import uuid
+
+
+ROOT_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT_DIR))
+
+from agents.chapter_manager import ChapterManager, get_chapter_manager  # noqa: E402
+from agents.config_manager import get_config_manager  # noqa: E402
+from services.run_storage import (  # noqa: E402
+    create_run,
+    format_eta,
+    latest_run_dir,
+    read_log_tail,
+    read_status,
+)
+from services.longform_run import load_json_file  # noqa: E402
+from writing_options import (  # noqa: E402
+    BASE_STYLE_CHOICES,
+    STYLE_PRESET_CHOICES,
+    WRITING_OPTION_GROUPS,
+    normalize_writing_options,
+)
+
+
+RUN_SCRIPT = ROOT_DIR / "run_novel_generation.py"
+EXPORT_SUFFIX = ".txt"
+
+
+PAGE_CSS = """
+<style>
+  .stApp {
+    background:
+      radial-gradient(circle at top left, rgba(214, 179, 95, 0.18), transparent 35%),
+      radial-gradient(circle at bottom right, rgba(79, 191, 159, 0.12), transparent 40%),
+      linear-gradient(180deg, #101214 0%, #15161a 48%, #0f1114 100%);
+    color: #f2f2f2;
+  }
+  .block-container {
+    padding-top: 1.5rem;
+    max-width: 1280px;
+  }
+  h1, h2, h3 {
+    letter-spacing: -0.02em;
+  }
+  [data-testid="stSidebar"] {
+    background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
+    border-right: 1px solid rgba(255,255,255,0.08);
+  }
+  .yw-card {
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 18px;
+    background: rgba(255,255,255,0.03);
+    padding: 1rem 1.1rem;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+  }
+  .yw-muted {
+    color: rgba(242, 242, 242, 0.72);
+  }
+  .yw-title {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 0.25rem;
+  }
+  .yw-subtitle {
+    font-size: 0.95rem;
+    color: rgba(242, 242, 242, 0.68);
+    margin-bottom: 1rem;
+  }
+</style>
+"""
+
+
+def _require_streamlit() -> Any:
+    try:  # pragma: no cover - optional runtime dependency for app launch
+        import streamlit as streamlit_module
+    except ModuleNotFoundError as exc:  # pragma: no cover - runtime guard only
+        raise SystemExit(
+            "Streamlit 未安装。请先执行 `python -m pip install streamlit`, 然后再运行 streamlit_app.py。"
+        ) from exc
+    return streamlit_module
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _project_choices() -> list[str]:
+    config_dir = ROOT_DIR / "config"
+    if not config_dir.exists():
+        return []
+    return sorted(file.stem.replace("project_", "") for file in config_dir.glob("project_*.json"))
+
+
+def _project_root() -> Path | None:
+    config_mgr = get_config_manager()
+    if config_mgr.current_project and getattr(config_mgr.generation, "output_dir", ""):
+        return Path(config_mgr.generation.output_dir)
+    return None
+
+
+def _runs_root() -> Path | None:
+    root = _project_root()
+    return root / "runs" if root else None
+
+
+def _metadata_file() -> Path | None:
+    root = _project_root()
+    return root / "metadata.json" if root else None
+
+
+def _load_project_metadata() -> dict[str, Any]:
+    meta_path = _metadata_file()
+    if not meta_path:
+        return {"chapters": []}
+    data = _read_json(meta_path)
+    data.setdefault("chapters", [])
+    return data
+
+
+def _chapter_index() -> list[dict[str, Any]]:
+    data = _load_project_metadata()
+    chapters = list(data.get("chapters", []))
+    if chapters:
+        return sorted(chapters, key=lambda item: item.get("number", 0))
+
+    root = _project_root()
+    if not root:
+        return []
+
+    chapters_dir = root / "chapters"
+    if not chapters_dir.exists():
+        return []
+
+    rows: list[dict[str, Any]] = []
+    for chapter_file in sorted(chapters_dir.glob("ch*.md")):
+        content = chapter_file.read_text(encoding="utf-8")
+        lines = content.splitlines()
+        title = next((line.lstrip("# ").strip() for line in lines if line.startswith("# ")), chapter_file.stem)
+        summary_match = next((line.split("**本章概要**:", 1)[1].strip() for line in lines if "**本章概要**:" in line), "")
+        word_match = next((line for line in lines if "字数:" in line), "")
+        number = int(chapter_file.stem[2:5]) if len(chapter_file.stem) >= 5 and chapter_file.stem[2:5].isdigit() else 0
+        rows.append(
+            {
+                "number": number,
+                "title": title,
+                "word_count": int(word_match.split("字数:", 1)[1].split("|", 1)[0].strip()) if "字数:" in word_match else len(content),
+                "summary": summary_match,
+                "key_events": [],
+                "character_appearances": [],
+                "file_path": str(chapter_file),
+                "created_at": chapter_file.stat().st_mtime,
+            }
+        )
+    return sorted(rows, key=lambda item: item.get("number", 0))
+
+
+def _active_project_status() -> str:
+    config_mgr = get_config_manager()
+    if not config_mgr.current_project:
+        return "当前没有已加载项目。"
+
+    project = config_mgr.current_project
+    options = normalize_writing_options(project.metadata.get("writing_options", {}))
+    lines = [
+        f"### {project.title}",
+        f"- 项目ID: `{project.id}`",
+        f"- 作者: `{project.author}`",
+        f"- 题材: `{project.genre}`",
+        f"- 进度: `{project.current_chapter}/{project.total_chapters}`",
+        f"- 更新时间: `{project.updated_at}`",
+        "",
+        "#### 写作参数",
+    ]
+    lines.extend(f"- `{key}`: `{value}`" for key, value in options.items() if value)
+    return "\n".join(lines)
+
+
+def _writing_values() -> dict[str, str]:
+    config_mgr = get_config_manager()
+    metadata = {}
+    if config_mgr.current_project:
+        metadata = config_mgr.current_project.metadata.get("writing_options", {})
+    return normalize_writing_options(metadata)
+
+
+def _chapter_choices() -> list[tuple[str, str]]:
+    return [
+        (f"{item['number']:03d} · {item['title']}", str(item["number"]))
+        for item in _chapter_index()
+    ]
+
+
+def _chapter_rows() -> list[list[Any]]:
+    rows: list[list[Any]] = []
+    for item in _chapter_index():
+        created = item.get("created_at")
+        created_text = datetime.fromtimestamp(created).strftime("%m-%d %H:%M") if isinstance(created, (int, float)) else ""
+        rows.append(
+            [
+                item.get("number", 0),
+                item.get("title", ""),
+                item.get("word_count", 0),
+                item.get("summary", ""),
+                created_text,
+            ]
+        )
+    return rows
+
+
+def _chapter_file(number: int) -> Path | None:
+    root = _project_root()
+    if not root:
+        return None
+    matches = sorted((root / "chapters").glob(f"ch{number:03d}_*.md"))
+    return matches[0] if matches else None
+
+
+def _chapter_detail(number: int) -> tuple[str, str, str, str]:
+    chapter_file = _chapter_file(number)
+    if not chapter_file:
+        return "章节不存在。", "", "", ""
+
+    content = chapter_file.read_text(encoding="utf-8")
+    lines = content.splitlines()
+    title = next((line.lstrip("# ").strip() for line in lines if line.startswith("# ")), chapter_file.stem)
+    summary = next((line.split("**本章概要**:", 1)[1].strip() for line in lines if "**本章概要**:" in line), "")
+    key_events = next((line.split("**关键事件**:", 1)[1].strip() for line in lines if "**关键事件**:" in line), "")
+    report = _read_json(chapter_file.parent.parent / "consistency_reports" / f"ch{number:03d}_consistency.json")
+    plot_summary = _read_json(chapter_file.parent.parent / "plot_summaries" / f"ch{number:03d}_summary.json")
+
+    detail_lines = [
+        f"### 第{number}章 · {title}",
+        f"- 文件: `{chapter_file}`",
+        f"- 概要: {summary or '无'}",
+        f"- 关键事件: {key_events or '无'}",
+        "",
+        "#### 正文",
+        content,
+    ]
+
+    report_text = json.dumps(report, ensure_ascii=False, indent=2) if report else "无一致性报告"
+    plot_text = json.dumps(plot_summary, ensure_ascii=False, indent=2) if plot_summary else "无章节概要"
+    return "\n".join(detail_lines), plot_text, report_text, content
+
+
+def _derivative_summary() -> tuple[str, list[list[Any]]]:
+    root = _project_root()
+    if not root:
+        return "当前没有已加载项目。", []
+
+    config_mgr = get_config_manager()
+    scripts_dir = Path(config_mgr.generation.scripts_dir)
+    film_drama_dir = Path(config_mgr.generation.film_drama_dir)
+    rows: list[list[Any]] = []
+    if scripts_dir.exists():
+        rows.extend(
+            [file.parent.name, file.name, file.stat().st_size, str(file)]
+            for file in sorted(scripts_dir.rglob("*"))
+            if file.is_file()
+        )
+    if film_drama_dir.exists():
+        rows.extend(
+            ["film_drama", file.name, file.stat().st_size, str(file)]
+            for file in sorted(film_drama_dir.glob("*.json"))
+            if file.is_file()
+        )
+
+    text = [
+        "### 衍生内容",
+        f"- 脚本目录: `{scripts_dir}`",
+        f"- 剧情目录: `{film_drama_dir}`",
+        f"- 文件数: `{len(rows)}`",
+    ]
+    return "\n".join(text), rows
+
+
+def _load_chapter_manager() -> ChapterManager | None:
+    config_mgr = get_config_manager()
+    if not config_mgr.current_project:
+        return None
+    output_dir = getattr(config_mgr.generation, "output_dir", None)
+    base_dir_override = str(Path(output_dir).resolve()) if output_dir else None
+    return get_chapter_manager(config_mgr.current_project.id, base_dir_override=base_dir_override)
+
+
+def create_project_action(
+    title: str,
+    genre: str,
+    outline: str,
+    world: str,
+    characters: str,
+    author: str,
+    chapters: int,
+) -> str:
+    config_mgr = get_config_manager()
+    config_mgr.create_project(
+        title=title.strip(),
+        author=author.strip() or "AI Author",
+        genre=genre.strip(),
+        outline=outline.strip(),
+        world_setting=world.strip(),
+        character_intro=characters.strip(),
+        total_chapters=int(chapters),
+    )
+    return _active_project_status()
+
+
+def load_project_action(project_id: str) -> str:
+    config_mgr = get_config_manager()
+    if not project_id:
+        return _active_project_status()
+    project = config_mgr.load_project(project_id)
+    if not project:
+        return f"项目不存在: {project_id}"
+    return _active_project_status()
+
+
+def save_writing_options_action(options: dict[str, str]) -> str:
+    config_mgr = get_config_manager()
+    if not config_mgr.current_project:
+        return "请先创建或加载项目。"
+    normalized = normalize_writing_options(options)
+    config_mgr.current_project.metadata["writing_options"] = normalized
+    config_mgr._save_project(config_mgr.current_project)
+    return "已保存写作参数。\n\n" + _active_project_status()
+
+
+def _append_writing_option_flags(cmd: list[str], options: dict[str, str]) -> None:
+    cli_flag_map = {
+        "style": "--style",
+        "style_preset": "--style-preset",
+        "perspective": "--perspective",
+        "narrative_mode": "--narrative-mode",
+        "pace": "--pace",
+        "dialogue_density": "--dialogue-density",
+        "prose_style": "--prose-style",
+        "world_building_density": "--world-building-density",
+        "emotion_intensity": "--emotion-intensity",
+        "combat_style": "--combat-style",
+        "hook_strength": "--hook-strength",
+    }
+    for key, value in options.items():
+        if key in cli_flag_map and value:
+            cmd.extend([cli_flag_map[key], value])
+
+
+def run_generation_action(
+    count: int,
+    start: int,
+    dry_run: bool,
+    no_auto_feedback: bool,
+    options: dict[str, str],
+) -> dict[str, str]:
+    config_mgr = get_config_manager()
+    if not config_mgr.current_project:
+        return {"message": "请先创建或加载项目。"}
+
+    normalized = normalize_writing_options(options)
+    config_mgr.current_project.metadata["writing_options"] = normalized
+    config_mgr._save_project(config_mgr.current_project)
+    project_dir = Path(config_mgr.generation.output_dir).resolve()
+    run_id = str(uuid.uuid4())
+
+    cmd = [sys.executable, str(RUN_SCRIPT), "--generate", str(int(count))]
+    if int(start) > 0:
+        cmd.extend(["--start", str(int(start))])
+    if dry_run:
+        cmd.append("--dry-run")
+    if no_auto_feedback:
+        cmd.append("--no-auto-feedback")
+    _append_writing_option_flags(cmd, normalized)
+
+    run_dir = create_run(
+        project_dir=project_dir,
+        run_id=run_id,
+        project_id=config_mgr.current_project.id,
+        command=cmd[1:],
+    )
+    cmd.extend(["--run-id", run_id, "--run-dir", str(run_dir)])
+    _launch_cli_process(run_dir, cmd)
+
+    return {
+        "message": f"任务已启动，Run ID: `{run_id}`",
+        "run_id": run_id,
+        "run_dir": str(run_dir),
+    }
+
+
+def _launch_cli_process(run_dir: Path, cmd: list[str]) -> None:
+    with (run_dir / "stdout.log").open("a", encoding="utf-8") as stdout_file, (
+        run_dir / "stderr.log"
+    ).open("a", encoding="utf-8") as stderr_file:
+        subprocess.Popen(  # noqa: S603
+            cmd,
+            cwd=str(ROOT_DIR),
+            stdout=stdout_file,
+            stderr=stderr_file,
+            text=True,
+        )
+
+
+def run_full_novel_action(chapters_per_volume: int, approval_mode: str, auto_approve: bool) -> dict[str, str]:
+    config_mgr = get_config_manager()
+    if not config_mgr.current_project:
+        return {"message": "请先创建或加载项目。"}
+
+    project_dir = Path(config_mgr.generation.output_dir).resolve()
+    run_id = str(uuid.uuid4())
+    cmd = [
+        sys.executable,
+        str(RUN_SCRIPT),
+        "--generate-full",
+        "--chapters-per-volume",
+        str(int(chapters_per_volume)),
+        "--approval-mode",
+        approval_mode,
+        "--run-id",
+        run_id,
+    ]
+    if auto_approve:
+        cmd.append("--auto-approve")
+
+    run_dir = create_run(
+        project_dir=project_dir,
+        run_id=run_id,
+        project_id=config_mgr.current_project.id,
+        command=cmd[1:],
+    )
+    cmd.extend(["--run-dir", str(run_dir)])
+    _launch_cli_process(run_dir, cmd)
+    return {
+        "message": f"长篇任务已启动，Run ID: `{run_id}`",
+        "run_id": run_id,
+        "run_dir": str(run_dir),
+    }
+
+
+def _approval_payload_file(run_dir: Path, payload: dict[str, Any]) -> Path:
+    payload_path = run_dir / f"approval_payload_{uuid.uuid4().hex[:8]}.json"
+    payload_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return payload_path
+
+
+def resume_longform_action(run_dir: Path, pending_state_path: str, action: str, payload: dict[str, Any] | None = None) -> dict[str, str]:
+    status = read_status(run_dir)
+    run_id = status.get("run_id") or run_dir.name
+    cmd = [
+        sys.executable,
+        str(RUN_SCRIPT),
+        "--generate-full",
+        "--run-id",
+        str(run_id),
+        "--run-dir",
+        str(run_dir),
+        "--resume-state",
+        pending_state_path,
+        "--submit-approval",
+        action,
+    ]
+    if payload:
+        payload_path = _approval_payload_file(run_dir, payload)
+        cmd.extend(["--approval-payload", str(payload_path)])
+    _launch_cli_process(run_dir, cmd)
+    return {
+        "message": f"已提交 `{action}`，正在恢复长篇任务。",
+        "run_id": str(run_id),
+        "run_dir": str(run_dir),
+    }
+
+
+def export_text_action(start: int, end: int | None = None) -> str:
+    config_mgr = get_config_manager()
+    chapter_mgr = _load_chapter_manager()
+    if not config_mgr.current_project or chapter_mgr is None:
+        return "请先创建或加载项目。"
+
+    output_dir = Path(config_mgr.generation.output_dir) if getattr(config_mgr.generation, "output_dir", "") else Path(ROOT_DIR / "novels")
+    safe_title = config_mgr.current_project.title.replace("/", "-").strip()
+    output_path = output_dir / f"{safe_title}_{config_mgr.current_project.id}{EXPORT_SUFFIX}"
+    count = chapter_mgr.export_to_text(str(output_path), start=start, end=end)
+    if count == 0:
+        return "当前没有可导出的章节。"
+    return f"已导出 {count} 行到 `{output_path}`"
+
+
+def _render_project_sidebar(st_mod: Any) -> None:
+    config_mgr = get_config_manager()
+    st_mod.sidebar.markdown("## 项目")
+    choices = _project_choices()
+    current_value = config_mgr.current_project.id if config_mgr.current_project else None
+    selected_project = st_mod.sidebar.selectbox(
+        "加载项目",
+        options=["", *choices],
+        index=(["", *choices]).index(current_value) if current_value in choices else 0,
+        key="yw_project_selector",
+    )
+    if st_mod.sidebar.button("加载项目", use_container_width=True):
+        st_mod.session_state["yw_status"] = load_project_action(selected_project)
+        st_mod.rerun()
+
+    with st_mod.sidebar.form("create_project_form", border=True):
+        st_mod.write("### 新建项目")
+        title = st_mod.text_input("标题", value=config_mgr.current_project.title if config_mgr.current_project else "太古魔帝传")
+        author = st_mod.text_input("作者", value=config_mgr.current_project.author if config_mgr.current_project else "AI Author")
+        genre = st_mod.text_input("题材", value=config_mgr.current_project.genre if config_mgr.current_project else "玄幻修仙")
+        chapters = st_mod.number_input("计划章节数", min_value=1, max_value=2000, value=config_mgr.current_project.total_chapters if config_mgr.current_project else 240, step=1)
+        outline = st_mod.text_area(
+            "大纲",
+            value=config_mgr.current_project.outline if config_mgr.current_project else "",
+            height=120,
+            help="留空则自动生成",
+        )
+        world = st_mod.text_area(
+            "世界观",
+            value=config_mgr.current_project.world_setting if config_mgr.current_project else "",
+            height=80,
+            help="留空则自动生成",
+        )
+        characters = st_mod.text_area(
+            "人物设定",
+            value=config_mgr.current_project.character_intro if config_mgr.current_project else "",
+            height=80,
+            help="留空则自动生成",
+        )
+        if st_mod.form_submit_button("创建项目", use_container_width=True):
+            st_mod.session_state["yw_status"] = create_project_action(title, genre, outline, world, characters, author, chapters)
+            st_mod.rerun()
+
+    st_mod.sidebar.markdown("### 当前项目")
+    st_mod.sidebar.markdown(_active_project_status())
+
+
+def _render_writing_tab(st_mod: Any) -> None:
+    values = _writing_values()
+    st_mod.markdown("### 写作参数")
+    st_mod.markdown("保存后会写入当前项目 metadata, 并在生成时透传到 CLI。")
+
+    with st_mod.form("writing_options_form", border=True):
+        cols = st_mod.columns(2)
+        option_order = [
+            ("style", "基础风格", BASE_STYLE_CHOICES),
+            ("style_preset", "风格预设", ["", *STYLE_PRESET_CHOICES]),
+            ("perspective", "叙事视角", sorted(WRITING_OPTION_GROUPS["perspective"].keys())),
+            ("narrative_mode", "叙事写法", sorted(WRITING_OPTION_GROUPS["narrative_mode"].keys())),
+            ("pace", "节奏", sorted(WRITING_OPTION_GROUPS["pace"].keys())),
+            ("dialogue_density", "对白密度", sorted(WRITING_OPTION_GROUPS["dialogue_density"].keys())),
+            ("prose_style", "行文质感", sorted(WRITING_OPTION_GROUPS["prose_style"].keys())),
+            ("world_building_density", "设定密度", sorted(WRITING_OPTION_GROUPS["world_building_density"].keys())),
+            ("emotion_intensity", "情绪强度", sorted(WRITING_OPTION_GROUPS["emotion_intensity"].keys())),
+            ("combat_style", "战斗写法", sorted(WRITING_OPTION_GROUPS["combat_style"].keys())),
+            ("hook_strength", "开篇抓力", sorted(WRITING_OPTION_GROUPS["hook_strength"].keys())),
+        ]
+        collected: dict[str, str] = {}
+        for idx, (key, label, options) in enumerate(option_order):
+            with cols[idx % 2]:
+                current_value = values.get(key, "")
+                option_index = options.index(current_value) if current_value in options else 0
+                collected[key] = st_mod.selectbox(label, options=options, index=option_index, key=f"yw_{key}")
+
+        if st_mod.form_submit_button("保存写作参数", use_container_width=True, type="primary"):
+            st_mod.session_state["yw_status"] = save_writing_options_action(collected)
+            st_mod.rerun()
+
+    st_mod.markdown(st_mod.session_state.get("yw_status", ""))
+
+
+def _render_generation_tab(st_mod: Any) -> None:
+    config_mgr = get_config_manager()
+    st_mod.markdown("### 生成控制台")
+    if not config_mgr.current_project:
+        st_mod.info("先在侧边栏创建或加载项目。")
+        return
+
+    left, right = st_mod.columns([1, 1])
+    with left:
+        count = st_mod.number_input("生成章节数", min_value=1, max_value=20, value=1, step=1)
+        start = st_mod.number_input("起始章节", min_value=1, max_value=2000, value=max(config_mgr.current_project.current_chapter + 1, 1), step=1)
+        dry_run = st_mod.checkbox("Dry-run", value=False)
+        no_auto_feedback = st_mod.checkbox("禁用自动反馈", value=False)
+        if st_mod.button("开始生成", type="primary", use_container_width=True):
+            launch = run_generation_action(
+                int(count),
+                int(start),
+                dry_run,
+                no_auto_feedback,
+                _writing_values(),
+            )
+            st_mod.session_state["yw_generation_log"] = launch.get("message", "")
+            st_mod.session_state["yw_active_run_id"] = launch.get("run_id")
+            st_mod.session_state["yw_active_run_dir"] = launch.get("run_dir")
+            st_mod.rerun()
+    with right:
+        summary = config_mgr.get_project_summary()
+        st_mod.metric("当前章节", f"{summary.get('current_chapter', 0)} / {summary.get('total_chapters', 0)}")
+        st_mod.metric("完成度", f"{summary.get('progress_percent', 0):.1f}%")
+        st_mod.markdown(st_mod.session_state.get("yw_generation_log", ""))
+        with st_mod.expander("整本长篇生成", expanded=False):
+            chapters_per_volume = st_mod.number_input(
+                "每卷章节数",
+                min_value=1,
+                max_value=200,
+                value=60,
+                step=1,
+                key="yw_longform_chapters_per_volume",
+            )
+            approval_mode = st_mod.selectbox(
+                "审批节点",
+                options=["outline+volume", "outline", "volume", "none"],
+                index=0,
+                key="yw_longform_approval_mode",
+            )
+            auto_approve = st_mod.checkbox("自动跳过审批", value=False, key="yw_longform_auto_approve")
+            if st_mod.button("启动整本生成", use_container_width=True, key="yw_start_longform"):
+                launch = run_full_novel_action(int(chapters_per_volume), approval_mode, auto_approve)
+                st_mod.session_state["yw_generation_log"] = launch.get("message", "")
+                st_mod.session_state["yw_active_run_id"] = launch.get("run_id")
+                st_mod.session_state["yw_active_run_dir"] = launch.get("run_dir")
+                st_mod.rerun()
+        _render_run_monitor(st_mod)
+        _render_pending_review(st_mod)
+
+
+def _resolve_active_run_dir() -> Path | None:
+    session_run_dir = st_state = None
+    try:
+        import streamlit as st_mod
+        st_state = st_mod.session_state
+    except ModuleNotFoundError:
+        st_state = None
+
+    if st_state:
+        session_run_dir = st_state.get("yw_active_run_dir")
+        if session_run_dir:
+            return Path(session_run_dir)
+
+    root = _project_root()
+    if not root:
+        return None
+    return latest_run_dir(root)
+
+
+def _run_monitor_payload(run_dir: Path | None) -> dict[str, Any]:
+    if run_dir is None:
+        return {
+            "status": {},
+            "stdout": "",
+            "stderr": "",
+            "run_dir": None,
+            "is_active": False,
+        }
+    status = read_status(run_dir)
+    run_status = status.get("status")
+    return {
+        "status": status,
+        "stdout": read_log_tail(run_dir, "stdout"),
+        "stderr": read_log_tail(run_dir, "stderr"),
+        "run_dir": str(run_dir),
+        "is_active": run_status in {"queued", "running"},
+    }
+
+
+def _pending_review_payload(run_dir: Path | None) -> dict[str, Any]:
+    if run_dir is None:
+        return {}
+    status = read_status(run_dir)
+    pending_state_path = status.get("pending_state_path")
+    if not pending_state_path:
+        return {}
+    payload = load_json_file(pending_state_path)
+    if not payload:
+        return {}
+    payload["pending_state_path"] = pending_state_path
+    return payload
+
+
+def _render_run_status_summary(st_mod: Any, payload: dict[str, Any]) -> None:
+    status = payload["status"]
+    if not status:
+        st_mod.info("暂无运行中的生成任务。")
+        return
+
+    metric_cols = st_mod.columns(4)
+    metric_cols[0].metric("任务状态", status.get("status", "unknown"))
+    metric_cols[1].metric("当前阶段", status.get("current_stage", "init"))
+    metric_cols[2].metric(
+        "章节进度",
+        f"{status.get('chapters_completed', 0)} / {status.get('chapters_total', 0)}",
+    )
+    metric_cols[3].metric("预计剩余", format_eta(status.get("eta_seconds")))
+
+    total = int(status.get("chapters_total") or 0)
+    completed = int(status.get("chapters_completed") or 0)
+    progress = (completed / total) if total > 0 else 0.0
+    st_mod.progress(min(max(progress, 0.0), 1.0), text=status.get("current_step", "等待启动"))
+
+    if status.get("failed_stage") or status.get("error_message"):
+        st_mod.error(
+            f"失败阶段: {status.get('failed_stage') or 'unknown'}\n\n"
+            f"{status.get('error_message') or '无错误详情'}"
+        )
+    elif status.get("status") == "paused":
+        st_mod.warning(f"任务已暂停: {status.get('pause_reason') or status.get('current_stage')}")
+    elif status.get("status") == "succeeded":
+        st_mod.success("本次生成任务已完成。")
+
+    if payload.get("run_dir"):
+        st_mod.caption(f"运行目录: `{payload['run_dir']}`")
+
+
+def _render_run_monitor(st_mod: Any) -> None:
+    st_mod.markdown("#### 任务运行状态")
+    if st_mod.button("刷新运行状态", use_container_width=True, key="yw_refresh_run_state"):
+        st_mod.rerun()
+
+    @st_mod.fragment(run_every=2)
+    def _auto_refresh_panel() -> None:
+        payload = _run_monitor_payload(_resolve_active_run_dir())
+        _render_run_status_summary(st_mod, payload)
+        st_mod.text_area("stdout.log", value=payload["stdout"], height=220, key="yw_stdout_log_view")
+        st_mod.text_area("stderr.log", value=payload["stderr"], height=140, key="yw_stderr_log_view")
+
+    _auto_refresh_panel()
+
+
+def _render_pending_review(st_mod: Any) -> None:
+    run_dir = _resolve_active_run_dir()
+    payload = _pending_review_payload(run_dir)
+    if not run_dir or not payload:
+        return
+
+    checkpoint_type = payload.get("checkpoint_type")
+    review_payload = payload.get("review_payload", {})
+    st_mod.markdown("#### 待审批节点")
+    st_mod.caption(f"`{checkpoint_type}`")
+
+    if checkpoint_type == "outline_review":
+        with st_mod.form("yw_outline_review_form", border=True):
+            outline = st_mod.text_area("大纲", value=review_payload.get("outline", ""), height=140)
+            world_setting = st_mod.text_area("世界观", value=review_payload.get("world_setting", ""), height=120)
+            character_intro = st_mod.text_area("人物设定", value=review_payload.get("character_intro", ""), height=120)
+            approve = st_mod.form_submit_button("批准并继续", use_container_width=True, type="primary")
+            revise = st_mod.form_submit_button("保存修改后继续", use_container_width=True)
+            if approve or revise:
+                action = "revise" if revise else "approve"
+                result = resume_longform_action(
+                    run_dir,
+                    payload["pending_state_path"],
+                    action,
+                    {
+                        "outline": outline,
+                        "world_setting": world_setting,
+                        "character_intro": character_intro,
+                    },
+                )
+                st_mod.session_state["yw_generation_log"] = result["message"]
+                st_mod.rerun()
+        return
+
+    if checkpoint_type == "volume_review":
+        volume_index = review_payload.get("volume_index", payload.get("current_volume", 0))
+        st_mod.markdown(
+            f"第 `{volume_index}` 卷已完成，章节范围 `{review_payload.get('volume_start_chapter', 0)}-"
+            f"{review_payload.get('volume_end_chapter', 0)}`。"
+        )
+        notes = st_mod.text_area("审批备注", value="", height=100, key="yw_volume_review_notes")
+        cols = st_mod.columns(2)
+        if cols[0].button("批准并进入下一卷", use_container_width=True, type="primary", key="yw_volume_approve"):
+            result = resume_longform_action(
+                run_dir,
+                payload["pending_state_path"],
+                "approve",
+                {"notes": notes},
+            )
+            st_mod.session_state["yw_generation_log"] = result["message"]
+            st_mod.rerun()
+        if cols[1].button("带备注继续", use_container_width=True, key="yw_volume_revise"):
+            result = resume_longform_action(
+                run_dir,
+                payload["pending_state_path"],
+                "revise",
+                {"notes": notes},
+            )
+            st_mod.session_state["yw_generation_log"] = result["message"]
+            st_mod.rerun()
+
+
+def _render_chapters_tab(st_mod: Any) -> None:
+    st_mod.markdown("### 章节列表与预览")
+    choices = _chapter_choices()
+    if not choices:
+        st_mod.info("当前没有章节。")
+        return
+
+    chapter_labels = [label for label, _ in choices]
+    label_to_number = {label: int(number) for label, number in choices}
+    current_number = st_mod.session_state.get("yw_selected_chapter")
+    current_label = next((label for label, number in choices if int(number) == current_number), chapter_labels[0])
+    selected_label = st_mod.selectbox("选择章节", options=chapter_labels, index=chapter_labels.index(current_label), key="yw_chapter_selector")
+    selected_number = label_to_number[selected_label]
+    st_mod.session_state["yw_selected_chapter"] = selected_number
+
+    detail, plot_text, report_text, body_text = _chapter_detail(selected_number)
+    left, right = st_mod.columns([1.4, 1])
+    with left:
+        st_mod.markdown(detail)
+    with right:
+        st_mod.text_area("章节概要 JSON", value=plot_text, height=180)
+        st_mod.text_area("一致性报告 JSON", value=report_text, height=180)
+    st_mod.text_area("正文", value=body_text, height=320)
+    st_mod.dataframe(_chapter_rows(), use_container_width=True, hide_index=True)
+
+
+def _render_export_tab(st_mod: Any) -> None:
+    st_mod.markdown("### 导出与衍生内容")
+    config_mgr = get_config_manager()
+    if not config_mgr.current_project:
+        st_mod.info("先创建或加载项目。")
+        return
+
+    cols = st_mod.columns(3)
+    with cols[0]:
+        start = st_mod.number_input("导出起始章", min_value=1, max_value=2000, value=1, step=1, key="yw_export_start")
+    with cols[1]:
+        end = st_mod.number_input("导出结束章", min_value=1, max_value=2000, value=max(config_mgr.current_project.current_chapter, 1), step=1, key="yw_export_end")
+    with cols[2]:
+        if st_mod.button("导出文本", use_container_width=True):
+            st_mod.session_state["yw_export_message"] = export_text_action(int(start), int(end))
+            st_mod.rerun()
+
+    st_mod.markdown(st_mod.session_state.get("yw_export_message", ""))
+    derivative_text, derivative_rows = _derivative_summary()
+    st_mod.markdown(derivative_text)
+    st_mod.dataframe(derivative_rows, use_container_width=True, hide_index=True)
+
+
+def build_app() -> None:
+    """Render the Streamlit application."""
+    st_mod = _require_streamlit()
+    st_mod.set_page_config(page_title="小说生成工作台", page_icon="✍", layout="wide")
+    st_mod.markdown(PAGE_CSS, unsafe_allow_html=True)
+
+    st_mod.markdown('<div class="yw-title">小说生成工作台</div>', unsafe_allow_html=True)
+    st_mod.markdown(
+        '<div class="yw-subtitle">项目创建 · 写作参数 · 章节生成 · 章节预览 · 导出文本</div>',
+        unsafe_allow_html=True,
+    )
+
+    _render_project_sidebar(st_mod)
+
+    tabs = st_mod.tabs(["生成控制台", "写作参数", "章节阅读", "导出与衍生"])
+    with tabs[0]:
+        _render_generation_tab(st_mod)
+    with tabs[1]:
+        _render_writing_tab(st_mod)
+    with tabs[2]:
+        _render_chapters_tab(st_mod)
+    with tabs[3]:
+        _render_export_tab(st_mod)
+
+
+def main() -> None:
+    """CLI entrypoint for `python streamlit_app.py`."""
+    build_app()
+
+
+if __name__ == "__main__":  # pragma: no cover - manual launch path
+    main()
