@@ -1,13 +1,18 @@
 """Pytest fixtures for knowledge_base tests."""
 
-import json
-import tempfile
-import shutil
-from pathlib import Path
 from datetime import datetime
-from unittest.mock import MagicMock, Mock
+from pathlib import Path
+import shutil
+import sys
+import tempfile
+from unittest.mock import MagicMock
 
 import pytest
+
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 
 @pytest.fixture
@@ -107,5 +112,4 @@ def mock_config_manager(temp_config_dir, monkeypatch):
     """Mock ConfigManager that uses temp directory."""
     from agents.config_manager import ConfigManager
     monkeypatch.setattr(ConfigManager, "_load_env_vars", lambda self: None)
-    manager = ConfigManager(config_dir=str(temp_config_dir))
-    return manager
+    return ConfigManager(config_dir=str(temp_config_dir))

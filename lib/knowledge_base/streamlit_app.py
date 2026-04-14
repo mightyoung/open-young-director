@@ -24,7 +24,6 @@ from services.run_storage import (  # noqa: E402
     read_log_tail,
     read_status,
 )
-from services.longform_run import load_json_file  # noqa: E402
 from writing_options import (  # noqa: E402
     BASE_STYLE_CHOICES,
     STYLE_PRESET_CHOICES,
@@ -184,6 +183,7 @@ def _active_project_status() -> str:
         f"- 题材: `{project.genre}`",
         f"- 进度: `{project.current_chapter}/{project.total_chapters}`",
         f"- 更新时间: `{project.updated_at}`",
+        f"- 当前模型: `{config_mgr.generation.active_provider}:{config_mgr.generation.model_name}`",
         "",
         "#### 写作参数",
     ]
@@ -197,6 +197,25 @@ def _writing_values() -> dict[str, str]:
     if config_mgr.current_project:
         metadata = config_mgr.current_project.metadata.get("writing_options", {})
     return normalize_writing_options(metadata)
+
+
+def _provider_snapshot() -> dict[str, dict[str, Any]]:
+    config_mgr = get_config_manager()
+    snapshot: dict[str, dict[str, Any]] = {}
+    for provider_name in sorted(config_mgr.generation.providers.keys()):
+        snapshot[provider_name] = config_mgr.get_provider_payload(provider_name)
+    return snapshot
+
+
+def _provider_status_lines() -> list[str]:
+    config_mgr = get_config_manager()
+    lines = ["### Provider 配置"]
+    for provider_name, payload in _provider_snapshot().items():
+        marker = "active" if provider_name == config_mgr.generation.active_provider else "standby"
+        lines.append(
+            f"- `{provider_name}` · `{marker}` · model=`{payload.get('model_name', '')}` · enabled=`{payload.get('enabled', True)}`"
+        )
+    return lines
 
 
 def _chapter_choices() -> list[tuple[str, str]]:
@@ -309,6 +328,11 @@ def create_project_action(
     chapters: int,
 ) -> str:
     config_mgr = get_config_manager()
+    llm_client = None
+    try:
+        llm_client = config_mgr.build_generation_llm_client()
+    except Exception:
+        llm_client = None
     config_mgr.create_project(
         title=title.strip(),
         author=author.strip() or "AI Author",
@@ -317,6 +341,7 @@ def create_project_action(
         world_setting=world.strip(),
         character_intro=characters.strip(),
         total_chapters=int(chapters),
+        llm_client=llm_client,
     )
     return _active_project_status()
 
@@ -339,6 +364,16 @@ def save_writing_options_action(options: dict[str, str]) -> str:
     config_mgr.current_project.metadata["writing_options"] = normalized
     config_mgr._save_project(config_mgr.current_project)
     return "已保存写作参数。\n\n" + _active_project_status()
+
+
+def save_provider_settings_action(active_provider: str, provider_updates: dict[str, dict[str, Any]]) -> str:
+    config_mgr = get_config_manager()
+    config_mgr.update_generation_config(
+        active_provider=active_provider,
+        provider_updates=provider_updates,
+        persist=True,
+    )
+    return "已保存 Provider 配置。\n\n" + "\n".join(_provider_status_lines())
 
 
 def _append_writing_option_flags(cmd: list[str], options: dict[str, str]) -> None:
@@ -499,6 +534,93 @@ def export_text_action(start: int, end: int | None = None) -> str:
     return f"已导出 {count} 行到 `{output_path}`"
 
 
+def switch_active_run_action(run_id: str) -> dict[str, str]:
+    runs_root = _runs_root()
+    if not runs_root or not run_id:
+        return {"message": "没有可切换的运行任务。", "run_id": "", "run_dir": ""}
+    run_dir = runs_root / run_id
+    if not run_dir.exists():
+        return {"message": f"运行任务不存在: {run_id}", "run_id": "", "run_dir": ""}
+    return {
+        "message": f"已切换到运行任务 `{run_id}`。",
+        "run_id": run_id,
+        "run_dir": str(run_dir),
+    }
+
+
+def _active_run_id_from_state() -> str:
+    try:
+        import streamlit as st_mod
+        return str(st_mod.session_state.get("yw_active_run_id", "") or "")
+    except ModuleNotFoundError:
+        return ""
+
+
+def _pause_reason_label(reason: str) -> str:
+    mapping = {
+        "outline_review": "大纲审批",
+        "volume_review": "分卷审批",
+        "risk_review": "风险复核",
+    }
+    return mapping.get(str(reason or "").strip(), str(reason or "").strip())
+
+
+def _run_status_label(status: str) -> str:
+    mapping = {
+        "queued": "排队中",
+        "running": "运行中",
+        "paused": "已暂停",
+        "succeeded": "已完成",
+        "failed": "失败",
+    }
+    return mapping.get(str(status or "").strip(), str(status or "").strip())
+
+
+def _run_stage_label(stage: str) -> str:
+    mapping = {
+        "init": "初始化",
+        "outline.generate": "生成大纲",
+        "outline.review": "大纲审批",
+        "volume.write": "分卷写作",
+        "volume.review": "分卷审批",
+        "risk.review": "风险复核",
+        "chapter.generate": "章节生成",
+    }
+    return mapping.get(str(stage or "").strip(), str(stage or "").strip())
+
+
+def _recent_run_preview(run_id: str) -> dict[str, str | bool]:
+    runs_root = _runs_root()
+    if not runs_root or not run_id:
+        return {
+            "stdout": "",
+            "stderr": "",
+            "run_dir": "",
+            "status": "",
+            "pause_reason": "",
+            "has_pending_review": False,
+        }
+    run_dir = runs_root / run_id
+    if not run_dir.exists():
+        return {
+            "stdout": "",
+            "stderr": "",
+            "run_dir": "",
+            "status": "",
+            "pause_reason": "",
+            "has_pending_review": False,
+        }
+    status = read_status(run_dir)
+    return {
+        "stdout": read_log_tail(run_dir, "stdout", max_chars=1200),
+        "stderr": read_log_tail(run_dir, "stderr", max_chars=800),
+        "run_dir": str(run_dir),
+        "status": _run_status_label(str(status.get("status", "") or "")),
+        "pause_reason": _pause_reason_label(str(status.get("pause_reason", "") or "")),
+        "has_pending_review": bool(status.get("pending_state_path")),
+    }
+
+
 def _render_project_sidebar(st_mod: Any) -> None:
     config_mgr = get_config_manager()
     st_mod.sidebar.markdown("## 项目")
@@ -580,6 +702,107 @@ def _render_writing_tab(st_mod: Any) -> None:
     st_mod.markdown(st_mod.session_state.get("yw_status", ""))
 
 
+def _render_provider_tab(st_mod: Any) -> None:
+    config_mgr = get_config_manager()
+    providers = _provider_snapshot()
+    provider_names = list(providers.keys())
+    active_provider = config_mgr.generation.active_provider if config_mgr.generation.active_provider in provider_names else provider_names[0]
+
+    st_mod.markdown("### LLM Provider")
+    st_mod.markdown("这里配置生成主链路使用的文本模型，同时保留 Doubao 的视频提示词增强配置。")
+
+    with st_mod.form("provider_settings_form", border=True):
+        selected_active = st_mod.selectbox(
+            "默认文本 Provider",
+            options=provider_names,
+            index=provider_names.index(active_provider),
+            format_func=lambda value: f"{value} · {providers[value].get('model_name', '')}",
+        )
+        updates: dict[str, dict[str, Any]] = {}
+        for provider_name in provider_names:
+            payload = providers[provider_name]
+            with st_mod.expander(f"{provider_name} 配置", expanded=provider_name == selected_active):
+                enabled = st_mod.checkbox(
+                    "启用",
+                    value=bool(payload.get("enabled", True)),
+                    key=f"yw_provider_enabled_{provider_name}",
+                )
+                label = st_mod.text_input(
+                    "显示名称",
+                    value=str(payload.get("label", provider_name)),
+                    key=f"yw_provider_label_{provider_name}",
+                )
+                model_name = st_mod.text_input(
+                    "模型名",
+                    value=str(payload.get("model_name", "")),
+                    key=f"yw_provider_model_{provider_name}",
+                )
+                api_key = st_mod.text_input(
+                    "API Key",
+                    value=str(payload.get("api_key", "")),
+                    type="password",
+                    key=f"yw_provider_key_{provider_name}",
+                )
+                base_url = st_mod.text_input(
+                    "Base URL",
+                    value=str(payload.get("base_url", "")),
+                    key=f"yw_provider_base_url_{provider_name}",
+                )
+                api_host = st_mod.text_input(
+                    "API Host",
+                    value=str(payload.get("api_host", "")),
+                    key=f"yw_provider_api_host_{provider_name}",
+                )
+                temperature = st_mod.slider(
+                    "Temperature",
+                    min_value=0.0,
+                    max_value=1.5,
+                    value=float(payload.get("temperature", 0.7)),
+                    step=0.1,
+                    key=f"yw_provider_temperature_{provider_name}",
+                )
+                max_tokens = st_mod.number_input(
+                    "Max Tokens",
+                    min_value=256,
+                    max_value=65536,
+                    value=int(payload.get("max_tokens", 8192)),
+                    step=256,
+                    key=f"yw_provider_max_tokens_{provider_name}",
+                )
+                use_cli = st_mod.checkbox(
+                    "优先使用 CLI",
+                    value=bool(payload.get("use_cli", False)),
+                    key=f"yw_provider_use_cli_{provider_name}",
+                    disabled=provider_name != "kimi",
+                )
+                system_prompt = st_mod.text_area(
+                    "System Prompt",
+                    value=str(payload.get("system_prompt", "")),
+                    height=120,
+                    key=f"yw_provider_system_prompt_{provider_name}",
+                )
+                updates[provider_name] = {
+                    "provider": provider_name,
+                    "label": label,
+                    "enabled": enabled,
+                    "api_key": api_key.strip(),
+                    "base_url": base_url.strip(),
+                    "api_host": api_host.strip(),
+                    "model_name": model_name.strip(),
+                    "temperature": float(temperature),
+                    "max_tokens": int(max_tokens),
+                    "use_cli": bool(use_cli),
+                    "system_prompt": system_prompt.strip(),
+                }
+
+        if st_mod.form_submit_button("保存 Provider 配置", use_container_width=True, type="primary"):
+            st_mod.session_state["yw_status"] = save_provider_settings_action(selected_active, updates)
+            st_mod.rerun()
+
+    st_mod.markdown("\n".join(_provider_status_lines()))
+    st_mod.markdown(st_mod.session_state.get("yw_status", ""))
+
+
 def _render_generation_tab(st_mod: Any) -> None:
     config_mgr = get_config_manager()
     st_mod.markdown("### 生成控制台")
@@ -634,6 +857,49 @@ def _render_generation_tab(st_mod: Any) -> None:
                 st_mod.rerun()
         _render_run_monitor(st_mod)
         _render_pending_review(st_mod)
+        recent_rows = _recent_run_rows()
+        if recent_rows:
+            st_mod.markdown("#### 最近运行")
+            st_mod.dataframe(
+                recent_rows,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    0: "当前",
+                    1: "Run ID",
+                    2: "状态",
+                    3: "阶段",
+                    4: "进度",
+                    5: "排队指令首行",
+                },
+            )
+            run_ids = [row[1] for row in recent_rows]
+            active_run_id = _active_run_id_from_state()
+            selected_run_id = st_mod.selectbox(
+                "切换查看运行任务",
+                options=run_ids,
+                index=run_ids.index(active_run_id) if active_run_id in run_ids else 0,
+                key="yw_recent_run_selector",
+            )
+            preview = _recent_run_preview(selected_run_id)
+            if preview["run_dir"]:
+                st_mod.caption(f"所选运行目录: `{preview['run_dir']}`")
+                status_line = f"状态: {preview['status'] or 'unknown'}"
+                if preview["pause_reason"]:
+                    status_line += f" | 暂停原因: {preview['pause_reason']}"
+                if preview["has_pending_review"]:
+                    status_line += " | 存在待审批节点"
+                st_mod.caption(status_line)
+                st_mod.text_area("所选运行 stdout 预览", value=preview["stdout"], height=120)
+                if preview["stderr"]:
+                    st_mod.text_area("所选运行 stderr 预览", value=preview["stderr"], height=80)
+            if st_mod.button("切换到所选运行", use_container_width=True, key="yw_switch_recent_run"):
+                result = switch_active_run_action(selected_run_id)
+                st_mod.session_state["yw_generation_log"] = result["message"]
+                if result["run_id"]:
+                    st_mod.session_state["yw_active_run_id"] = result["run_id"]
+                    st_mod.session_state["yw_active_run_dir"] = result["run_dir"]
+                st_mod.rerun()
 
 
 def _resolve_active_run_dir() -> Path | None:
@@ -663,6 +929,7 @@ def _run_monitor_payload(run_dir: Path | None) -> dict[str, Any]:
             "stderr": "",
             "run_dir": None,
             "is_active": False,
+            "queued_volume_guidance": "",
         }
     status = read_status(run_dir)
     run_status = status.get("status")
@@ -672,7 +939,37 @@ def _run_monitor_payload(run_dir: Path | None) -> dict[str, Any]:
         "stderr": read_log_tail(run_dir, "stderr"),
         "run_dir": str(run_dir),
         "is_active": run_status in {"queued", "running"},
+        "queued_volume_guidance": str(status.get("queued_volume_guidance", "") or ""),
     }
+
+
+def _recent_run_rows(limit: int = 5) -> list[list[str]]:
+    runs_root = _runs_root()
+    if not runs_root or not runs_root.exists():
+        return []
+
+    run_dirs = [path for path in runs_root.iterdir() if path.is_dir()]
+    run_dirs.sort(key=lambda path: path.stat().st_mtime, reverse=True)
+    active_run_id = _active_run_id_from_state()
+
+    rows: list[list[str]] = []
+    for run_dir in run_dirs[:limit]:
+        status = read_status(run_dir)
+        if not status:
+            continue
+        guidance = str(status.get("queued_volume_guidance", "") or "").strip()
+        guidance_head = guidance.splitlines()[0] if guidance else ""
+        rows.append(
+            [
+                "当前" if run_dir.name == active_run_id else "",
+                run_dir.name,
+                _run_status_label(str(status.get("status", "unknown"))),
+                _run_stage_label(str(status.get("current_stage", "init"))),
+                f"{status.get('chapters_completed', 0)} / {status.get('chapters_total', 0)}",
+                guidance_head,
+            ]
+        )
+    return rows
 
 
 def _pending_review_payload(run_dir: Path | None) -> dict[str, Any]:
@@ -682,11 +979,67 @@ def _pending_review_payload(run_dir: Path | None) -> dict[str, Any]:
     pending_state_path = status.get("pending_state_path")
     if not pending_state_path:
         return {}
-    payload = load_json_file(pending_state_path)
+    payload = _read_json(Path(pending_state_path))
     if not payload:
         return {}
     payload["pending_state_path"] = pending_state_path
     return payload
+
+
+def _risk_review_summary(payload: dict[str, Any]) -> str:
+    review_payload = payload.get("review_payload", {})
+    lines = [
+        f"风险等级: {review_payload.get('risk_level', 'unknown')}",
+        f"卷范围: {review_payload.get('volume_start_chapter', 0)}-{review_payload.get('volume_end_chapter', 0)}",
+        f"低分章节数: {review_payload.get('low_score_chapter_count', 0)}",
+        f"缺失关键事件数: {review_payload.get('total_missing_events', 0)}",
+        "",
+        review_payload.get("summary", "未提供风险摘要。"),
+    ]
+    for item in review_payload.get("at_risk_chapters", [])[:5]:
+        recommendations = "；".join(item.get("recommendations", [])[:2]) or "无额外建议"
+        lines.append(
+            f"- 第 {item.get('chapter_number', 0)} 章 · 分数 {item.get('overall_score', 0)} · "
+            f"缺失事件 {item.get('missing_events_count', 0)} · {recommendations}"
+        )
+    return "\n".join(lines)
+
+
+def _volume_review_summary(payload: dict[str, Any]) -> str:
+    review_payload = payload.get("review_payload", {})
+    lines = [
+        f"卷范围: {review_payload.get('volume_start_chapter', 0)}-{review_payload.get('volume_end_chapter', 0)}",
+        f"已生成章节: {review_payload.get('generated_chapter_count', 0)} / {review_payload.get('planned_chapter_count', 0)}",
+        f"总字数: {review_payload.get('total_word_count', 0)}",
+    ]
+    opening_summary = str(review_payload.get("opening_summary", "")).strip()
+    closing_summary = str(review_payload.get("closing_summary", "")).strip()
+    if opening_summary:
+        lines.extend(["", f"卷开篇摘要: {opening_summary}"])
+    if closing_summary and closing_summary != opening_summary:
+        lines.append(f"卷收束摘要: {closing_summary}")
+    for item in review_payload.get("chapter_highlights", [])[:8]:
+        key_events = "；".join(item.get("key_events", [])[:3]) or "无关键事件摘要"
+        chapter_summary = item.get("summary", "") or "暂无章节摘要"
+        lines.append(
+            f"- 第 {item.get('chapter_number', 0)} 章《{item.get('title', '')}》 · "
+            f"{item.get('word_count', 0)} 字 · {chapter_summary} · 关键事件: {key_events}"
+        )
+    return "\n".join(lines)
+
+
+def _queued_guidance_summary(status: dict[str, Any]) -> str:
+    queued_guidance = str(status.get("queued_volume_guidance", "") or "").strip()
+    if queued_guidance:
+        return queued_guidance
+    longform_state_path = status.get("longform_state_path")
+    if not longform_state_path:
+        return ""
+    state = _read_json(Path(longform_state_path))
+    guidance = str(state.get("next_volume_guidance", "")).strip()
+    if not guidance:
+        return ""
+    return guidance
 
 
 def _render_run_status_summary(st_mod: Any, payload: dict[str, Any]) -> None:
@@ -715,9 +1068,14 @@ def _render_run_status_summary(st_mod: Any, payload: dict[str, Any]) -> None:
             f"{status.get('error_message') or '无错误详情'}"
         )
     elif status.get("status") == "paused":
-        st_mod.warning(f"任务已暂停: {status.get('pause_reason') or status.get('current_stage')}")
+        pause_reason = _pause_reason_label(status.get("pause_reason") or "") or status.get("current_stage")
+        st_mod.warning(f"任务已暂停: {pause_reason}")
     elif status.get("status") == "succeeded":
         st_mod.success("本次生成任务已完成。")
+
+    queued_guidance = _queued_guidance_summary(status)
+    if queued_guidance:
+        st_mod.info(f"下一卷排队指令:\n{queued_guidance}")
 
     if payload.get("run_dir"):
         st_mod.caption(f"运行目录: `{payload['run_dir']}`")
@@ -732,8 +1090,8 @@ def _render_run_monitor(st_mod: Any) -> None:
     def _auto_refresh_panel() -> None:
         payload = _run_monitor_payload(_resolve_active_run_dir())
         _render_run_status_summary(st_mod, payload)
-        st_mod.text_area("stdout.log", value=payload["stdout"], height=220, key="yw_stdout_log_view")
-        st_mod.text_area("stderr.log", value=payload["stderr"], height=140, key="yw_stderr_log_view")
+        st_mod.text_area("stdout.log", value=payload["stdout"], height=220)
+        st_mod.text_area("stderr.log", value=payload["stderr"], height=140)
 
     _auto_refresh_panel()
 
@@ -774,18 +1132,43 @@ def _render_pending_review(st_mod: Any) -> None:
 
     if checkpoint_type == "volume_review":
         volume_index = review_payload.get("volume_index", payload.get("current_volume", 0))
-        st_mod.markdown(
-            f"第 `{volume_index}` 卷已完成，章节范围 `{review_payload.get('volume_start_chapter', 0)}-"
-            f"{review_payload.get('volume_end_chapter', 0)}`。"
+        st_mod.markdown(f"第 `{volume_index}` 卷已完成。")
+        st_mod.info(_volume_review_summary(payload))
+        must_recover = st_mod.text_area("必须回收的伏笔/问题", value="", height=90, key="yw_volume_must_recover")
+        relationship_focus = st_mod.text_area("需要强化的人物关系", value="", height=90, key="yw_volume_relationship_focus")
+        must_avoid = st_mod.text_area("明确避免的方向", value="", height=90, key="yw_volume_must_avoid")
+        tone_target = st_mod.text_input("目标基调", value="", key="yw_volume_tone_target")
+        extra_notes = st_mod.text_area(
+            "补充说明",
+            value="",
+            height=90,
+            key="yw_volume_extra_notes",
+            help="这些结构化指令会被整理后传入下一卷生成提示词。",
         )
-        notes = st_mod.text_area("审批备注", value="", height=100, key="yw_volume_review_notes")
+        guidance_payload = {
+            "must_recover": must_recover,
+            "relationship_focus": relationship_focus,
+            "must_avoid": must_avoid,
+            "tone_target": tone_target,
+            "extra_notes": extra_notes,
+        }
+        preview_lines = [
+            f"- 必须回收的伏笔/问题: {must_recover}",
+            f"- 需要强化的人物关系: {relationship_focus}",
+            f"- 明确避免的方向: {must_avoid}",
+            f"- 目标基调: {tone_target}",
+            f"- 补充说明: {extra_notes}",
+        ]
+        if any(value.strip() for value in guidance_payload.values()):
+            st_mod.caption("下一卷指令预览")
+            st_mod.code("\n".join(line for line, value in zip(preview_lines, guidance_payload.values()) if value.strip()), language="text")
         cols = st_mod.columns(2)
         if cols[0].button("批准并进入下一卷", use_container_width=True, type="primary", key="yw_volume_approve"):
             result = resume_longform_action(
                 run_dir,
                 payload["pending_state_path"],
                 "approve",
-                {"notes": notes},
+                guidance_payload,
             )
             st_mod.session_state["yw_generation_log"] = result["message"]
             st_mod.rerun()
@@ -794,6 +1177,39 @@ def _render_pending_review(st_mod: Any) -> None:
                 run_dir,
                 payload["pending_state_path"],
                 "revise",
+                guidance_payload,
+            )
+            st_mod.session_state["yw_generation_log"] = result["message"]
+            st_mod.rerun()
+        return
+
+    if checkpoint_type == "risk_review":
+        st_mod.error(_risk_review_summary(payload))
+        notes = st_mod.text_area("风险复核备注", value="", height=120, key="yw_risk_review_notes")
+        cols = st_mod.columns(3)
+        if cols[0].button("确认继续", use_container_width=True, type="primary", key="yw_risk_approve"):
+            result = resume_longform_action(
+                run_dir,
+                payload["pending_state_path"],
+                "approve",
+                {"notes": notes},
+            )
+            st_mod.session_state["yw_generation_log"] = result["message"]
+            st_mod.rerun()
+        if cols[1].button("记录备注后继续", use_container_width=True, key="yw_risk_revise"):
+            result = resume_longform_action(
+                run_dir,
+                payload["pending_state_path"],
+                "revise",
+                {"notes": notes},
+            )
+            st_mod.session_state["yw_generation_log"] = result["message"]
+            st_mod.rerun()
+        if cols[2].button("保持暂停", use_container_width=True, key="yw_risk_reject"):
+            result = resume_longform_action(
+                run_dir,
+                payload["pending_state_path"],
+                "reject",
                 {"notes": notes},
             )
             st_mod.session_state["yw_generation_log"] = result["message"]
@@ -863,14 +1279,16 @@ def build_app() -> None:
 
     _render_project_sidebar(st_mod)
 
-    tabs = st_mod.tabs(["生成控制台", "写作参数", "章节阅读", "导出与衍生"])
+    tabs = st_mod.tabs(["生成控制台", "写作参数", "模型配置", "章节阅读", "导出与衍生"])
     with tabs[0]:
         _render_generation_tab(st_mod)
     with tabs[1]:
         _render_writing_tab(st_mod)
     with tabs[2]:
-        _render_chapters_tab(st_mod)
+        _render_provider_tab(st_mod)
     with tabs[3]:
+        _render_chapters_tab(st_mod)
+    with tabs[4]:
         _render_export_tab(st_mod)
 
 

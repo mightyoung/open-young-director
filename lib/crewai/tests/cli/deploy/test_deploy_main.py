@@ -144,10 +144,18 @@ class TestDeployCommand(unittest.TestCase):
 
     @patch("crewai.cli.deploy.main.fetch_and_json_env_file")
     @patch("crewai.cli.deploy.main.git.Repository.origin_url")
+    @patch("crewai.cli.deploy.main.git.Repository.fetch")
     @patch("builtins.input")
-    def test_create_crew(self, mock_input, mock_git_origin_url, mock_fetch_env):
+    def test_create_crew(
+        self,
+        mock_input,
+        mock_git_fetch,
+        mock_git_origin_url,
+        mock_fetch_env,
+    ):
         mock_fetch_env.return_value = {"ENV_VAR": "value"}
         mock_git_origin_url.return_value = "https://github.com/test/repo.git"
+        mock_git_fetch.return_value = None
         mock_input.return_value = ""
 
         mock_response = MagicMock()

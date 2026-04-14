@@ -582,6 +582,7 @@ class TestGeminiNativeToolCalling:
         self, calculator_tool: CalculatorTool
     ) -> None:
         """Test Gemini agent can use native tool calling."""
+        pytest.importorskip("google.genai")
 
         agent = Agent(
             role="Math Assistant",
@@ -607,6 +608,8 @@ class TestGeminiNativeToolCalling:
         self, calculator_tool: CalculatorTool
     ) -> None:
         """Test Gemini agent kickoff with mocked LLM call."""
+        pytest.importorskip("google.genai")
+
         llm = LLM(model="gemini/gemini-2.5-flash")
 
         with patch.object(llm, "call", return_value="The answer is 120.") as mock_call:
@@ -635,6 +638,8 @@ class TestGeminiNativeToolCalling:
     def test_gemini_parallel_native_tool_calling_test_crew(
         self, parallel_tools: list[BaseTool]
     ) -> None:
+        pytest.importorskip("google.genai")
+
         agent = Agent(
             role="Parallel Tool Agent",
             goal="Use both tools exactly as instructed",
@@ -702,6 +707,8 @@ class TestAzureNativeToolCalling:
         self, calculator_tool: CalculatorTool
     ) -> None:
         """Test Azure agent can use native tool calling."""
+        pytest.importorskip("azure.ai.inference")
+
         agent = Agent(
             role="Math Assistant",
             goal="Help users with mathematical calculations",
@@ -763,6 +770,8 @@ class TestAzureNativeToolCalling:
     def test_azure_parallel_native_tool_calling_test_crew(
         self, parallel_tools: list[BaseTool]
     ) -> None:
+        pytest.importorskip("azure.ai.inference")
+
         agent = Agent(
             role="Parallel Tool Agent",
             goal="Use both tools exactly as instructed",

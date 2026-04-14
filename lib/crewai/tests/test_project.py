@@ -50,7 +50,7 @@ class InternalCrew:
     @llm
     def local_llm(self):
         return LLM(
-            model="openai/model_name",
+            model="openai/gpt-4o-mini",
             api_key="None",
             base_url="http://xxx.xxx.xxx.xxx:8000/v1",
         )

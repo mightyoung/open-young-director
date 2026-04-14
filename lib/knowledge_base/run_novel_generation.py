@@ -44,32 +44,52 @@ load_dotenv(Path(__file__).parent / ".env")
 from agents.chapter_manager import ChapterPlotSummary, get_chapter_manager  # noqa: E402
 from agents.config_manager import get_config_manager  # noqa: E402
 from agents.derivative_generator import get_derivative_generator  # noqa: E402
-from agents.feedback_loop import FeedbackMode, FeedbackStrategy, get_feedback_loop  # noqa: E402
+from agents.feedback_loop import (  # noqa: E402
+    FeedbackMode,
+    FeedbackStrategy,
+    get_feedback_loop,
+)
 from agents.novel_generator import get_novel_generator  # noqa: E402
-from agents.novel_orchestrator import NovelOrchestrator, OrchestratorConfig  # noqa: E402
+from agents.novel_orchestrator import (  # noqa: E402
+    NovelOrchestrator,
+    OrchestratorConfig,
+)
 from services.longform_run import (  # noqa: E402
     CHECKPOINT_OUTLINE,
+    CHECKPOINT_RISK,
     CHECKPOINT_VOLUME,
     STAGE_FINALIZE_EXPORT,
     STAGE_OUTLINE_GENERATE,
     STAGE_OUTLINE_REVIEW,
+    STAGE_RISK_PAUSE,
     STAGE_VOLUME_PLAN,
     STAGE_VOLUME_REVIEW,
     STAGE_VOLUME_WRITE,
-    approval_payload_from_input,
     apply_outline_revision,
+    approval_payload_from_input,
+    build_volume_risk_report,
     clear_pause,
+    format_volume_guidance,
     initial_longform_state,
     load_json_file,
     load_longform_state,
     next_volume,
+    normalize_volume_guidance_payload,
     record_pause,
     review_payload_for_outline,
+    review_payload_for_risk,
     review_payload_for_volume,
     save_longform_state,
+    save_risk_report,
     should_pause_for_stage,
 )
-from services.run_storage import create_run, ensure_run_dir, read_status, update_status  # noqa: E402
+from services.run_storage import (  # noqa: E402
+    create_run,
+    ensure_run_dir,
+    ensure_run_initialized,
+    read_status,
+    update_status,
+)
 from writing_options import (  # noqa: E402
     DEFAULT_WRITING_OPTIONS,
     WRITING_OPTION_GROUPS,
@@ -192,6 +212,16 @@ def _project_dir(config_mgr) -> Path:
     return Path(config_mgr.generation.output_dir).resolve()
 
 
+def _build_llm_clients(config_mgr) -> tuple[Any | None, Any | None]:
+    """Build the configured text client and optional Doubao client."""
+    try:
+        clients = config_mgr.build_provider_clients()
+        return clients.get("text"), clients.get("doubao")
+    except Exception as exc:
+        logging.getLogger(__name__).warning("Failed to build provider clients: %s", exc)
+        return None, None
+
+
 def _build_results_file(project_dir: Path) -> Path:
     """Return the canonical generation results path."""
     return project_dir / "generation_results.json"
@@ -208,6 +238,24 @@ def _telemetry_run_dir(args, project_dir: Path) -> Path | None:
         return run_dir
 
     return ensure_run_dir(project_dir, args.run_id)
+
+
+def _initialize_telemetry_run(
+    run_dir: Path | None,
+    *,
+    run_id: str,
+    project_id: str,
+    command: list[str],
+) -> Path | None:
+    """Ensure CLI-driven telemetry runs start from a complete status payload."""
+    if run_dir is None:
+        return None
+    return ensure_run_initialized(
+        run_dir,
+        run_id=run_id,
+        project_id=project_id,
+        command=command,
+    )
 
 
 def _estimate_eta_seconds(
@@ -285,9 +333,24 @@ def _update_run_progress(
     )
 
 
+def _sync_status_longform_fields(run_dir: Path | None, state: dict[str, Any]) -> None:
+    """Mirror lightweight longform fields into status.json for faster UI reads."""
+    if run_dir is None:
+        return
+    update_status(
+        run_dir,
+        longform_state_path=state.get("longform_state_path"),
+        pending_state_path=state.get("pending_state_path"),
+        risk_report_path=state.get("risk_report_path"),
+        queued_volume_guidance=str(state.get("next_volume_guidance", "") or "").strip() or None,
+        queued_volume_guidance_payload=state.get("next_volume_guidance_payload", {}) or None,
+    )
+
+
 def cmd_new_project(args):
     """创建新项目."""
     config_mgr = get_config_manager()
+    llm_client, _ = _build_llm_clients(config_mgr)
 
     project = config_mgr.create_project(
         title=args.title,
@@ -297,6 +360,7 @@ def cmd_new_project(args):
         world_setting=args.world or "",
         character_intro=args.characters or "",
         total_chapters=args.chapters or 100,
+        llm_client=llm_client,
     )
 
     writing_options = _collect_writing_options_from_args(args)
@@ -323,14 +387,14 @@ def _create_orchestrator(config_mgr, project_id: str) -> NovelOrchestrator:
     """
     logger = logging.getLogger(__name__)
 
-    # 获取 KIMI LLM 客户端
-    try:
-        from llm.kimi_client import get_kimi_client
-        llm_client = get_kimi_client()
-        logger.info("KIMI client initialized for NovelOrchestrator")
-    except Exception as e:
-        logger.error(f"Failed to get KIMI client: {e}")
-        raise RuntimeError("KIMI client not available for orchestrator")
+    llm_client, _ = _build_llm_clients(config_mgr)
+    if llm_client is None:
+        raise RuntimeError("Configured LLM client not available for orchestrator")
+    logger.info(
+        "LLM client initialized for NovelOrchestrator: provider=%s model=%s",
+        getattr(llm_client, "provider_name", config_mgr.generation.active_provider),
+        getattr(llm_client, "model_name", config_mgr.generation.model_name),
+    )
 
     # 创建编排器配置
     config = OrchestratorConfig(
@@ -356,25 +420,27 @@ def cmd_generate(args):
     config_mgr = get_config_manager()
     logger = logging.getLogger(__name__)
 
-    # 获取 KIMI client 供生成器使用
-    try:
-        from llm.kimi_client import get_kimi_client
-        kimi_client = get_kimi_client()
-    except Exception as e:
-        logger.warning(f"Failed to get KIMI client: {e}")
-        kimi_client = None
-
     if not config_mgr.current_project:
         print("❌ 未设置当前项目. 请先使用 --new 创建项目")
         return 1
+
+    llm_client, doubao_client = _build_llm_clients(config_mgr)
+    if llm_client is None:
+        logger.warning("No configured text LLM client available, generation will rely on fallbacks")
 
     project = config_mgr.current_project
     project_id = project.id
     project_dir = _project_dir(config_mgr)
     project_dir.mkdir(parents=True, exist_ok=True)
     command = sys.argv[1:]
+    generation_run_id = getattr(args, "run_id", None) or str(uuid.uuid4())
     run_started_at = datetime.now()
-    run_dir = _telemetry_run_dir(args, project_dir)
+    run_dir = _initialize_telemetry_run(
+        _telemetry_run_dir(args, project_dir),
+        run_id=generation_run_id,
+        project_id=project_id,
+        command=command,
+    )
 
     # 使用标题目录而非ID目录
     base_dir_override = str(project_dir)
@@ -387,7 +453,7 @@ def cmd_generate(args):
     generator = get_novel_generator(
         config_manager=config_mgr,
         novel_orchestrator=novel_orchestrator,
-        llm_client=kimi_client,
+        llm_client=llm_client,
     )
 
     # 处理 --continue-from 断点续传
@@ -467,7 +533,6 @@ def cmd_generate(args):
     print("-" * 50)
 
     # 初始化追踪结果
-    generation_run_id = getattr(args, "run_id", None) or str(uuid.uuid4())
     generation_results = {
         "project_id": project_id,
         "generation_run_id": generation_run_id,
@@ -484,24 +549,18 @@ def cmd_generate(args):
         "checkpoints": list(checkpoints),
     }
 
-    # 获取 KIMI client 用于后续组件
-    try:
-        from llm.kimi_client import get_kimi_client
-        kimi_client = get_kimi_client()
-    except Exception as e:
-        logger.warning(f"Failed to get KIMI client: {e}")
-        kimi_client = None
-
     generated = []
     failed_chapters = []
     previous_summary = ""
     last_failed_stage: str | None = None
+    skipped_existing = 0
     for i in range(count):
         chapter_num = start + i
 
         # 跳过已成功的章节（断点续传时）
         if chapter_num in chapters_to_skip:
             print(f"\n📝 第 {chapter_num} 章已存在，跳过")
+            skipped_existing += 1
             continue
 
         start_time = datetime.now()
@@ -517,12 +576,15 @@ def cmd_generate(args):
                 current_stage=STAGE_CONTEXT_BUILD,
                 current_step=f"第 {chapter_num} 章上下文构建",
                 chapters_total=count,
-                chapters_completed=len(generated),
+                chapters_completed=skipped_existing + len(generated),
                 run_started_at=run_started_at,
             )
 
             # 构建上下文
             context = chapter_mgr.build_context(chapter_num)
+            volume_guidance = str(getattr(args, "volume_guidance", "") or "").strip()
+            if volume_guidance:
+                context["volume_guidance"] = volume_guidance
 
             # 生成章节
             current_stage = STAGE_CHAPTER_GENERATE
@@ -534,7 +596,7 @@ def cmd_generate(args):
                 current_stage=STAGE_CHAPTER_GENERATE,
                 current_step=f"第 {chapter_num} 章正文生成",
                 chapters_total=count,
-                chapters_completed=len(generated),
+                chapters_completed=skipped_existing + len(generated),
                 run_started_at=run_started_at,
             )
             chapter = generator.generate_chapter(
@@ -566,7 +628,7 @@ def cmd_generate(args):
                 current_stage=STAGE_CHAPTER_SAVE,
                 current_step=f"第 {chapter_num} 章保存输出",
                 chapters_total=count,
-                chapters_completed=len(generated),
+                chapters_completed=skipped_existing + len(generated),
                 run_started_at=run_started_at,
             )
             chapter_mgr.save_chapter(
@@ -650,7 +712,7 @@ def cmd_generate(args):
                 current_stage=STAGE_CHAPTER_SAVE,
                 current_step=f"第 {chapter_num} 章已完成",
                 chapters_total=count,
-                chapters_completed=len(generated),
+                chapters_completed=skipped_existing + len(generated),
                 run_started_at=run_started_at,
             )
 
@@ -679,7 +741,7 @@ def cmd_generate(args):
                 current_stage=current_stage,
                 current_step=f"第 {chapter_num} 章失败，继续后续章节",
                 chapters_total=count,
-                chapters_completed=len(generated),
+                chapters_completed=skipped_existing + len(generated),
                 run_started_at=run_started_at,
                 failed_stage=current_stage,
                 error_message=str(e),
@@ -713,7 +775,7 @@ def cmd_generate(args):
                 current_stage=current_stage,
                 current_step=f"第 {chapter_num} 章失败，继续后续章节",
                 chapters_total=count,
-                chapters_completed=len(generated),
+                chapters_completed=skipped_existing + len(generated),
                 run_started_at=run_started_at,
                 failed_stage=current_stage,
                 error_message=str(e),
@@ -730,7 +792,7 @@ def cmd_generate(args):
         current_stage=STAGE_FINALIZE,
         current_step="写入最终结果",
         chapters_total=count,
-        chapters_completed=len(generated),
+        chapters_completed=skipped_existing + len(generated),
         run_started_at=run_started_at,
     )
     generation_results['completed_at'] = datetime.now().isoformat()
@@ -752,12 +814,18 @@ def cmd_generate(args):
             current_stage=STAGE_DERIVATIVES_SYNC,
             current_step="同步衍生内容",
             chapters_total=count,
-            chapters_completed=len(generated),
+            chapters_completed=skipped_existing + len(generated),
             run_started_at=run_started_at,
         )
         try:
             scripts_dir = config_mgr.generation.scripts_dir
-            derivative_gen = get_derivative_generator(project_id, kimi_client=kimi_client, base_dir_override=base_dir_override, scripts_dir_override=scripts_dir)
+            derivative_gen = get_derivative_generator(
+                project_id,
+                kimi_client=llm_client,
+                doubao_client=doubao_client,
+                base_dir_override=base_dir_override,
+                scripts_dir_override=scripts_dir,
+            )
             # 使用已生成章节的范围
             chapter_range = f"{generated[0].number}-{generated[-1].number}"
             sync_results = derivative_gen.sync_derivatives(chapter_range)
@@ -785,10 +853,10 @@ def cmd_generate(args):
             current_stage=STAGE_FEEDBACK_AUTO,
             current_step="运行自动反馈",
             chapters_total=count,
-            chapters_completed=len(generated),
+            chapters_completed=skipped_existing + len(generated),
             run_started_at=run_started_at,
         )
-        _run_auto_feedback(project_id, generated, current_total, llm_client=kimi_client)
+        _run_auto_feedback(project_id, generated, current_total, llm_client=llm_client)
 
     if failed_chapters:
         _update_run_progress(
@@ -799,7 +867,7 @@ def cmd_generate(args):
             current_stage=STAGE_FINALIZE,
             current_step=f"任务结束，但有 {len(failed_chapters)} 章失败",
             chapters_total=count,
-            chapters_completed=len(generated),
+            chapters_completed=skipped_existing + len(generated),
             run_started_at=run_started_at,
             failed_stage=last_failed_stage,
             error_message=f"共有 {len(failed_chapters)} 章生成失败",
@@ -815,7 +883,7 @@ def cmd_generate(args):
         current_stage=STAGE_FINALIZE,
         current_step="生成完成",
         chapters_total=count,
-        chapters_completed=len(generated),
+        chapters_completed=skipped_existing + len(generated),
         run_started_at=run_started_at,
         finished_at=datetime.now().isoformat(),
         return_code=0,
@@ -1086,18 +1154,18 @@ def cmd_sync_derivatives(args):
         print("❌ 未设置当前项目. 请先使用 --new 或 --load")
         return 1
 
-    # 获取 KIMI client
-    try:
-        from llm.kimi_client import get_kimi_client
-        kimi_client = get_kimi_client()
-    except Exception:
-        kimi_client = None
+    llm_client, doubao_client = _build_llm_clients(config_mgr)
 
     print("\n🔄 开始同步衍生内容...")
     print(f"   项目: {config_mgr.current_project.title}")
     print("-" * 50)
 
-    derivative_gen = get_derivative_generator(config_mgr.current_project.id, kimi_client=kimi_client, scripts_dir_override=config_mgr.generation.scripts_dir)
+    derivative_gen = get_derivative_generator(
+        config_mgr.current_project.id,
+        kimi_client=llm_client,
+        doubao_client=doubao_client,
+        scripts_dir_override=config_mgr.generation.scripts_dir,
+    )
 
     try:
         results = derivative_gen.sync_derivatives(args.range)
@@ -1130,14 +1198,13 @@ def cmd_list_derivatives(args):
         print("❌ 未设置当前项目")
         return 1
 
-    # 获取 KIMI client
-    try:
-        from llm.kimi_client import get_kimi_client
-        kimi_client = get_kimi_client()
-    except Exception:
-        kimi_client = None
-
-    derivative_gen = get_derivative_generator(config_mgr.current_project.id, kimi_client=kimi_client, scripts_dir_override=config_mgr.generation.scripts_dir)
+    llm_client, doubao_client = _build_llm_clients(config_mgr)
+    derivative_gen = get_derivative_generator(
+        config_mgr.current_project.id,
+        kimi_client=llm_client,
+        doubao_client=doubao_client,
+        scripts_dir_override=config_mgr.generation.scripts_dir,
+    )
     info = derivative_gen.list_derivatives()
 
     print("\n📚 衍生内容列表")
@@ -1160,18 +1227,18 @@ def cmd_generate_podcast(args):
         print("❌ 未设置当前项目")
         return 1
 
-    # 获取 KIMI client
-    try:
-        from llm.kimi_client import get_kimi_client
-        kimi_client = get_kimi_client()
-    except Exception:
-        kimi_client = None
+    llm_client, doubao_client = _build_llm_clients(config_mgr)
 
     print("\n🎙️ 生成播客脚本...")
     print(f"   章节范围: {args.range}")
     print("-" * 50)
 
-    derivative_gen = get_derivative_generator(config_mgr.current_project.id, kimi_client=kimi_client, scripts_dir_override=config_mgr.generation.scripts_dir)
+    derivative_gen = get_derivative_generator(
+        config_mgr.current_project.id,
+        kimi_client=llm_client,
+        doubao_client=doubao_client,
+        scripts_dir_override=config_mgr.generation.scripts_dir,
+    )
 
     try:
         script = derivative_gen.generate_podcast_script(args.range)
@@ -1193,18 +1260,18 @@ def cmd_generate_video_prompt(args):
         print("❌ 未设置当前项目")
         return 1
 
-    # 获取 KIMI client
-    try:
-        from llm.kimi_client import get_kimi_client
-        kimi_client = get_kimi_client()
-    except Exception:
-        kimi_client = None
+    llm_client, doubao_client = _build_llm_clients(config_mgr)
 
     print("\n🎬 生成视频提示词...")
     print(f"   章节: 第{args.chapter}章")
     print("-" * 50)
 
-    derivative_gen = get_derivative_generator(config_mgr.current_project.id, kimi_client=kimi_client, scripts_dir_override=config_mgr.generation.scripts_dir)
+    derivative_gen = get_derivative_generator(
+        config_mgr.current_project.id,
+        kimi_client=llm_client,
+        doubao_client=doubao_client,
+        scripts_dir_override=config_mgr.generation.scripts_dir,
+    )
 
     try:
         prompt = derivative_gen.generate_video_prompt(args.chapter)
@@ -1295,18 +1362,18 @@ def cmd_generate_character(args):
         print("❌ 未设置当前项目")
         return 1
 
-    # 获取 KIMI client
-    try:
-        from llm.kimi_client import get_kimi_client
-        kimi_client = get_kimi_client()
-    except Exception:
-        kimi_client = None
+    llm_client, doubao_client = _build_llm_clients(config_mgr)
 
     print("\n👤 生成角色描述...")
     print(f"   角色: {args.name}")
     print("-" * 50)
 
-    derivative_gen = get_derivative_generator(config_mgr.current_project.id, kimi_client=kimi_client, scripts_dir_override=config_mgr.generation.scripts_dir)
+    derivative_gen = get_derivative_generator(
+        config_mgr.current_project.id,
+        kimi_client=llm_client,
+        doubao_client=doubao_client,
+        scripts_dir_override=config_mgr.generation.scripts_dir,
+    )
 
     try:
         char = derivative_gen.generate_character_description(args.name)
@@ -1347,12 +1414,7 @@ def cmd_feedback_loop(args):
         get_feedback_loop,
     )
 
-    # 获取 KIMI client
-    try:
-        from llm.kimi_client import get_kimi_client
-        llm_client = get_kimi_client()
-    except Exception:
-        llm_client = None
+    llm_client, _ = _build_llm_clients(config_mgr)
 
     print("\n🔄 反馈循环")
     print(f"   项目: {config_mgr.current_project.title}")
@@ -1697,6 +1759,7 @@ def _run_volume_generation_subprocess(
     start: int,
     count: int,
     writing_options: dict[str, str],
+    volume_guidance: str = "",
 ) -> int:
     """Reuse the existing incremental generator for one volume slice."""
     cmd = [
@@ -1716,8 +1779,10 @@ def _run_volume_generation_subprocess(
         "--log-level",
         getattr(args, "log_level", "INFO"),
     ]
+    if volume_guidance.strip():
+        cmd.extend(["--volume-guidance", volume_guidance.strip()])
     _append_writing_options_to_command(cmd, writing_options)
-    result = subprocess.run(cmd, cwd=str(Path(__file__).resolve().parent), check=False)  # noqa: S603
+    result = subprocess.run(cmd, cwd=str(Path(__file__).resolve().parent), check=False)
     return int(result.returncode)
 
 
@@ -1741,6 +1806,7 @@ def _finalize_longform_run(
     state["current_stage"] = STAGE_FINALIZE_EXPORT
     state["pending_state_path"] = None
     save_longform_state(run_dir, state)
+    _sync_status_longform_fields(run_dir, state)
     _update_run_progress(
         run_dir,
         project_id=project_id,
@@ -1757,6 +1823,46 @@ def _finalize_longform_run(
     return 0
 
 
+def _pause_for_volume_review(
+    *,
+    run_dir: Path,
+    state: dict[str, Any],
+    project_id: str,
+    command: list[str],
+    run_started_at: datetime,
+) -> int:
+    current_volume = int(state.get("current_volume", 0))
+    paused_state = record_pause(
+        run_dir=run_dir,
+        longform_state=state,
+        checkpoint_type=CHECKPOINT_VOLUME,
+        current_stage=STAGE_VOLUME_REVIEW,
+        review_payload=review_payload_for_volume(state),
+    )
+    _update_run_progress(
+        run_dir,
+        project_id=project_id,
+        command=command,
+        status="paused",
+        current_stage=STAGE_VOLUME_REVIEW,
+        current_step=f"等待第 {current_volume} 卷审批",
+        chapters_total=paused_state.get("total_chapters", 0),
+        chapters_completed=paused_state.get("chapters_completed", 0),
+        run_started_at=run_started_at,
+        error_message=None,
+        failed_stage=None,
+    )
+    update_status(
+        run_dir,
+        pending_state_path=paused_state.get("pending_state_path"),
+        longform_state_path=paused_state.get("longform_state_path"),
+        pause_reason=CHECKPOINT_VOLUME,
+        risk_report_path=None,
+    )
+    _sync_status_longform_fields(run_dir, paused_state)
+    return 0
+
+
 def _continue_longform_run(args, *, state: dict[str, Any], run_dir: Path, run_started_at: datetime) -> int:
     config_mgr = get_config_manager()
     project = config_mgr.current_project
@@ -1769,6 +1875,7 @@ def _continue_longform_run(args, *, state: dict[str, Any], run_dir: Path, run_st
     writing_options = _resolve_active_writing_options(config_mgr, args)
 
     while True:
+        volume_guidance = str(state.get("next_volume_guidance", "") or "").strip()
         current_volume = int(state.get("current_volume") or 0)
         start_chapter = int(state.get("current_volume_start_chapter") or 0)
         end_chapter = int(state.get("current_volume_end_chapter") or 0)
@@ -1797,6 +1904,7 @@ def _continue_longform_run(args, *, state: dict[str, Any], run_dir: Path, run_st
                 )
             state = next_volume(state)
             save_longform_state(run_dir, state)
+            _sync_status_longform_fields(run_dir, state)
             continue
 
         _update_run_progress(
@@ -1813,6 +1921,7 @@ def _continue_longform_run(args, *, state: dict[str, Any], run_dir: Path, run_st
 
         state["current_stage"] = STAGE_VOLUME_WRITE
         save_longform_state(run_dir, state)
+        _sync_status_longform_fields(run_dir, state)
         return_code = _run_volume_generation_subprocess(
             args,
             project_id=project_id,
@@ -1821,10 +1930,12 @@ def _continue_longform_run(args, *, state: dict[str, Any], run_dir: Path, run_st
             start=next_start,
             count=end_chapter - next_start + 1,
             writing_options=writing_options,
+            volume_guidance=volume_guidance,
         )
         if return_code != 0:
             state["status"] = "failed"
             save_longform_state(run_dir, state)
+            _sync_status_longform_fields(run_dir, state)
             _update_run_progress(
                 run_dir,
                 project_id=project_id,
@@ -1844,37 +1955,62 @@ def _continue_longform_run(args, *, state: dict[str, Any], run_dir: Path, run_st
 
         refreshed_project = config_mgr.load_project(project_id) or project
         state["chapters_completed"] = max(int(getattr(refreshed_project, "current_chapter", 0)), end_chapter)
-        state["current_stage"] = STAGE_VOLUME_REVIEW
-        save_longform_state(run_dir, state)
+        state["next_volume_guidance"] = ""
+        state["next_volume_guidance_payload"] = {}
 
-        if should_pause_for_stage(state["approval_mode"], state["auto_approve"], "volume"):
+        risk_report = build_volume_risk_report(
+            project_dir=_project_dir(config_mgr),
+            volume_index=current_volume,
+            start_chapter=start_chapter,
+            end_chapter=end_chapter,
+        )
+        if risk_report.get("risk_detected"):
+            risk_report = save_risk_report(run_dir, risk_report)
+            state["risk_report_path"] = str((run_dir / "risk_report.json").resolve())
+            state["current_stage"] = STAGE_RISK_PAUSE
+            save_longform_state(run_dir, state)
+            _sync_status_longform_fields(run_dir, state)
             paused_state = record_pause(
                 run_dir=run_dir,
                 longform_state=state,
-                checkpoint_type=CHECKPOINT_VOLUME,
-                current_stage=STAGE_VOLUME_REVIEW,
-                review_payload=review_payload_for_volume(state),
+                checkpoint_type=CHECKPOINT_RISK,
+                current_stage=STAGE_RISK_PAUSE,
+                review_payload=review_payload_for_risk(risk_report),
             )
             _update_run_progress(
                 run_dir,
                 project_id=project_id,
                 command=command,
                 status="paused",
-                current_stage=STAGE_VOLUME_REVIEW,
-                current_step=f"等待第 {current_volume} 卷审批",
+                current_stage=STAGE_RISK_PAUSE,
+                current_step=f"第 {current_volume} 卷触发风险复核",
                 chapters_total=paused_state.get("total_chapters", 0),
                 chapters_completed=paused_state.get("chapters_completed", 0),
                 run_started_at=run_started_at,
-                error_message=None,
-                failed_stage=None,
             )
             update_status(
                 run_dir,
                 pending_state_path=paused_state.get("pending_state_path"),
                 longform_state_path=paused_state.get("longform_state_path"),
-                pause_reason=CHECKPOINT_VOLUME,
+                risk_report_path=paused_state.get("risk_report_path"),
+                pause_reason=CHECKPOINT_RISK,
             )
+            _sync_status_longform_fields(run_dir, paused_state)
             return 0
+
+        state["risk_report_path"] = None
+        state["current_stage"] = STAGE_VOLUME_REVIEW
+        save_longform_state(run_dir, state)
+        _sync_status_longform_fields(run_dir, state)
+
+        if should_pause_for_stage(state["approval_mode"], state["auto_approve"], "volume"):
+            return _pause_for_volume_review(
+                run_dir=run_dir,
+                state=state,
+                project_id=project_id,
+                command=command,
+                run_started_at=run_started_at,
+            )
 
         state["last_completed_volume"] = current_volume
         if current_volume >= int(state.get("total_volumes", 0)):
@@ -1888,6 +2024,7 @@ def _continue_longform_run(args, *, state: dict[str, Any], run_dir: Path, run_st
             )
         state = next_volume(state)
         save_longform_state(run_dir, state)
+        _sync_status_longform_fields(run_dir, state)
 
 
 def cmd_generate_full(args):
@@ -1932,6 +2069,7 @@ def cmd_generate_full(args):
         if pending_state.get("checkpoint_type") == CHECKPOINT_OUTLINE:
             if action == "reject":
                 save_longform_state(run_dir, state)
+                _sync_status_longform_fields(run_dir, state)
                 _update_run_progress(
                     run_dir,
                     project_id=project_id,
@@ -1951,13 +2089,15 @@ def cmd_generate_full(args):
             state["outline_snapshot"] = review_payload_for_outline(project)
             state["current_stage"] = STAGE_VOLUME_PLAN
             state = clear_pause(run_dir, state)
-            update_status(run_dir, pending_state_path=None, pause_reason=None)
+            _sync_status_longform_fields(run_dir, state)
+            update_status(run_dir, pending_state_path=None, pause_reason=None, risk_report_path=None)
             return _continue_longform_run(args, state=state, run_dir=run_dir, run_started_at=run_started_at)
 
         if pending_state.get("checkpoint_type") == CHECKPOINT_VOLUME:
             current_volume = int(state.get("current_volume", 0))
             if action == "reject":
                 save_longform_state(run_dir, state)
+                _sync_status_longform_fields(run_dir, state)
                 _update_run_progress(
                     run_dir,
                     project_id=project_id,
@@ -1970,9 +2110,19 @@ def cmd_generate_full(args):
                     run_started_at=run_started_at,
                 )
                 return 0
+            guidance_payload = normalize_volume_guidance_payload(approval_payload)
+            freeform_guidance = str(
+                approval_payload.get("next_volume_guidance")
+                or approval_payload.get("notes")
+                or ""
+            ).strip()
+            structured_guidance = format_volume_guidance(guidance_payload)
+            state["next_volume_guidance_payload"] = guidance_payload
+            state["next_volume_guidance"] = structured_guidance or freeform_guidance
             state["last_completed_volume"] = current_volume
             state["current_stage"] = STAGE_VOLUME_PLAN
             state = clear_pause(run_dir, state)
+            _sync_status_longform_fields(run_dir, state)
             if current_volume >= int(state.get("total_volumes", 0)):
                 return _finalize_longform_run(
                     run_dir=run_dir,
@@ -1984,7 +2134,58 @@ def cmd_generate_full(args):
                 )
             state = next_volume(state)
             save_longform_state(run_dir, state)
-            update_status(run_dir, pending_state_path=None, pause_reason=None)
+            _sync_status_longform_fields(run_dir, state)
+            update_status(run_dir, pending_state_path=None, pause_reason=None, risk_report_path=None)
+            return _continue_longform_run(args, state=state, run_dir=run_dir, run_started_at=run_started_at)
+
+        if pending_state.get("checkpoint_type") == CHECKPOINT_RISK:
+            current_volume = int(state.get("current_volume", 0))
+            if action == "reject":
+                save_longform_state(run_dir, state)
+                _sync_status_longform_fields(run_dir, state)
+                _update_run_progress(
+                    run_dir,
+                    project_id=project_id,
+                    command=command,
+                    status="paused",
+                    current_stage=STAGE_RISK_PAUSE,
+                    current_step=f"第 {current_volume} 卷风险复核未通过，保持暂停",
+                    chapters_total=state.get("total_chapters", 0),
+                    chapters_completed=state.get("chapters_completed", 0),
+                    run_started_at=run_started_at,
+                )
+                return 0
+
+            state = clear_pause(run_dir, state)
+            state["risk_report_path"] = None
+            state["current_stage"] = STAGE_VOLUME_REVIEW
+            save_longform_state(run_dir, state)
+            _sync_status_longform_fields(run_dir, state)
+            update_status(run_dir, pending_state_path=None, pause_reason=None, risk_report_path=None)
+
+            if should_pause_for_stage(state["approval_mode"], state["auto_approve"], "volume"):
+                return _pause_for_volume_review(
+                    run_dir=run_dir,
+                    state=state,
+                    project_id=project_id,
+                    command=command,
+                    run_started_at=run_started_at,
+                )
+
+            state["last_completed_volume"] = current_volume
+            if current_volume >= int(state.get("total_volumes", 0)):
+                return _finalize_longform_run(
+                    run_dir=run_dir,
+                    state=state,
+                    project_id=project_id,
+                    command=command,
+                    run_started_at=run_started_at,
+                    config_mgr=config_mgr,
+                )
+            state = next_volume(state)
+            save_longform_state(run_dir, state)
+            _sync_status_longform_fields(run_dir, state)
+            update_status(run_dir, pending_state_path=None, pause_reason=None, risk_report_path=None)
             return _continue_longform_run(args, state=state, run_dir=run_dir, run_started_at=run_started_at)
 
         print("❌ 不支持的审批检查点")
@@ -2011,6 +2212,7 @@ def cmd_generate_full(args):
         return_code=None,
     )
     update_status(run_dir, longform_state_path=state.get("longform_state_path"))
+    _sync_status_longform_fields(run_dir, state)
 
     if should_pause_for_stage(state["approval_mode"], state["auto_approve"], "outline"):
         paused_state = record_pause(
@@ -2037,11 +2239,13 @@ def cmd_generate_full(args):
             longform_state_path=paused_state.get("longform_state_path"),
             pause_reason=CHECKPOINT_OUTLINE,
         )
+        _sync_status_longform_fields(run_dir, paused_state)
         return 0
 
     state["approved_outline"] = True
     state["outline_snapshot"] = review_payload_for_outline(project)
     save_longform_state(run_dir, state)
+    _sync_status_longform_fields(run_dir, state)
     return _continue_longform_run(args, state=state, run_dir=run_dir, run_started_at=run_started_at)
 
 
@@ -2141,6 +2345,7 @@ def main():
         help="提交对 pending state 的审批动作",
     )
     parser.add_argument("--approval-payload", help="审批补充 JSON，可传文件路径或 JSON 字符串")
+    parser.add_argument("--volume-guidance", default="", help="长篇模式传给当前分卷生成的额外修订指令")
     parser.add_argument("--continue-from", type=int,
                         help="从指定章节号继续生成（跳过已成功的章节）")
     parser.add_argument("--dry-run", action="store_true",

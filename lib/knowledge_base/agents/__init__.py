@@ -1,35 +1,13 @@
-"""Agents package for novel generation system."""
+"""Agents package for novel generation system.
 
-from .config_manager import get_config_manager
-from .novel_generator import get_novel_generator
-from .chapter_manager import get_chapter_manager
-from .derivative_generator import get_derivative_generator
-from .feedback_loop import get_feedback_loop
-from .novel_orchestrator import NovelOrchestrator
-from .reality_checker import RealityChecker, ValidationResult, RealityCheckerConfig, get_reality_checker
+This package intentionally uses lazy exports so importing ``agents.foo`` does not
+eagerly initialize every heavy runtime dependency in the package.
+"""
 
-# Agent collaboration protocols
-from .protocols import (
-    AgentHandoff,
-    HandoffResult,
-    QualityGateError,
-    handoff_to_agent,
-    WorkflowOrchestrator,
-    PipelineConfig,
-    PipelineResult,
-    ContextManager,
-    ExecutionContext,
-    ContextPropagation,
-)
+from __future__ import annotations
 
-# Novel workflow orchestrator
-from .novel_workflow_orchestrator import (
-    NovelWorkflowOrchestrator,
-    NovelWorkflowConfig,
-    NovelPipelineStep,
-    create_novel_workflow,
-    STANDARD_NOVEL_PIPELINE,
-)
+from importlib import import_module
+from typing import Any
 
 __all__ = [
     # Core agents
@@ -61,3 +39,47 @@ __all__ = [
     "create_novel_workflow",
     "STANDARD_NOVEL_PIPELINE",
 ]
+
+_EXPORTS = {
+    "get_config_manager": (".config_manager", "get_config_manager"),
+    "get_novel_generator": (".novel_generator", "get_novel_generator"),
+    "get_chapter_manager": (".chapter_manager", "get_chapter_manager"),
+    "get_derivative_generator": (".derivative_generator", "get_derivative_generator"),
+    "get_feedback_loop": (".feedback_loop", "get_feedback_loop"),
+    "NovelOrchestrator": (".novel_orchestrator", "NovelOrchestrator"),
+    "RealityChecker": (".reality_checker", "RealityChecker"),
+    "ValidationResult": (".reality_checker", "ValidationResult"),
+    "RealityCheckerConfig": (".reality_checker", "RealityCheckerConfig"),
+    "get_reality_checker": (".reality_checker", "get_reality_checker"),
+    "AgentHandoff": (".protocols", "AgentHandoff"),
+    "HandoffResult": (".protocols", "HandoffResult"),
+    "QualityGateError": (".protocols", "QualityGateError"),
+    "handoff_to_agent": (".protocols", "handoff_to_agent"),
+    "WorkflowOrchestrator": (".protocols", "WorkflowOrchestrator"),
+    "PipelineConfig": (".protocols", "PipelineConfig"),
+    "PipelineResult": (".protocols", "PipelineResult"),
+    "ContextManager": (".protocols", "ContextManager"),
+    "ExecutionContext": (".protocols", "ExecutionContext"),
+    "ContextPropagation": (".protocols", "ContextPropagation"),
+    "NovelWorkflowOrchestrator": (".novel_workflow_orchestrator", "NovelWorkflowOrchestrator"),
+    "NovelWorkflowConfig": (".novel_workflow_orchestrator", "NovelWorkflowConfig"),
+    "NovelPipelineStep": (".novel_workflow_orchestrator", "NovelPipelineStep"),
+    "create_novel_workflow": (".novel_workflow_orchestrator", "create_novel_workflow"),
+    "STANDARD_NOVEL_PIPELINE": (".novel_workflow_orchestrator", "STANDARD_NOVEL_PIPELINE"),
+}
+
+
+def __getattr__(name: str) -> Any:
+    module_info = _EXPORTS.get(name)
+    if module_info is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+    module_name, attr_name = module_info
+    try:
+        module = import_module(module_name, __name__)
+        value = getattr(module, attr_name)
+    except ModuleNotFoundError:
+        value = None
+
+    globals()[name] = value
+    return value

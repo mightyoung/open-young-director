@@ -1039,7 +1039,17 @@ class TestFailurePathTests:
             assert "Traceback" not in result.output, \
                 f"CLI should not crash with traceback: {result.output}"
             # Error message should mention the directory/permissions issue
-            error_patterns = ["权限", "Permission", "无法", "拒绝", "Read-only", "file system", "不存在", "No such"]
+            error_patterns = [
+                "权限",
+                "Permission",
+                "无法",
+                "拒绝",
+                "Read-only",
+                "file system",
+                "不存在",
+                "No such",
+                "Operation not permitted",
+            ]
             assert any(pattern in result.output for pattern in error_patterns), \
                 f"Expected directory-related error message, got: {result.output}"
 

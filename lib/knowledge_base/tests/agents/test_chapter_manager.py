@@ -70,6 +70,22 @@ class TestChapterManagerInit:
         assert len(manager._chapters_index) == 1
         assert 1 in manager._chapters_index
 
+    def test_init_aligns_film_drama_dir_with_project_directory_convention(self, temp_project_dir, temp_novels_dir):
+        """Test that FILM_DRAMA output follows the same title_id directory convention."""
+        project_id = "test_project_002b"
+        project_title = "太古魔帝传"
+        config_dir = temp_project_dir / "config"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        project_file = config_dir / f"project_{project_id}.json"
+        project_file.write_text(
+            json.dumps({"id": project_id, "title": project_title}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        manager = ChapterManager(project_id, base_dir=str(temp_novels_dir))
+
+        assert manager.film_drama_dir == temp_project_dir / "film_drama_scripts" / f"{project_title}_{project_id}"
+
 
 class TestSaveChapter:
     """Test save_chapter functionality."""

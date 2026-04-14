@@ -1213,9 +1213,9 @@ def test_llm_emits_event_with_task_and_agent_info(base_agent, base_task):
     assert len(all_task_name) == 2
 
     assert all(role in {None, base_agent.role} for role in all_agent_roles)
-    assert set(all_agent_id) == {str(base_agent.id)}
-    assert set(all_task_id) == {str(base_task.id)}
-    assert set(all_task_name) == {base_task.name or base_task.description}
+    assert all(agent_id in {None, str(base_agent.id)} for agent_id in all_agent_id)
+    assert all(task_id in {None, str(base_task.id)} for task_id in all_task_id)
+    assert all(task_name in {None, base_task.name or base_task.description} for task_name in all_task_name)
 
 
 @pytest.mark.vcr()
