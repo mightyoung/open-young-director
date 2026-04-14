@@ -112,6 +112,27 @@ CONSEQUENCE_ACKNOWLEDGEMENT_MARKERS = (
     "未散",
 )
 
+OPENING_LOCATION_PREFIX_MARKERS = (
+    "晨雾笼罩",
+    "夜色笼罩",
+    "暮色笼罩",
+    "薄雾笼罩",
+    "雾气笼罩",
+    "雨幕笼罩",
+    "风雪笼罩",
+    "钟声回荡在",
+    "灯火照着",
+)
+
+DISMISSIVE_CONTINUITY_MARKERS = (
+    "从未发生",
+    "像没发生",
+    "仿佛没发生",
+    "若无其事",
+    "全然不顾",
+    "抛在脑后",
+)
+
 
 @dataclass
 class GeneratedChapter:
@@ -646,6 +667,13 @@ class NovelGeneratorAgent:
             match = re.search(pattern, normalized)
             if match:
                 return match.group(1)
+        for prefix in OPENING_LOCATION_PREFIX_MARKERS:
+            match = re.search(
+                rf"{re.escape(prefix)}([\u4e00-\u9fff]{{2,12}}(?:{suffix_pattern}))",
+                normalized,
+            )
+            if match:
+                return match.group(1)
         return ""
 
     def _location_anchors_conflict(self, previous_anchor: str, current_anchor: str) -> bool:
@@ -689,6 +717,13 @@ class NovelGeneratorAgent:
         if consequence_marker and consequence_marker in normalized:
             return True
         return any(marker in normalized for marker in CONSEQUENCE_ACKNOWLEDGEMENT_MARKERS)
+
+    def _opening_dismisses_prior_consequence(self, opening: str) -> bool:
+        """Detect shallow mention patterns that explicitly dismiss prior consequences."""
+        normalized = self._normalize_text_for_match(opening)
+        if not normalized:
+            return False
+        return any(marker in normalized for marker in DISMISSIVE_CONTINUITY_MARKERS)
 
     def _build_smoothness_issue(
         self,
@@ -756,7 +791,10 @@ class NovelGeneratorAgent:
             )
 
         consequence_marker = self._extract_consequence_marker(previous_context)
-        if consequence_marker and not self._opening_acknowledges_consequence(opening, consequence_marker):
+        consequence_acknowledged = self._opening_acknowledges_consequence(opening, consequence_marker)
+        if consequence_marker and (
+            not consequence_acknowledged or self._opening_dismisses_prior_consequence(opening)
+        ):
             issues.append(
                 self._build_smoothness_issue(
                     category="上一章后果未被承接",
