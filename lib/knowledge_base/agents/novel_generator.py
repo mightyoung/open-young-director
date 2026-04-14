@@ -130,6 +130,7 @@ DISMISSIVE_CONTINUITY_MARKERS = (
     "从未发生",
     "像没发生",
     "仿佛没发生",
+    "从来没有经历过",
     "若无其事",
     "全然不顾",
     "抛在脑后",
@@ -824,9 +825,10 @@ class NovelGeneratorAgent:
             )
 
         consequence_marker = self._extract_consequence_marker(previous_context)
+        consequence_dismissed = self._opening_dismisses_prior_consequence(opening)
         consequence_acknowledged = self._opening_acknowledges_consequence(opening, consequence_marker)
         if consequence_marker and (
-            not consequence_acknowledged or self._opening_dismisses_prior_consequence(opening)
+            not consequence_acknowledged or consequence_dismissed
         ):
             issues.append(
                 self._build_smoothness_issue(
@@ -838,11 +840,11 @@ class NovelGeneratorAgent:
             )
 
         issue_categories = {issue["category"] for issue in issues}
-        if len(issue_categories) >= 2:
+        if len(issue_categories) >= 2 or consequence_dismissed:
             issues.append(
                 self._build_smoothness_issue(
                     category="表面流畅但因果断裂",
-                    previous_evidence=" / ".join(sorted(issue_categories)),
+                    previous_evidence=" / ".join(sorted(issue_categories)) or "表面承接但实质跳过前情",
                     current_evidence=opening[:40],
                     missing_link="地点/时间/后果之间的因果桥接",
                 )
