@@ -46,6 +46,8 @@ TRANSITION_BRIDGE_SIGNALS = (
 HIGH_CONFIDENCE_LOCATION_SUFFIXES = (
     "城",
     "镇",
+    "街",
+    "巷",
     "村",
     "山",
     "峰",
@@ -70,6 +72,7 @@ HIGH_CONFIDENCE_LOCATION_SUFFIXES = (
     "营",
     "关",
     "坊",
+    "园",
     "寨",
     "栈",
     "庙",
@@ -98,7 +101,6 @@ CONSEQUENCE_MARKERS = (
 )
 
 CONSEQUENCE_ACKNOWLEDGEMENT_MARKERS = (
-    *CONSEQUENCE_MARKERS,
     "余波",
     "后遗症",
     "疗伤",
@@ -131,6 +133,17 @@ DISMISSIVE_CONTINUITY_MARKERS = (
     "若无其事",
     "全然不顾",
     "抛在脑后",
+)
+
+MOTION_CONTINUITY_MARKERS = (
+    "离开",
+    "摆脱",
+    "赶往",
+    "赶到",
+    "前往",
+    "转移",
+    "连夜",
+    "一路",
 )
 
 
@@ -653,25 +666,27 @@ class NovelGeneratorAgent:
 
     def _extract_location_anchor(self, text: str) -> str:
         """Extract a conservative location anchor from the provided text."""
-        normalized = self._normalize_text_for_match(text)
+        raw_text = text or ""
+        normalized = self._normalize_text_for_match(raw_text)
         if not normalized:
             return ""
 
         suffix_pattern = "|".join(re.escape(item) for item in HIGH_CONFIDENCE_LOCATION_SUFFIXES)
-        patterns = (
-            rf"(?:在|于)([\u4e00-\u9fff]{{2,12}}(?:{suffix_pattern}))",
-            rf"(?:回到|返回|抵达|来到|赶到|奔赴|进入|踏入)([\u4e00-\u9fff]{{2,12}}(?:{suffix_pattern}))",
-            rf"^([\u4e00-\u9fff]{{2,12}}(?:{suffix_pattern}))(?:内|中|外|上|下|前|里)",
-        )
-        for pattern in patterns:
-            match = re.search(pattern, normalized)
-            if match:
-                return match.group(1)
         for prefix in OPENING_LOCATION_PREFIX_MARKERS:
             match = re.search(
                 rf"{re.escape(prefix)}([\u4e00-\u9fff]{{2,12}}(?:{suffix_pattern}))",
                 normalized,
             )
+            if match:
+                return match.group(1)
+        patterns = (
+            rf"(?:在|于)([\u4e00-\u9fff]{{2,12}}(?:{suffix_pattern}))",
+            rf"(?:回到|返回|抵达|来到|赶到|奔赴|进入|踏入)([\u4e00-\u9fff]{{2,12}}(?:{suffix_pattern}))",
+            rf"^([\u4e00-\u9fff]{{2,12}}(?:{suffix_pattern}))(?:内|中|外|上|下|前|里)",
+            rf"([\u4e00-\u9fff]{{2,12}}(?:{suffix_pattern}))(?:深处|尽头|附近|门前|门外|之中|里|外)?",
+        )
+        for pattern in patterns:
+            match = re.search(pattern, normalized)
             if match:
                 return match.group(1)
         return ""
@@ -715,6 +730,12 @@ class NovelGeneratorAgent:
         if not normalized:
             return False
         if consequence_marker and consequence_marker in normalized:
+            return True
+        if (
+            consequence_marker in {"追兵", "追杀", "逃亡"}
+            and self._has_bridge_signal(normalized)
+            and any(marker in normalized for marker in MOTION_CONTINUITY_MARKERS)
+        ):
             return True
         return any(marker in normalized for marker in CONSEQUENCE_ACKNOWLEDGEMENT_MARKERS)
 
