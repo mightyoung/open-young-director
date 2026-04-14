@@ -2030,13 +2030,16 @@ def test_crew_does_not_interpolate_without_inputs():
 
     crew = Crew(agents=[agent], tasks=[task])
 
-    with patch.object(Agent, "interpolate_inputs") as interpolate_agent_inputs:
-        with patch.object(
+    with (
+        patch.object(Agent, "interpolate_inputs") as interpolate_agent_inputs,
+        patch.object(
             Task, "interpolate_inputs_and_add_conversation_history"
-        ) as interpolate_task_inputs:
-            crew.kickoff()
-            interpolate_agent_inputs.assert_not_called()
-            interpolate_task_inputs.assert_not_called()
+        ) as interpolate_task_inputs,
+        patch.object(Agent, "execute_task", return_value="ok"),
+    ):
+        crew.kickoff()
+        interpolate_agent_inputs.assert_not_called()
+        interpolate_task_inputs.assert_not_called()
 
 
 def test_task_callback_on_crew():

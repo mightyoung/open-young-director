@@ -1547,15 +1547,14 @@ def test_agent_with_knowledge_sources_with_query_limit_and_score_threshold():
         patch(
             "crewai.knowledge.source.base_knowledge_source.KnowledgeStorage"
         ) as mock_base_knowledge_storage,
-        patch("crewai.rag.chromadb.client.ChromaDBClient") as mock_chromadb,
+        patch("crewai.knowledge.knowledge.Knowledge.add_sources") as mock_add_sources,
     ):
         mock_storage_instance = mock_knowledge_storage.return_value
         mock_storage_instance.sources = [string_source]
         mock_storage_instance.query.return_value = [{"content": content}]
         mock_storage_instance.save.return_value = None
 
-        mock_chromadb_instance = mock_chromadb.return_value
-        mock_chromadb_instance.add_documents.return_value = None
+        mock_add_sources.return_value = None
 
         mock_base_knowledge_storage.return_value = mock_storage_instance
 
@@ -1584,12 +1583,22 @@ def test_agent_with_knowledge_sources_with_query_limit_and_score_threshold():
 
 
 @pytest.mark.vcr()
-def test_agent_with_knowledge_sources_with_query_limit_and_score_threshold_default():
+def test_agent_with_knowledge_sources_with_query_limit_and_score_threshold_default(
+    tmp_path,
+):
     content = "Brandon's favorite color is red and he likes Mexican food."
     string_source = StringKnowledgeSource(content=content)
-    knowledge_config = KnowledgeConfig()
+    storage_dir = tmp_path / "rag"
 
     with (
+        patch(
+            "crewai.rag.chromadb.constants.DEFAULT_STORAGE_PATH",
+            str(storage_dir),
+        ),
+        patch(
+            "crewai.rag.chromadb.config.DEFAULT_STORAGE_PATH",
+            str(storage_dir),
+        ),
         patch(
             "crewai.knowledge.storage.knowledge_storage.KnowledgeStorage"
         ) as mock_knowledge_storage,
@@ -1598,6 +1607,7 @@ def test_agent_with_knowledge_sources_with_query_limit_and_score_threshold_defau
         ) as mock_base_knowledge_storage,
         patch("crewai.rag.chromadb.client.ChromaDBClient") as mock_chromadb,
     ):
+        knowledge_config = KnowledgeConfig()
         mock_storage_instance = mock_knowledge_storage.return_value
         mock_storage_instance.sources = [string_source]
         mock_storage_instance.query.return_value = [{"content": content}]
@@ -1708,11 +1718,20 @@ def test_agent_with_knowledge_sources_works_with_copy():
 
 
 @pytest.mark.vcr()
-def test_agent_with_knowledge_sources_generate_search_query():
+def test_agent_with_knowledge_sources_generate_search_query(tmp_path):
     content = "Brandon's favorite color is red and he likes Mexican food."
     string_source = StringKnowledgeSource(content=content)
+    storage_dir = tmp_path / "rag"
 
     with (
+        patch(
+            "crewai.rag.chromadb.constants.DEFAULT_STORAGE_PATH",
+            str(storage_dir),
+        ),
+        patch(
+            "crewai.rag.chromadb.config.DEFAULT_STORAGE_PATH",
+            str(storage_dir),
+        ),
         patch("crewai.knowledge") as mock_knowledge,
         patch(
             "crewai.knowledge.storage.knowledge_storage.KnowledgeStorage"
@@ -1979,31 +1998,24 @@ def test_litellm_anthropic_error_handling():
 
 
 @pytest.mark.vcr()
-def test_get_knowledge_search_query():
+def test_get_knowledge_search_query(tmp_path):
     """Test that _get_knowledge_search_query calls the LLM with the correct prompts."""
     from crewai.utilities.i18n import I18N
 
     content = "The capital of France is Paris."
     string_source = StringKnowledgeSource(content=content)
-
-    agent = Agent(
-        role="Information Agent",
-        goal="Provide information based on knowledge sources",
-        backstory="I have access to knowledge sources",
-        llm=LLM(model="gpt-4"),
-        knowledge_sources=[string_source],
-    )
-
-    task = Task(
-        description="What is the capital of France?",
-        expected_output="The capital of France is Paris.",
-        agent=agent,
-    )
+    storage_dir = tmp_path / "rag"
 
     i18n = I18N()
-    task_prompt = task.prompt()
-
     with (
+        patch(
+            "crewai.rag.chromadb.constants.DEFAULT_STORAGE_PATH",
+            str(storage_dir),
+        ),
+        patch(
+            "crewai.rag.chromadb.config.DEFAULT_STORAGE_PATH",
+            str(storage_dir),
+        ),
         patch(
             "crewai.knowledge.storage.knowledge_storage.KnowledgeStorage"
         ) as mock_knowledge_storage,
@@ -2011,8 +2023,22 @@ def test_get_knowledge_search_query():
             "crewai.knowledge.source.base_knowledge_source.KnowledgeStorage"
         ) as mock_base_knowledge_storage,
         patch("crewai.rag.chromadb.client.ChromaDBClient") as mock_chromadb,
-        patch.object(agent, "_get_knowledge_search_query") as mock_get_query,
     ):
+        agent = Agent(
+            role="Information Agent",
+            goal="Provide information based on knowledge sources",
+            backstory="I have access to knowledge sources",
+            llm=LLM(model="gpt-4"),
+            knowledge_sources=[string_source],
+        )
+
+        task = Task(
+            description="What is the capital of France?",
+            expected_output="The capital of France is Paris.",
+            agent=agent,
+        )
+        task_prompt = task.prompt()
+
         mock_storage_instance = mock_knowledge_storage.return_value
         mock_storage_instance.sources = [string_source]
         mock_storage_instance.query.return_value = [{"content": content}]
@@ -2023,12 +2049,13 @@ def test_get_knowledge_search_query():
 
         mock_base_knowledge_storage.return_value = mock_storage_instance
 
-        mock_get_query.return_value = "Capital of France"
+        with patch.object(agent, "_get_knowledge_search_query") as mock_get_query:
+            mock_get_query.return_value = "Capital of France"
 
-        crew = Crew(agents=[agent], tasks=[task])
-        crew.kickoff()
+            crew = Crew(agents=[agent], tasks=[task])
+            crew.kickoff()
 
-        mock_get_query.assert_called_once_with(task_prompt, task)
+            mock_get_query.assert_called_once_with(task_prompt, task)
 
     with patch.object(agent.llm, "call") as mock_llm_call:
         agent._get_knowledge_search_query(task_prompt, task)

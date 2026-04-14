@@ -11,6 +11,8 @@ dependencies = [
     "chromadb>=0.4.0",
     "redis>=5.0.0",
     "psycopg2-binary>=2.9.0",
+    "gradio>=5.0.0",
+    "streamlit>=1.37.0",
 ]
 
 [build-system]
@@ -18,7 +20,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
-path = "knowledge_base/__init__.py"
+path = "__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["knowledge_base"]

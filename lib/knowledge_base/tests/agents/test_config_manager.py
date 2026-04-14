@@ -1,18 +1,14 @@
 """Tests for ConfigManager."""
 
 import json
-from datetime import datetime
-from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
 from agents.config_manager import (
     ConfigManager,
-    NovelProject,
-    VolumeConfig,
-    FanqieConfig,
     GenerationConfig,
+    LLMProviderConfig,
+    NovelProject,
 )
 
 
@@ -58,20 +54,31 @@ class TestConfigManagerInit:
         # Pre-create generation config file
         gen_data = {
             "model_name": "kimi-k2.5",
+            "active_provider": "minimax",
             "temperature": 0.8,
             "max_tokens": 16384,
             "chapter_word_count": 5000,
             "volume_enabled": True,
             "volumes": [],
+            "providers": {
+                "minimax": {
+                    "provider": "minimax",
+                    "label": "MiniMax",
+                    "model_name": "MiniMax-M2.5",
+                    "temperature": 0.9,
+                    "max_tokens": 12000,
+                }
+            },
         }
         gen_file = temp_config_dir / "generation.json"
         gen_file.write_text(json.dumps(gen_data, ensure_ascii=False), encoding="utf-8")
 
         manager = ConfigManager(config_dir=str(temp_config_dir))
 
-        assert manager.generation.model_name == "kimi-k2.5"
-        assert manager.generation.temperature == 0.8
-        assert manager.generation.max_tokens == 16384
+        assert manager.generation.active_provider == "minimax"
+        assert manager.generation.model_name == "MiniMax-M2.5"
+        assert manager.generation.temperature == 0.9
+        assert manager.generation.max_tokens == 12000
 
 
 class TestCreateProject:
@@ -137,7 +144,7 @@ class TestCreateProject:
         """Test that create_project creates novel directories."""
         manager = ConfigManager(config_dir=str(temp_config_dir))
 
-        project = manager.create_project(
+        manager.create_project(
             title="目录测试",
             author="作者",
             genre="类型",
@@ -162,6 +169,64 @@ class TestCreateProject:
         assert project1.id != project2.id
         # IDs should be 12 characters (MD5 hash truncated)
         assert len(project1.id) == 12
+
+    def test_create_project_auto_fills_missing_fields(self, temp_config_dir, mock_env_vars):
+        """Test that empty project fields are auto-generated."""
+        manager = ConfigManager(config_dir=str(temp_config_dir))
+
+        fake_client = type(
+            "FakeClient",
+            (),
+            {
+                "generate": lambda self, messages, temperature=None, max_tokens=None: (
+                    '{"outline":"自动大纲","world_setting":"自动世界观","character_intro":{"title":"自动角色","tagline":"一句话","synopsis":"简介","tags":["玄幻"],"protagonist":"主角","supporting_characters":["配角"]}}'
+                )
+            },
+        )()
+
+        project = manager.create_project(
+            title="自动生成测试",
+            author="测试作者",
+            genre="玄幻修仙",
+            outline="",
+            world_setting="",
+            character_intro="",
+            total_chapters=120,
+            llm_client=fake_client,
+        )
+
+        assert project.outline == "自动大纲"
+        assert project.world_setting == "自动世界观"
+        assert "自动角色" in project.character_intro
+
+    def test_create_project_keeps_user_provided_fields(self, temp_config_dir, mock_env_vars):
+        """Test that provided project fields are not overwritten."""
+        manager = ConfigManager(config_dir=str(temp_config_dir))
+
+        fake_client = type(
+            "FakeClient",
+            (),
+            {
+                "generate": lambda self, messages, temperature=None, max_tokens=None: (
+                    '{"outline":"不应覆盖","world_setting":"不应覆盖","character_intro":{"title":"不应覆盖"}}'
+                )
+            },
+        )()
+
+        project = manager.create_project(
+            title="保留测试",
+            author="测试作者",
+            genre="玄幻",
+            outline="手写大纲",
+            world_setting="手写世界观",
+            character_intro="手写人物设定",
+            total_chapters=80,
+            llm_client=fake_client,
+        )
+
+        assert project.outline == "手写大纲"
+        assert project.world_setting == "手写世界观"
+        assert project.character_intro == "手写人物设定"
 
 
 class TestLoadProject:
@@ -373,11 +438,14 @@ class TestGenerationConfig:
         config = GenerationConfig()
 
         assert config.model_name == "kimi-k2.5"
+        assert config.active_provider == "kimi"
         assert config.temperature == 0.7
         assert config.max_tokens == 8192
         assert config.chapter_word_count == 3000
         assert config.volume_enabled is False
         assert len(config.volumes) == 0
+        assert set(config.providers) == {"kimi", "doubao", "minimax"}
+        assert isinstance(config.providers["kimi"], LLMProviderConfig)
 
     def test_volume_templates_exist(self):
         """Test that volume templates are defined."""
@@ -385,3 +453,45 @@ class TestGenerationConfig:
 
         assert len(templates) >= 4
         assert "第一卷：废物崛起" in templates
+
+
+class TestProviderConfig:
+    """Test provider config persistence and client creation."""
+
+    def test_save_generation_config_persists_provider_profiles(self, temp_config_dir, mock_env_vars):
+        manager = ConfigManager(config_dir=str(temp_config_dir))
+
+        manager.update_generation_config(
+            active_provider="doubao",
+            provider_updates={
+                "doubao": {
+                    "model_name": "doubao-text-pro",
+                    "temperature": 0.5,
+                    "max_tokens": 4096,
+                }
+            },
+        )
+
+        payload = json.loads((temp_config_dir / "generation.json").read_text(encoding="utf-8"))
+        assert payload["active_provider"] == "doubao"
+        assert payload["providers"]["doubao"]["model_name"] == "doubao-text-pro"
+        assert payload["providers"]["doubao"]["temperature"] == 0.5
+
+    def test_build_generation_llm_client_uses_active_provider(self, temp_config_dir, mock_env_vars):
+        manager = ConfigManager(config_dir=str(temp_config_dir))
+        manager.update_generation_config(
+            active_provider="doubao",
+            provider_updates={
+                "doubao": {
+                    "api_key": "test-key",
+                    "model_name": "doubao-text-pro",
+                    "api_host": "https://ark.example.com/api/v3",
+                }
+            },
+            persist=False,
+        )
+
+        client = manager.build_generation_llm_client()
+
+        assert client.provider_name == "doubao"
+        assert client.model_name == "doubao-text-pro"

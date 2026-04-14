@@ -268,6 +268,7 @@ class TestAzureMultimodalIntegration:
     @pytest.mark.vcr()
     def test_describe_image(self, test_image_bytes: bytes) -> None:
         """Test Azure OpenAI can describe an image."""
+        pytest.importorskip("azure.ai.inference")
         llm = LLM(model="azure/gpt-4o")
         files = {"image": ImageFile(source=test_image_bytes)}
 
@@ -290,6 +291,7 @@ class TestBedrockMultimodalIntegration:
     @pytest.mark.vcr()
     def test_describe_image(self, test_image_bytes: bytes) -> None:
         """Test Bedrock Claude can describe an image."""
+        pytest.importorskip("boto3")
         llm = LLM(model="bedrock/anthropic.claude-3-haiku-20240307-v1:0")
         files = {"image": ImageFile(source=test_image_bytes)}
 
@@ -308,6 +310,8 @@ class TestBedrockMultimodalIntegration:
     @pytest.mark.vcr()
     def test_analyze_pdf(self) -> None:
         """Test Bedrock Claude can analyze a PDF."""
+        pytest.importorskip("boto3")
+
         llm = LLM(model="bedrock/anthropic.claude-3-haiku-20240307-v1:0")
         files = {"document": PDFFile(source=MINIMAL_PDF)}
 
@@ -326,6 +330,10 @@ class TestBedrockMultimodalIntegration:
 
 class TestGeminiMultimodalIntegration:
     """Integration tests for Gemini multimodal with real API calls."""
+
+    @pytest.fixture(autouse=True)
+    def _require_google_genai(self) -> None:
+        pytest.importorskip("google.genai")
 
     @pytest.mark.vcr()
     def test_describe_image(self, test_image_bytes: bytes) -> None:
@@ -402,6 +410,10 @@ class TestGeminiMultimodalIntegration:
 
 class TestLiteLLMMultimodalIntegration:
     """Integration tests for LiteLLM wrapper multimodal with real API calls."""
+
+    @pytest.fixture(autouse=True)
+    def _require_litellm(self) -> None:
+        pytest.importorskip("litellm")
 
     @pytest.mark.vcr()
     def test_describe_image_gpt4o(self, test_image_bytes: bytes) -> None:
@@ -528,6 +540,7 @@ class TestGenericFileIntegration:
     @pytest.mark.vcr()
     def test_generic_file_text_gemini(self, test_text_bytes: bytes) -> None:
         """Test generic File auto-detects text and sends correct content type."""
+        pytest.importorskip("google.genai")
         llm = LLM(model="gemini/gemini-2.0-flash")
         files = {"content": File(source=test_text_bytes)}
 

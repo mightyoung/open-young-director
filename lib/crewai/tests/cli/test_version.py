@@ -63,7 +63,7 @@ class TestVersionChecking:
     @patch("crewai.cli.version.Path.exists")
     @patch("crewai.cli.version.request.urlopen")
     def test_get_latest_version_from_pypi_success(
-        self, mock_urlopen: MagicMock, mock_exists: MagicMock
+        self, mock_urlopen: MagicMock, mock_exists: MagicMock, tmp_path: Path
     ) -> None:
         """Test successful PyPI version fetch uses releases data."""
         mock_exists.return_value = False
@@ -79,7 +79,9 @@ class TestVersionChecking:
         ).encode()
         mock_urlopen.return_value.__enter__.return_value = mock_response
 
-        version = get_latest_version_from_pypi()
+        cache_file = tmp_path / "version_cache.json"
+        with patch("crewai.cli.version._get_cache_file", return_value=cache_file):
+            version = get_latest_version_from_pypi()
         assert version == "2.0.0"
 
     @patch("crewai.cli.version.Path.exists")

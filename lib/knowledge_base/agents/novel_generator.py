@@ -1,10 +1,13 @@
 """Novel Generator using multi-agent orchestration."""
 
+from dataclasses import dataclass, field
+from datetime import datetime
 import logging
 import re
-from dataclasses import dataclass, field
-from typing import Dict, Any, Optional, List
-from datetime import datetime
+from typing import Any
+
+from writing_options import build_writing_guidance, normalize_writing_options
+
 
 logger = logging.getLogger(__name__)
 
@@ -16,12 +19,12 @@ class GeneratedChapter:
     title: str
     content: str
     word_count: int
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    plot_summary: Optional[Dict[str, Any]] = None
-    consistency_report: Optional[Dict[str, Any]] = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    plot_summary: dict[str, Any] | None = None
+    consistency_report: dict[str, Any] | None = None
     generation_time: str = ""
     # FILM_DRAMA mode data - includes scenes, cast, beats, narrative structure
-    orchestrator_result: Optional[Dict[str, Any]] = None
+    orchestrator_result: dict[str, Any] | None = None
 
 
 class NovelGeneratorAgent:
@@ -40,7 +43,7 @@ class NovelGeneratorAgent:
     def _load_outline_loader(self):
         """Load outline loader and enforcer."""
         try:
-            from agents.outline_loader import OutlineLoader, OutlineEnforcer
+            from agents.outline_loader import OutlineEnforcer, OutlineLoader
 
             project = self.config_manager.current_project
             if project:
@@ -54,8 +57,9 @@ class NovelGeneratorAgent:
     def generate_chapter(
         self,
         chapter_number: int,
-        context: Dict[str, Any],
+        context: dict[str, Any],
         previous_summary: str = "",
+        writing_options: dict[str, str] | None = None,
     ) -> GeneratedChapter:
         """Generate a single chapter."""
         outline_info = self._get_chapter_outline(chapter_number)
@@ -95,6 +99,7 @@ class NovelGeneratorAgent:
                 previous_summary=previous_summary,
                 context=context,
                 retry_attempt=attempt,
+                writing_options=writing_options,
             )
 
             content = result["content"]
@@ -108,7 +113,7 @@ class NovelGeneratorAgent:
             if word_count >= min_word_count:
                 logger.info(f"[Generator] Word count {word_count} meets target {target_word_count}")
                 break
-            elif attempt < max_retries:
+            if attempt < max_retries:
                 logger.warning(f"[Generator] Word count {word_count} below target {target_word_count}, will retry")
 
         word_count = self._count_words(content)
@@ -123,6 +128,7 @@ class NovelGeneratorAgent:
                 "key_events": outline_info.get("key_events", []),
                 "magic_line": magic_line,
                 "character_appearances": outline_info.get("characters", []),
+                "writing_options": normalize_writing_options(writing_options),
                 "generation_time": datetime.now().isoformat(),
             },
             plot_summary={
@@ -148,7 +154,7 @@ class NovelGeneratorAgent:
             pass
         return 3000  # Default fallback
 
-    def _get_chapter_outline(self, chapter_number: int) -> Optional[Dict[str, Any]]:
+    def _get_chapter_outline(self, chapter_number: int) -> dict[str, Any] | None:
         """Get chapter outline from loader."""
         if not self.outline_enforcer:
             return None
@@ -165,9 +171,10 @@ class NovelGeneratorAgent:
         title: str,
         outline: str,
         previous_summary: str,
-        context: Dict[str, Any],
+        context: dict[str, Any],
         retry_attempt: int = 0,
-    ) -> Dict[str, Any]:
+        writing_options: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
         """Generate chapter content using LLM or orchestrator.
 
         Returns:
@@ -202,8 +209,7 @@ class NovelGeneratorAgent:
                     if len(content) > 500:
                         logger.info(f"[Generator] Orchestrator generated {len(content)} chars for chapter {chapter_number}")
                         return {"content": content, "orchestrator_result": orchestrator_result}
-                    else:
-                        logger.warning(f"[Generator] Orchestrator content too short ({len(content)} chars), falling back to direct LLM")
+                    logger.warning(f"[Generator] Orchestrator content too short ({len(content)} chars), falling back to direct LLM")
             except Exception as e:
                 logger.warning(f"[Generator] Orchestrator failed, falling back to direct LLM: {e}")
 
@@ -214,6 +220,7 @@ class NovelGeneratorAgent:
         world_name = context.get("world_name", "")
         character_names = context.get("character_names", [])
         protagonist_constraint = context.get("protagonist_constraint", "")
+        volume_guidance = context.get("volume_guidance", "")
 
         prompt = self._build_generation_prompt(
             chapter_number, title, outline, previous_summary, genre,
@@ -222,6 +229,8 @@ class NovelGeneratorAgent:
             target_word_count=target_word_count,
             retry_attempt=retry_attempt,
             protagonist_constraint=protagonist_constraint,
+            volume_guidance=volume_guidance,
+            writing_options=writing_options,
         )
 
         try:
@@ -252,13 +261,15 @@ class NovelGeneratorAgent:
         outline: str,
         previous_summary: str,
         genre: str,
-        previous_chapters: List[Dict] = None,
+        previous_chapters: list[dict] = None,
         chapter_dir: str = "",
         world_name: str = "",
-        character_names: List[str] = None,
+        character_names: list[str] = None,
         target_word_count: int = 3000,
         retry_attempt: int = 0,
         protagonist_constraint: str = "",
+        volume_guidance: str = "",
+        writing_options: dict[str, str] | None = None,
     ) -> str:
         """Build generation prompt for kimi-cli (coding agent style).
 
@@ -272,6 +283,8 @@ class NovelGeneratorAgent:
         """
         previous_chapters = previous_chapters or []
         character_names = character_names or []
+        guidance = build_writing_guidance(writing_options)
+        normalized_options = guidance["normalized"]
 
         # Build previous chapters context with progressive disclosure
         prev_context = self._build_previous_chapters_context(
@@ -328,8 +341,11 @@ class NovelGeneratorAgent:
 
 **【重要】** 上述约束必须严格遵守，不得违反。
 
+## 本卷修订指令
+{volume_guidance or "无额外修订指令，按既有大纲与前文自然推进。"}
+
 ## 写作要求
-1. 第三人称全知视角
+1. {guidance['perspective']}
 2. 情节必须与前文连贯，承接"前情提要"中的具体细节
 3. 详细的心理描写
 4. 自然的人物对话，符合角色性格
@@ -337,6 +353,11 @@ class NovelGeneratorAgent:
 6. 高潮部分要有冲击力
 7. **重要**: 如果"详细前文"中提到了具体物品、地点、人物关系，创作时必须保持一致
 8. **重要**: 必须使用上述宗门名称和人物名称，不得使用其他同名或相似名称
+
+## 风格参数
+- 基础风格: {normalized_options['style']}
+- {guidance['style']}
+{chr(10).join(f"- {item}" for item in guidance['details'])}
 
 ## 输出格式
 直接输出小说正文，不输出任何问题或解释。开头格式：{title}
@@ -346,7 +367,7 @@ class NovelGeneratorAgent:
 
     def _build_previous_chapters_context(
         self,
-        previous_chapters: List[Dict],
+        previous_chapters: list[dict],
         chapter_dir: str,
         current_chapter: int,
     ) -> str:
@@ -472,7 +493,7 @@ class NovelGeneratorAgent:
         title: str,
         outline: str,
         previous_summary: str,
-        context: Dict[str, Any],
+        context: dict[str, Any],
     ) -> str:
         """Generate fallback content when LLM is unavailable."""
         return f"""
@@ -496,8 +517,8 @@ class NovelGeneratorAgent:
         self,
         chapter: GeneratedChapter,
         previous_summary: str,
-        context: Dict[str, Any] = None,
-    ) -> Dict[str, Any]:
+        context: dict[str, Any] = None,
+    ) -> dict[str, Any]:
         """Check consistency of generated chapter and auto-extract character states."""
         content = chapter.content
         character_states = {}

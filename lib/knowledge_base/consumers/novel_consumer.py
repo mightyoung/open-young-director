@@ -2,9 +2,12 @@
 """Novel Consumer - transforms raw scene data into novel text."""
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
+
+from writing_options import build_writing_guidance
 
 from .base import BaseConsumer
+
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +27,7 @@ class NovelConsumer(BaseConsumer):
         """Return consumer type."""
         return "novel"
 
-    async def query(self, scene_id: str, **kwargs) -> Dict[str, Any]:
+    async def query(self, scene_id: str, **kwargs) -> dict[str, Any]:
         """Query raw scene data for novel generation.
 
         Args:
@@ -46,7 +49,7 @@ class NovelConsumer(BaseConsumer):
 
         return scene_data
 
-    async def generate(self, raw_data: Dict[str, Any], **kwargs) -> str:
+    async def generate(self, raw_data: dict[str, Any], **kwargs) -> str:
         """Generate novel text from raw scene data.
 
         Uses the LLM client to transform beats, character interactions,
@@ -63,6 +66,15 @@ class NovelConsumer(BaseConsumer):
                 - style: Writing style (default: "literary")
                 - perspective: Narrative perspective (default: "third_limited")
                 - word_count_target: Target word count
+                - style_preset/author_style: Knowledge-base-derived style preset
+                - narrative_mode: Narrative method preset
+                - pace: Narrative pace
+                - dialogue_density: Dialogue ratio
+                - prose_style: Sentence/prose texture
+                - world_building_density: World-building density
+                - emotion_intensity: Emotional intensity
+                - combat_style: Combat writing style
+                - hook_strength: Opening hook strength
 
         Returns:
             str: Generated novel text in Chinese
@@ -99,12 +111,12 @@ class NovelConsumer(BaseConsumer):
 
     def _build_novel_prompt(
         self,
-        beats: List[Dict],
-        character_states: Dict[str, List],
-        scene_descriptions: List[str],
-        narration_pieces: List[str],
-        emotional_arc: Dict,
-        chapter_info: Dict,
+        beats: list[dict],
+        character_states: dict[str, list],
+        scene_descriptions: list[str],
+        narration_pieces: list[str],
+        emotional_arc: dict,
+        chapter_info: dict,
         background: str,
         **kwargs,
     ) -> str:
@@ -124,8 +136,22 @@ class NovelConsumer(BaseConsumer):
             Formatted prompt string
         """
         style = kwargs.get("style", "literary")
-        perspective = kwargs.get("perspective", "third_limited")
         word_count = kwargs.get("word_count_target", 3000)
+        guidance = build_writing_guidance(
+            {
+                "style": style,
+                "style_preset": kwargs.get("style_preset") or kwargs.get("author_style", ""),
+                "perspective": kwargs.get("perspective", "third_limited"),
+                "narrative_mode": kwargs.get("narrative_mode", "balanced"),
+                "pace": kwargs.get("pace", "medium"),
+                "dialogue_density": kwargs.get("dialogue_density", "medium"),
+                "prose_style": kwargs.get("prose_style", "clean"),
+                "world_building_density": kwargs.get("world_building_density", "medium"),
+                "emotion_intensity": kwargs.get("emotion_intensity", "medium"),
+                "combat_style": kwargs.get("combat_style", "tactical"),
+                "hook_strength": kwargs.get("hook_strength", "medium"),
+            }
+        )
 
         # Format beats
         beats_text = self._format_beats(beats)
@@ -188,9 +214,13 @@ class NovelConsumer(BaseConsumer):
 </source_material>
 
 <requirements>
-写作风格: {style}
-叙事视角: {perspective}
+基础风格: {style}
+风格预设: {guidance['style']}
+叙事视角: {guidance['perspective']}
 目标字数: 约{word_count}字
+
+扩展写作参数:
+{chr(10).join(f"- {item}" for item in guidance['details'])}
 
 重要规则:
 1. 直接输出小说正文，不要输出任何思考过程或说明
@@ -206,7 +236,7 @@ class NovelConsumer(BaseConsumer):
 """
         return prompt
 
-    def _format_beats(self, beats: List[Dict]) -> str:
+    def _format_beats(self, beats: list[dict]) -> str:
         """Format plot beats for prompt.
 
         Args:
@@ -230,7 +260,7 @@ class NovelConsumer(BaseConsumer):
         return "\n".join(lines)
 
     def _format_character_states(
-        self, character_states: Dict[str, List]
+        self, character_states: dict[str, list]
     ) -> str:
         """Format character states for prompt.
 

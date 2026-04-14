@@ -448,6 +448,7 @@ class TestGeminiStructuredPlanning:
     @pytest.fixture(autouse=True)
     def mock_google_api_key(self):
         """Mock API key if not set."""
+        pytest.importorskip("google.genai")
         if "GOOGLE_API_KEY" not in os.environ and "GEMINI_API_KEY" not in os.environ:
             with patch.dict(os.environ, {"GOOGLE_API_KEY": "test-key"}):
                 yield
@@ -497,6 +498,7 @@ class TestAzureStructuredPlanning:
     @pytest.mark.vcr()
     def test_azure_research_workflow_generates_steps(self):
         """Test that Azure OpenAI generates structured plan steps for a research task."""
+        pytest.importorskip("azure.ai.inference")
         web_search, read_website, generate_report = create_research_tools()
         llm = LLM(model="azure/gpt-4o")
 

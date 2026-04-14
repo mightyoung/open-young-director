@@ -5,16 +5,47 @@ from __future__ import annotations
 from datetime import datetime
 import json
 from pathlib import Path
-import sys
+import time
 from typing import Any
 
 
-CREWAI_SRC = Path(__file__).resolve().parents[2] / "crewai" / "src"
-if str(CREWAI_SRC) not in sys.path:
-    sys.path.insert(0, str(CREWAI_SRC))
+def generate_pending_state_path(
+    stage: str,
+    topic: str = "unknown",
+    output_dir: str | None = None,
+) -> str:
+    """Generate a pending-state path using the same filename contract as crewai."""
+    topic_part = "".join(char if char.isalnum() else "_" for char in str(topic))
+    filename = f".novel_pipeline_{topic_part}_{stage}_{int(time.time())}_pending.json"
+    if output_dir:
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+        return str(output_path / filename)
+    return filename
 
-from crewai.content.novel.orchestrator.output_packer import generate_pending_state_path  # noqa: E402
-from crewai.content.novel.pipeline.human_review_gate import HumanReviewGate  # noqa: E402
+
+class HumanReviewGate:
+    """Minimal local review gate matching the behavior needed by knowledge_base."""
+
+    def __init__(
+        self,
+        enabled_stages: frozenset[str],
+        auto_approve: bool = False,
+        callback: Any = None,
+    ) -> None:
+        self.enabled_stages = enabled_stages
+        self.auto_approve = auto_approve
+        self.callback = callback
+
+    def check(self, stage_name: str, state: Any) -> bool:
+        if stage_name not in self.enabled_stages:
+            return True
+        if self.auto_approve:
+            return True
+        if self.callback:
+            summary = state if isinstance(state, dict) else getattr(state, "__dict__", {})
+            return bool(self.callback(stage_name, summary))
+        return False
 
 
 LONGFORM_STATE_NAME = "longform_state.v1.json"
@@ -30,14 +61,53 @@ STAGE_VOLUME_REVIEW = "volume.review"
 STAGE_RISK_PAUSE = "risk.pause"
 STAGE_FINALIZE_EXPORT = "finalize.export"
 DEFAULT_ALLOWED_ACTIONS = ["approve", "revise", "reject"]
+DEFAULT_RISK_SCORE_THRESHOLD = 6.5
+DEFAULT_RISK_MISSING_EVENTS_THRESHOLD = 2
+STRUCTURED_VOLUME_GUIDANCE_FIELDS = (
+    "must_recover",
+    "relationship_focus",
+    "must_avoid",
+    "tone_target",
+    "extra_notes",
+)
 
 
 def _now_iso() -> str:
     return datetime.now().isoformat()
 
 
+def normalize_volume_guidance_payload(payload: dict[str, Any] | None) -> dict[str, str]:
+    data = payload if isinstance(payload, dict) else {}
+    normalized: dict[str, str] = {}
+    for key in STRUCTURED_VOLUME_GUIDANCE_FIELDS:
+        value = data.get(key, "")
+        normalized[key] = str(value).strip()
+    return normalized
+
+
+def format_volume_guidance(payload: dict[str, Any] | None) -> str:
+    normalized = normalize_volume_guidance_payload(payload)
+    labels = {
+        "must_recover": "必须回收的伏笔/问题",
+        "relationship_focus": "需要强化的人物关系",
+        "must_avoid": "明确避免的方向",
+        "tone_target": "目标基调",
+        "extra_notes": "补充说明",
+    }
+    lines = [
+        f"- {labels[key]}: {value}"
+        for key, value in normalized.items()
+        if value
+    ]
+    return "\n".join(lines)
+
+
 def longform_state_path(run_dir: str | Path) -> Path:
     return Path(run_dir) / LONGFORM_STATE_NAME
+
+
+def risk_report_path(run_dir: str | Path) -> Path:
+    return Path(run_dir) / RISK_REPORT_NAME
 
 
 def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -71,6 +141,89 @@ def load_longform_state(run_dir_or_state: str | Path) -> dict[str, Any]:
     if path.is_dir():
         path = longform_state_path(path)
     return load_json_file(path)
+
+
+def save_risk_report(run_dir: str | Path, payload: dict[str, Any]) -> dict[str, Any]:
+    data = dict(payload)
+    data["updated_at"] = _now_iso()
+    _atomic_write_json(risk_report_path(run_dir), data)
+    return data
+
+
+def build_volume_risk_report(
+    *,
+    project_dir: str | Path,
+    volume_index: int,
+    start_chapter: int,
+    end_chapter: int,
+    score_threshold: float = DEFAULT_RISK_SCORE_THRESHOLD,
+    missing_events_threshold: int = DEFAULT_RISK_MISSING_EVENTS_THRESHOLD,
+) -> dict[str, Any]:
+    consistency_dir = Path(project_dir) / "consistency_reports"
+    chapters: list[dict[str, Any]] = []
+    at_risk_chapters: list[dict[str, Any]] = []
+    total_missing_events = 0
+
+    for chapter_number in range(start_chapter, end_chapter + 1):
+        report_file = consistency_dir / f"ch{chapter_number:03d}_consistency.json"
+        payload = load_json_file(report_file)
+        report = payload.get("report", payload if isinstance(payload, dict) else {})
+        if not isinstance(report, dict) or not report:
+            continue
+
+        missing_events = [str(item) for item in report.get("missing_events", []) if str(item).strip()]
+        recommendations = [str(item) for item in report.get("recommendations", []) if str(item).strip()]
+        overall_score = float(report.get("overall_score", 0.0) or 0.0)
+        chapter_summary = {
+            "chapter_number": chapter_number,
+            "overall_score": round(overall_score, 1),
+            "missing_events": missing_events,
+            "missing_events_count": len(missing_events),
+            "recommendations": recommendations[:3],
+            "character_state_count": len(report.get("character_states", {}) or {}),
+        }
+        chapters.append(chapter_summary)
+        total_missing_events += len(missing_events)
+
+        if overall_score < score_threshold or len(missing_events) >= missing_events_threshold:
+            at_risk_chapters.append(chapter_summary)
+
+    highest_risk = max((item["missing_events_count"] for item in at_risk_chapters), default=0)
+    low_score_count = sum(1 for item in at_risk_chapters if item["overall_score"] < score_threshold)
+    risk_detected = bool(
+        at_risk_chapters
+        and (
+            len(at_risk_chapters) >= 2
+            or any(item["overall_score"] < 5.0 for item in at_risk_chapters)
+            or total_missing_events >= 4
+        )
+    )
+
+    if not risk_detected:
+        risk_level = "low"
+        summary = "本卷未检测到需要人工复核的明显失控风险。"
+    elif any(item["overall_score"] < 5.0 for item in at_risk_chapters) or highest_risk >= 3:
+        risk_level = "high"
+        summary = f"第 {volume_index} 卷存在明显失控风险，建议先人工复核后再继续。"
+    else:
+        risk_level = "medium"
+        summary = f"第 {volume_index} 卷出现多处连贯性/关键事件缺口，建议人工确认。"
+
+    return {
+        "volume_index": volume_index,
+        "volume_start_chapter": start_chapter,
+        "volume_end_chapter": end_chapter,
+        "evaluated_chapter_count": len(chapters),
+        "risk_detected": risk_detected,
+        "risk_level": risk_level,
+        "summary": summary,
+        "score_threshold": score_threshold,
+        "low_score_chapter_count": low_score_count,
+        "total_missing_events": total_missing_events,
+        "at_risk_chapters": at_risk_chapters,
+        "chapters": chapters,
+        "generated_at": _now_iso(),
+    }
 
 
 def volume_plan(total_chapters: int, chapters_per_volume: int) -> list[dict[str, int]]:
@@ -111,7 +264,7 @@ def initial_longform_state(
         "run_id": run_id,
         "project_id": getattr(project, "id", ""),
         "project_title": getattr(project, "title", ""),
-        "project_dir": str(Path(run_dir).resolve().parent),
+        "project_dir": str(Path(run_dir).resolve().parents[1]),
         "run_dir": str(Path(run_dir).resolve()),
         "longform_state_path": str(longform_state_path(run_dir).resolve()),
         "status": "running",
@@ -136,6 +289,8 @@ def initial_longform_state(
         "volume_plan": plan,
         "pending_state_path": None,
         "risk_report_path": None,
+        "next_volume_guidance": "",
+        "next_volume_guidance_payload": {},
         "approval_history": [],
         "created_at": _now_iso(),
         "updated_at": _now_iso(),
@@ -242,12 +397,70 @@ def review_payload_for_volume(longform_state: dict[str, Any]) -> dict[str, Any]:
         (item for item in longform_state.get("volume_plan", []) if item["volume_index"] == current_volume),
         None,
     )
-    return {
+    payload = {
         "volume_index": current_volume,
         "volume_start_chapter": longform_state.get("current_volume_start_chapter", 0),
         "volume_end_chapter": longform_state.get("current_volume_end_chapter", 0),
         "chapters_completed": longform_state.get("chapters_completed", 0),
         "planned_chapter_count": plan.get("chapter_count", 0) if plan else 0,
+    }
+    project_dir_raw = str(longform_state.get("project_dir", "")).strip()
+    project_dir = Path(project_dir_raw).resolve() if project_dir_raw else None
+    metadata = load_json_file(project_dir / "metadata.json") if project_dir else {}
+    chapter_entries = [
+        item
+        for item in metadata.get("chapters", [])
+        if payload["volume_start_chapter"] <= int(item.get("number", 0)) <= payload["volume_end_chapter"]
+    ]
+    chapter_entries.sort(key=lambda item: int(item.get("number", 0)))
+
+    highlights: list[dict[str, Any]] = []
+    total_word_count = 0
+    for item in chapter_entries:
+        chapter_number = int(item.get("number", 0))
+        plot_summary = (
+            load_json_file(project_dir / "plot_summaries" / f"ch{chapter_number:03d}_summary.json")
+            if project_dir
+            else {}
+        )
+        summary = str(item.get("summary", "")).strip()
+        if not summary:
+            summary = str(plot_summary.get("brief_summary") or plot_summary.get("one_line_summary") or "").strip()
+        highlight = {
+            "chapter_number": chapter_number,
+            "title": str(item.get("title", "")),
+            "word_count": int(item.get("word_count", 0)),
+            "summary": summary,
+            "key_events": list(item.get("key_events", []))[:4],
+        }
+        highlights.append(highlight)
+        total_word_count += highlight["word_count"]
+
+    if highlights:
+        payload["generated_chapter_count"] = len(highlights)
+        payload["total_word_count"] = total_word_count
+        payload["chapter_highlights"] = highlights[:8]
+        payload["opening_summary"] = highlights[0]["summary"]
+        payload["closing_summary"] = highlights[-1]["summary"]
+    else:
+        payload["generated_chapter_count"] = 0
+        payload["total_word_count"] = 0
+        payload["chapter_highlights"] = []
+        payload["opening_summary"] = ""
+        payload["closing_summary"] = ""
+    return payload
+
+
+def review_payload_for_risk(risk_report: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "volume_index": risk_report.get("volume_index", 0),
+        "volume_start_chapter": risk_report.get("volume_start_chapter", 0),
+        "volume_end_chapter": risk_report.get("volume_end_chapter", 0),
+        "risk_level": risk_report.get("risk_level", "low"),
+        "summary": risk_report.get("summary", ""),
+        "low_score_chapter_count": risk_report.get("low_score_chapter_count", 0),
+        "total_missing_events": risk_report.get("total_missing_events", 0),
+        "at_risk_chapters": list(risk_report.get("at_risk_chapters", [])),
     }
 
 

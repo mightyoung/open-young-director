@@ -65,27 +65,37 @@ class TestLiteLLMMultimodal:
 
     def test_supports_multimodal_gpt4o(self) -> None:
         """Test GPT-4o model supports multimodal."""
+        pytest.importorskip("litellm")
+
         llm = LLM(model="gpt-4o", is_litellm=True)
         assert llm.supports_multimodal() is True
 
     def test_supports_multimodal_gpt4_turbo(self) -> None:
         """Test GPT-4 Turbo model supports multimodal."""
+        pytest.importorskip("litellm")
+
         llm = LLM(model="gpt-4-turbo", is_litellm=True)
         assert llm.supports_multimodal() is True
 
     def test_supports_multimodal_claude3(self) -> None:
         """Test Claude 3 model supports multimodal via litellm."""
         # Use litellm/ prefix to avoid native provider import
+        pytest.importorskip("litellm")
+
         llm = LLM(model="litellm/claude-3-sonnet-20240229")
         assert llm.supports_multimodal() is True
 
     def test_supports_multimodal_gemini(self) -> None:
         """Test Gemini model supports multimodal."""
+        pytest.importorskip("google.genai")
+
         llm = LLM(model="gemini/gemini-pro", is_litellm=True)
         assert llm.supports_multimodal() is True
 
     def test_supports_multimodal_gpt35_does_not(self) -> None:
         """Test GPT-3.5 model does not support multimodal."""
+        pytest.importorskip("litellm")
+
         llm = LLM(model="gpt-3.5-turbo", is_litellm=True)
         assert llm.supports_multimodal() is False
 
@@ -104,6 +114,8 @@ class TestLiteLLMMultimodal:
 
     def test_format_multimodal_content_unsupported_type(self) -> None:
         """Test unsupported content type is skipped."""
+        pytest.importorskip("litellm")
+
         llm = LLM(model="gpt-4o", is_litellm=True)  # OpenAI doesn't support text files
         files = {"doc": TextFile(source=b"hello world")}
 

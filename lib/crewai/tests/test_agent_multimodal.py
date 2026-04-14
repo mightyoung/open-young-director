@@ -259,6 +259,10 @@ class TestAgentMultimodalAnthropic:
 class TestAgentMultimodalGemini:
     """Test Agent with input_files using Gemini models."""
 
+    @pytest.fixture(autouse=True)
+    def _require_google_genai(self) -> None:
+        pytest.importorskip("google.genai")
+
     @pytest.mark.vcr()
     @pytest.mark.parametrize("model", GEMINI_MODELS)
     def test_image_file(self, model: str, image_file: ImageFile) -> None:
@@ -332,6 +336,8 @@ class TestAgentMultimodalGemini:
         text_file: TextFile,
     ) -> None:
         """Test agent can process multiple file types together."""
+        pytest.importorskip("google.genai")
+
         llm = LLM(model=model)
         agent = _create_analyst_agent(llm)
 
@@ -384,6 +390,7 @@ class TestAgentMultimodalFileTypes:
     @pytest.mark.vcr()
     def test_text_gemini(self, text_file: TextFile) -> None:
         """Test text file with Gemini."""
+        pytest.importorskip("google.genai")
         llm = LLM(model="gemini/gemini-2.0-flash")
         agent = _create_analyst_agent(llm)
         result = agent.kickoff(
@@ -395,6 +402,8 @@ class TestAgentMultimodalFileTypes:
     @pytest.mark.vcr()
     def test_video_gemini(self, video_file: VideoFile) -> None:
         """Test video file with Gemini."""
+        pytest.importorskip("google.genai")
+
         llm = LLM(model="gemini/gemini-2.0-flash")
         agent = _create_analyst_agent(llm)
         result = agent.kickoff(
@@ -406,6 +415,7 @@ class TestAgentMultimodalFileTypes:
     @pytest.mark.vcr()
     def test_audio_gemini(self, audio_file: AudioFile) -> None:
         """Test audio file with Gemini."""
+        pytest.importorskip("google.genai")
         llm = LLM(model="gemini/gemini-2.0-flash")
         agent = _create_analyst_agent(llm)
         result = agent.kickoff(
