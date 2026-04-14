@@ -1,9 +1,15 @@
 """Tests for longform pause/resume state helpers."""
 
+from datetime import datetime
 from pathlib import Path
 
+from agents.novel_generator import GeneratedChapter
+from run_novel_generation import _pause_for_invalid_chapter
+from services.run_storage import create_run, read_status
 from services.longform_run import (
+    CHECKPOINT_CHAPTER,
     CHECKPOINT_OUTLINE,
+    STAGE_CHAPTER_REVIEW,
     STAGE_OUTLINE_REVIEW,
     approval_payload_from_input,
     build_volume_risk_report,
@@ -81,6 +87,63 @@ def test_record_pause_writes_pending_state_and_clear_pause_resets_it(temp_projec
 
     reloaded = load_longform_state(run_dir)
     assert reloaded["status"] == "running"
+
+
+def test_pause_for_invalid_chapter_writes_chapter_review_payload(temp_project_dir):
+    project_dir = temp_project_dir / "project"
+    run_dir = create_run(
+        project_dir=project_dir,
+        run_id="run-001",
+        project_id="project-123",
+        command=["--generate-full"],
+    )
+    state = initial_longform_state(
+        project=_Project(),
+        run_id="run-001",
+        run_dir=run_dir,
+        chapters_per_volume=60,
+        approval_mode="outline+volume",
+        auto_approve=False,
+    )
+    chapter = GeneratedChapter(
+        number=4,
+        title="第四章",
+        content="测试内容",
+        word_count=4,
+        metadata={
+            "rewrite_history": [{"attempt": 0, "mode": "initial"}],
+        },
+        consistency_report={
+            "summary": "章节与前文严重割裂",
+            "blocking_issues": ["本章开头未自然承接上章人物或局势状态，存在明显割裂。"],
+            "issue_types": ["scene_or_timeline_disconnect"],
+            "missing_events": [],
+            "continuity_issues": ["本章开头未自然承接上章人物或局势状态，存在明显割裂。"],
+            "world_fact_issues": [],
+            "rewrite_attempted": True,
+            "rewrite_succeeded": False,
+        },
+    )
+
+    result = _pause_for_invalid_chapter(
+        run_dir=run_dir,
+        state=state,
+        project_id="project-123",
+        command=["--generate-full"],
+        run_started_at=datetime.now(),
+        chapter=chapter,
+    )
+
+    status = read_status(run_dir)
+    assert result == 0
+    assert status["pause_reason"] == CHECKPOINT_CHAPTER
+    assert status["current_stage"] == STAGE_CHAPTER_REVIEW
+    assert "章节与前文严重割裂" in status["error_message"]
+    assert status["pending_state_path"]
+    pending = approval_payload_from_input(status["pending_state_path"])
+    assert pending["checkpoint_type"] == CHECKPOINT_CHAPTER
+    assert pending["review_payload"]["chapter_number"] == 4
+    assert pending["review_payload"]["issue_types"] == ["scene_or_timeline_disconnect"]
 
 
 def test_approval_payload_from_file_and_inline_json(temp_project_dir):

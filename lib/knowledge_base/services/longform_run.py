@@ -53,12 +53,14 @@ RISK_REPORT_NAME = "risk_report.json"
 CHECKPOINT_OUTLINE = "outline_review"
 CHECKPOINT_VOLUME = "volume_review"
 CHECKPOINT_RISK = "risk_review"
+CHECKPOINT_CHAPTER = "chapter_review"
 STAGE_OUTLINE_GENERATE = "outline.generate"
 STAGE_OUTLINE_REVIEW = "outline.review"
 STAGE_VOLUME_PLAN = "volume.plan"
 STAGE_VOLUME_WRITE = "volume.write"
 STAGE_VOLUME_REVIEW = "volume.review"
 STAGE_RISK_PAUSE = "risk.pause"
+STAGE_CHAPTER_REVIEW = "chapter.review"
 STAGE_FINALIZE_EXPORT = "finalize.export"
 DEFAULT_ALLOWED_ACTIONS = ["approve", "revise", "reject"]
 DEFAULT_RISK_SCORE_THRESHOLD = 6.5
@@ -291,6 +293,8 @@ def initial_longform_state(
         "risk_report_path": None,
         "next_volume_guidance": "",
         "next_volume_guidance_payload": {},
+        "next_chapter_guidance": "",
+        "next_chapter_guidance_chapter": None,
         "approval_history": [],
         "created_at": _now_iso(),
         "updated_at": _now_iso(),
@@ -461,6 +465,29 @@ def review_payload_for_risk(risk_report: dict[str, Any]) -> dict[str, Any]:
         "low_score_chapter_count": risk_report.get("low_score_chapter_count", 0),
         "total_missing_events": risk_report.get("total_missing_events", 0),
         "at_risk_chapters": list(risk_report.get("at_risk_chapters", [])),
+    }
+
+
+def review_payload_for_chapter(
+    *,
+    chapter_number: int,
+    title: str,
+    report: dict[str, Any],
+    rewrite_history: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    blocking_issues = [str(item) for item in report.get("blocking_issues", []) if str(item).strip()]
+    return {
+        "chapter_number": chapter_number,
+        "title": title,
+        "summary": str(report.get("summary", "") or "").strip(),
+        "issue_types": list(report.get("issue_types", [])),
+        "blocking_issues": blocking_issues,
+        "missing_events": list(report.get("missing_events", [])),
+        "continuity_issues": list(report.get("continuity_issues", [])),
+        "world_fact_issues": list(report.get("world_fact_issues", [])),
+        "rewrite_attempted": bool(report.get("rewrite_attempted")),
+        "rewrite_succeeded": bool(report.get("rewrite_succeeded")),
+        "rewrite_history": list(rewrite_history or []),
     }
 
 

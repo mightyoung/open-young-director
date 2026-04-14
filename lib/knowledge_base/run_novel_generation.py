@@ -28,6 +28,7 @@ import json
 import logging
 import os
 from pathlib import Path
+import subprocess
 import sys
 from typing import Any
 import uuid
@@ -55,9 +56,11 @@ from agents.novel_orchestrator import (  # noqa: E402
     OrchestratorConfig,
 )
 from services.longform_run import (  # noqa: E402
+    CHECKPOINT_CHAPTER,
     CHECKPOINT_OUTLINE,
     CHECKPOINT_RISK,
     CHECKPOINT_VOLUME,
+    STAGE_CHAPTER_REVIEW,
     STAGE_FINALIZE_EXPORT,
     STAGE_OUTLINE_GENERATE,
     STAGE_OUTLINE_REVIEW,
@@ -77,6 +80,7 @@ from services.longform_run import (  # noqa: E402
     normalize_volume_guidance_payload,
     record_pause,
     review_payload_for_outline,
+    review_payload_for_chapter,
     review_payload_for_risk,
     review_payload_for_volume,
     save_longform_state,
@@ -347,6 +351,54 @@ def _sync_status_longform_fields(run_dir: Path | None, state: dict[str, Any]) ->
     )
 
 
+def _pause_for_invalid_chapter(
+    *,
+    run_dir: Path,
+    state: dict[str, Any],
+    project_id: str,
+    command: list[str],
+    run_started_at: datetime,
+    chapter,
+) -> int:
+    """Pause a longform run when a chapter remains invalid after one rewrite."""
+    report = chapter.consistency_report or {}
+    paused_state = record_pause(
+        run_dir=run_dir,
+        longform_state=state,
+        checkpoint_type=CHECKPOINT_CHAPTER,
+        current_stage=STAGE_CHAPTER_REVIEW,
+        review_payload=review_payload_for_chapter(
+            chapter_number=chapter.number,
+            title=chapter.title,
+            report=report,
+            rewrite_history=chapter.metadata.get("rewrite_history", []),
+        ),
+    )
+    _update_run_progress(
+        run_dir,
+        project_id=project_id,
+        command=command,
+        status="paused",
+        current_stage=STAGE_CHAPTER_REVIEW,
+        current_step=f"第 {chapter.number} 章未通过质量闸门，等待决策",
+        chapters_total=paused_state.get("total_chapters", 0),
+        chapters_completed=paused_state.get("chapters_completed", 0),
+        run_started_at=run_started_at,
+        failed_stage=STAGE_CHAPTER_GENERATE,
+        error_message=report.get("summary") or "章节未通过质量闸门",
+    )
+    update_status(
+        run_dir,
+        pending_state_path=paused_state.get("pending_state_path"),
+        longform_state_path=paused_state.get("longform_state_path"),
+        pause_reason=CHECKPOINT_CHAPTER,
+        risk_report_path=None,
+        chapter_quality_report=report,
+    )
+    _sync_status_longform_fields(run_dir, paused_state)
+    return 0
+
+
 def cmd_new_project(args):
     """创建新项目."""
     config_mgr = get_config_manager()
@@ -585,6 +637,14 @@ def cmd_generate(args):
             volume_guidance = str(getattr(args, "volume_guidance", "") or "").strip()
             if volume_guidance:
                 context["volume_guidance"] = volume_guidance
+            chapter_guidance = str(getattr(args, "chapter_guidance", "") or "").strip()
+            chapter_guidance_target = getattr(args, "chapter_guidance_target", None)
+            if (
+                chapter_guidance
+                and chapter_guidance_target is not None
+                and int(chapter_guidance_target) == chapter_num
+            ):
+                context["volume_guidance"] = chapter_guidance
 
             # 生成章节
             current_stage = STAGE_CHAPTER_GENERATE
@@ -605,6 +665,29 @@ def cmd_generate(args):
                 previous_summary=previous_summary,
                 writing_options=active_writing_options,
             )
+            if hasattr(chapter, "consistency_report") and chapter.consistency_report:
+                chapter_mgr.save_consistency_report(
+                    chapter_number=chapter.number,
+                    report=chapter.consistency_report,
+                    rewrite_history=chapter.metadata.get("rewrite_history", []),
+                )
+            if getattr(chapter, "consistency_report", {}).get("invalid"):
+                quality_summary = chapter.consistency_report.get("summary", "章节未通过质量闸门")
+                status_payload = read_status(run_dir) if run_dir else {}
+                longform_state_path = status_payload.get("longform_state_path")
+                if run_dir and longform_state_path:
+                    longform_state = load_longform_state(longform_state_path)
+                    if longform_state:
+                        print(f"   ⏸️ 第 {chapter_num} 章未通过质量闸门，已暂停等待决策")
+                        return _pause_for_invalid_chapter(
+                            run_dir=run_dir,
+                            state=longform_state,
+                            project_id=project_id,
+                            command=command,
+                            run_started_at=run_started_at,
+                            chapter=chapter,
+                        )
+                raise GenerationError(quality_summary)
 
             # 计算内容校验和
             content_checksum = hashlib.sha256(
@@ -656,14 +739,6 @@ def cmd_generate(args):
                 )
                 chapter_mgr.save_plot_summary(plot_summary)
                 logger.info(f"  📋 Plot summary saved for chapter {chapter.number}")
-
-            # 保存一致性检查报告和重写历史
-            if hasattr(chapter, 'consistency_report') and chapter.consistency_report:
-                chapter_mgr.save_consistency_report(
-                    chapter_number=chapter.number,
-                    report=chapter.consistency_report,
-                    rewrite_history=chapter.metadata.get("rewrite_history", [])
-                )
 
             # 保存 FILM_DRAMA 内容（场景、角色、情节结构等）
             if hasattr(chapter, 'orchestrator_result') and chapter.orchestrator_result:
@@ -1760,6 +1835,8 @@ def _run_volume_generation_subprocess(
     count: int,
     writing_options: dict[str, str],
     volume_guidance: str = "",
+    chapter_guidance: str = "",
+    chapter_guidance_target: int | None = None,
 ) -> int:
     """Reuse the existing incremental generator for one volume slice."""
     cmd = [
@@ -1781,6 +1858,15 @@ def _run_volume_generation_subprocess(
     ]
     if volume_guidance.strip():
         cmd.extend(["--volume-guidance", volume_guidance.strip()])
+    if chapter_guidance.strip() and chapter_guidance_target:
+        cmd.extend(
+            [
+                "--chapter-guidance",
+                chapter_guidance.strip(),
+                "--chapter-guidance-target",
+                str(chapter_guidance_target),
+            ]
+        )
     _append_writing_options_to_command(cmd, writing_options)
     result = subprocess.run(cmd, cwd=str(Path(__file__).resolve().parent), check=False)
     return int(result.returncode)
@@ -1876,6 +1962,8 @@ def _continue_longform_run(args, *, state: dict[str, Any], run_dir: Path, run_st
 
     while True:
         volume_guidance = str(state.get("next_volume_guidance", "") or "").strip()
+        chapter_guidance = str(state.get("next_chapter_guidance", "") or "").strip()
+        chapter_guidance_target = state.get("next_chapter_guidance_chapter")
         current_volume = int(state.get("current_volume") or 0)
         start_chapter = int(state.get("current_volume_start_chapter") or 0)
         end_chapter = int(state.get("current_volume_end_chapter") or 0)
@@ -1931,6 +2019,8 @@ def _continue_longform_run(args, *, state: dict[str, Any], run_dir: Path, run_st
             count=end_chapter - next_start + 1,
             writing_options=writing_options,
             volume_guidance=volume_guidance,
+            chapter_guidance=chapter_guidance,
+            chapter_guidance_target=int(chapter_guidance_target) if chapter_guidance_target else None,
         )
         if return_code != 0:
             state["status"] = "failed"
@@ -1957,6 +2047,8 @@ def _continue_longform_run(args, *, state: dict[str, Any], run_dir: Path, run_st
         state["chapters_completed"] = max(int(getattr(refreshed_project, "current_chapter", 0)), end_chapter)
         state["next_volume_guidance"] = ""
         state["next_volume_guidance_payload"] = {}
+        state["next_chapter_guidance"] = ""
+        state["next_chapter_guidance_chapter"] = None
 
         risk_report = build_volume_risk_report(
             project_dir=_project_dir(config_mgr),
@@ -2188,6 +2280,38 @@ def cmd_generate_full(args):
             update_status(run_dir, pending_state_path=None, pause_reason=None, risk_report_path=None)
             return _continue_longform_run(args, state=state, run_dir=run_dir, run_started_at=run_started_at)
 
+        if pending_state.get("checkpoint_type") == CHECKPOINT_CHAPTER:
+            chapter_number = int((pending_state.get("review_payload") or {}).get("chapter_number", 0))
+            if action == "reject":
+                save_longform_state(run_dir, state)
+                _sync_status_longform_fields(run_dir, state)
+                _update_run_progress(
+                    run_dir,
+                    project_id=project_id,
+                    command=command,
+                    status="paused",
+                    current_stage=STAGE_CHAPTER_REVIEW,
+                    current_step=f"第 {chapter_number} 章质量复核未通过，保持暂停",
+                    chapters_total=state.get("total_chapters", 0),
+                    chapters_completed=state.get("chapters_completed", 0),
+                    run_started_at=run_started_at,
+                )
+                return 0
+
+            notes = str(
+                approval_payload.get("chapter_rewrite_guidance")
+                or approval_payload.get("notes")
+                or ""
+            ).strip()
+            state["next_chapter_guidance"] = notes
+            state["next_chapter_guidance_chapter"] = chapter_number or None
+            state = clear_pause(run_dir, state)
+            state["current_stage"] = STAGE_VOLUME_PLAN
+            save_longform_state(run_dir, state)
+            _sync_status_longform_fields(run_dir, state)
+            update_status(run_dir, pending_state_path=None, pause_reason=None, risk_report_path=None, chapter_quality_report=None)
+            return _continue_longform_run(args, state=state, run_dir=run_dir, run_started_at=run_started_at)
+
         print("❌ 不支持的审批检查点")
         return 1
 
@@ -2346,6 +2470,8 @@ def main():
     )
     parser.add_argument("--approval-payload", help="审批补充 JSON，可传文件路径或 JSON 字符串")
     parser.add_argument("--volume-guidance", default="", help="长篇模式传给当前分卷生成的额外修订指令")
+    parser.add_argument("--chapter-guidance", default="", help="仅对指定章节生效的一次性重写指令")
+    parser.add_argument("--chapter-guidance-target", type=int, default=None, help="一次性重写指令对应的章节号")
     parser.add_argument("--continue-from", type=int,
                         help="从指定章节号继续生成（跳过已成功的章节）")
     parser.add_argument("--dry-run", action="store_true",

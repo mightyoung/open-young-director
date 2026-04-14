@@ -135,7 +135,6 @@ class TestNovelGeneratorWritingOptions:
         assert "必须回收的伏笔/问题" in prompt
         assert "下一卷必须尽快回收师门裂痕" in prompt
 
-
 class TestNovelGeneratorSmoothnessConsistency:
     def test_consistency_report_flags_location_jump_without_bridge(self):
         report = _run_consistency_check(
@@ -236,3 +235,41 @@ class TestNovelGeneratorSmoothnessConsistency:
             "scene_or_timeline_disconnect" == issue
             for issue in report["issue_types"]
         )
+
+    def test_consistency_report_marks_missing_events_as_invalid(self):
+        generator = NovelGeneratorAgent(config_manager=DummyConfigManager(), llm_client=MagicMock())
+        chapter = MODULE.GeneratedChapter(
+            number=3,
+            title="第三章",
+            content="韩林来到演武场，却只是短暂交谈，完全没有爆发关键冲突。",
+            word_count=30,
+            metadata={"key_events": ["当众击败叶尘"], "outline_summary": "韩林反击叶尘"},
+        )
+
+        report = generator._check_consistency(
+            chapter,
+            previous_summary="上一章韩林刚踏入演武场。",
+            context={"previous_chapters": [{"character_states": {"韩林": "准备出手"}}]},
+        )
+
+        assert report["invalid"] is True
+        assert "missing_key_events" in report["issue_types"]
+
+    def test_consistency_report_marks_world_fact_violation_as_invalid(self):
+        generator = NovelGeneratorAgent(config_manager=DummyConfigManager(), llm_client=MagicMock())
+        chapter = MODULE.GeneratedChapter(
+            number=8,
+            title="第八章",
+            content="柳如烟重新现身，对着众人高声说道自己早已看穿这一切。",
+            word_count=32,
+            metadata={"key_events": [], "outline_summary": ""},
+        )
+
+        report = generator._check_consistency(
+            chapter,
+            previous_summary="上一章柳如烟身亡，婚书也碎裂消散。",
+            context={"previous_chapters": []},
+        )
+
+        assert report["invalid"] is True
+        assert "world_fact_violation" in report["issue_types"]

@@ -182,6 +182,7 @@ def test_pause_reason_label_maps_known_values():
     assert streamlit_app._pause_reason_label("outline_review") == "大纲审批"
     assert streamlit_app._pause_reason_label("volume_review") == "分卷审批"
     assert streamlit_app._pause_reason_label("risk_review") == "风险复核"
+    assert streamlit_app._pause_reason_label("chapter_review") == "章节复核"
 
 
 def test_run_status_and_stage_label_maps_known_values():
@@ -196,6 +197,7 @@ def test_run_status_and_stage_label_maps_known_values():
     assert streamlit_app._run_stage_label("volume.write") == "分卷写作"
     assert streamlit_app._run_stage_label("volume.review") == "分卷审批"
     assert streamlit_app._run_stage_label("risk.review") == "风险复核"
+    assert streamlit_app._run_stage_label("chapter.review") == "章节复核"
     assert streamlit_app._run_stage_label("chapter.generate") == "章节生成"
 
 
@@ -429,6 +431,297 @@ def test_resume_longform_action_writes_guidance_payload(temp_project_dir, monkey
     assert payload["must_recover"] == "回收第一卷伏笔"
     assert payload["relationship_focus"] == "强化师徒冲突"
     assert "--approval-payload" in launched["cmd"]
+
+
+def test_render_pending_review_submits_risk_revise(temp_project_dir, monkeypatch):
+    run_dir = temp_project_dir / "runs" / "run-001"
+    run_dir.mkdir(parents=True)
+    launched = {}
+
+    class _Column:
+        def __init__(self, pressed_key):
+            self._pressed_key = pressed_key
+
+        def button(self, _label, **kwargs):
+            return kwargs.get("key") == self._pressed_key
+
+    class _FakeStreamlit:
+        def __init__(self):
+            self.session_state = {}
+
+        def markdown(self, *_args, **_kwargs):
+            return None
+
+        def caption(self, *_args, **_kwargs):
+            return None
+
+        def error(self, *_args, **_kwargs):
+            return None
+
+        def text_area(self, _label, **_kwargs):
+            return "请补强第 3 章因果链。"
+
+        def columns(self, count):
+            assert count == 3
+            return [_Column("yw_risk_revise") for _ in range(count)]
+
+        def rerun(self):
+            launched["rerun"] = True
+
+    monkeypatch.setattr(streamlit_app, "_resolve_active_run_dir", lambda: run_dir)
+    monkeypatch.setattr(
+        streamlit_app,
+        "_pending_review_payload",
+        lambda _run_dir: {
+            "checkpoint_type": "risk_review",
+            "pending_state_path": str(run_dir / "pending.json"),
+            "review_payload": {"summary": "存在风险"},
+        },
+    )
+    monkeypatch.setattr(streamlit_app, "_risk_review_summary", lambda _payload: "存在风险")
+
+    def _fake_resume(_run_dir, pending_state_path, action, payload):
+        launched["call"] = {
+            "pending_state_path": pending_state_path,
+            "action": action,
+            "payload": payload,
+        }
+        return {"message": "ok"}
+
+    monkeypatch.setattr(
+        streamlit_app,
+        "resume_longform_action",
+        _fake_resume,
+    )
+
+    streamlit_app._render_pending_review(_FakeStreamlit())
+
+    assert launched["call"]["action"] == "revise"
+    assert launched["call"]["payload"] == {"notes": "请补强第 3 章因果链。"}
+    assert launched["rerun"] is True
+
+
+def test_render_pending_review_submits_chapter_revise(temp_project_dir, monkeypatch):
+    run_dir = temp_project_dir / "runs" / "run-001"
+    run_dir.mkdir(parents=True)
+    launched = {}
+
+    class _Column:
+        def __init__(self, pressed_key):
+            self._pressed_key = pressed_key
+
+        def button(self, _label, **kwargs):
+            return kwargs.get("key") == self._pressed_key
+
+    class _FakeStreamlit:
+        def __init__(self):
+            self.session_state = {}
+
+        def markdown(self, *_args, **_kwargs):
+            return None
+
+        def caption(self, *_args, **_kwargs):
+            return None
+
+        def error(self, *_args, **_kwargs):
+            return None
+
+        def code(self, *_args, **_kwargs):
+            return None
+
+        def text_area(self, _label, **_kwargs):
+            return "补上与上一章战场结尾的衔接。"
+
+        def columns(self, count):
+            assert count == 3
+            return [_Column("yw_chapter_revise") for _ in range(count)]
+
+        def rerun(self):
+            launched["rerun"] = True
+
+    monkeypatch.setattr(streamlit_app, "_resolve_active_run_dir", lambda: run_dir)
+
+    def _fake_resume(_run_dir, pending_state_path, action, payload):
+        launched["call"] = {
+            "pending_state_path": pending_state_path,
+            "action": action,
+            "payload": payload,
+        }
+        return {"message": "ok"}
+
+    monkeypatch.setattr(
+        streamlit_app,
+        "_pending_review_payload",
+        lambda _run_dir: {
+            "checkpoint_type": "chapter_review",
+            "pending_state_path": str(run_dir / "pending.json"),
+            "review_payload": {
+                "chapter_number": 4,
+                "title": "第四章",
+                "summary": "章节与前文严重割裂",
+                "blocking_issues": ["本章开头未自然承接上章人物或局势状态。"],
+            },
+        },
+    )
+    monkeypatch.setattr(
+        streamlit_app,
+        "resume_longform_action",
+        _fake_resume,
+    )
+
+    streamlit_app._render_pending_review(_FakeStreamlit())
+
+    assert launched["call"]["action"] == "revise"
+    assert launched["call"]["payload"] == {
+        "chapter_rewrite_guidance": "补上与上一章战场结尾的衔接。"
+    }
+    assert launched["rerun"] is True
+
+
+def test_render_pending_review_submits_chapter_approve(temp_project_dir, monkeypatch):
+    run_dir = temp_project_dir / "runs" / "run-001"
+    run_dir.mkdir(parents=True)
+    launched = {}
+
+    class _Column:
+        def __init__(self, pressed_key):
+            self._pressed_key = pressed_key
+
+        def button(self, _label, **kwargs):
+            return kwargs.get("key") == self._pressed_key
+
+    class _FakeStreamlit:
+        def __init__(self):
+            self.session_state = {}
+
+        def markdown(self, *_args, **_kwargs):
+            return None
+
+        def caption(self, *_args, **_kwargs):
+            return None
+
+        def error(self, *_args, **_kwargs):
+            return None
+
+        def code(self, *_args, **_kwargs):
+            return None
+
+        def text_area(self, _label, **_kwargs):
+            return "沿用当前规则继续重试。"
+
+        def columns(self, count):
+            assert count == 3
+            return [_Column("yw_chapter_approve") for _ in range(count)]
+
+        def rerun(self):
+            launched["rerun"] = True
+
+    monkeypatch.setattr(streamlit_app, "_resolve_active_run_dir", lambda: run_dir)
+
+    def _fake_resume(_run_dir, pending_state_path, action, payload):
+        launched["call"] = {
+            "pending_state_path": pending_state_path,
+            "action": action,
+            "payload": payload,
+        }
+        return {"message": "ok"}
+
+    monkeypatch.setattr(
+        streamlit_app,
+        "_pending_review_payload",
+        lambda _run_dir: {
+            "checkpoint_type": "chapter_review",
+            "pending_state_path": str(run_dir / "pending.json"),
+            "review_payload": {
+                "chapter_number": 4,
+                "title": "第四章",
+                "summary": "章节与前文严重割裂",
+                "blocking_issues": ["本章开头未自然承接上章人物或局势状态。"],
+            },
+        },
+    )
+    monkeypatch.setattr(streamlit_app, "resume_longform_action", _fake_resume)
+
+    streamlit_app._render_pending_review(_FakeStreamlit())
+
+    assert launched["call"]["action"] == "approve"
+    assert launched["call"]["payload"] == {
+        "chapter_rewrite_guidance": "沿用当前规则继续重试。"
+    }
+    assert launched["rerun"] is True
+
+
+def test_render_pending_review_submits_chapter_reject(temp_project_dir, monkeypatch):
+    run_dir = temp_project_dir / "runs" / "run-001"
+    run_dir.mkdir(parents=True)
+    launched = {}
+
+    class _Column:
+        def __init__(self, pressed_key):
+            self._pressed_key = pressed_key
+
+        def button(self, _label, **kwargs):
+            return kwargs.get("key") == self._pressed_key
+
+    class _FakeStreamlit:
+        def __init__(self):
+            self.session_state = {}
+
+        def markdown(self, *_args, **_kwargs):
+            return None
+
+        def caption(self, *_args, **_kwargs):
+            return None
+
+        def error(self, *_args, **_kwargs):
+            return None
+
+        def code(self, *_args, **_kwargs):
+            return None
+
+        def text_area(self, _label, **_kwargs):
+            return "先保持暂停，待人工处理。"
+
+        def columns(self, count):
+            assert count == 3
+            return [_Column("yw_chapter_reject") for _ in range(count)]
+
+        def rerun(self):
+            launched["rerun"] = True
+
+    monkeypatch.setattr(streamlit_app, "_resolve_active_run_dir", lambda: run_dir)
+
+    def _fake_resume(_run_dir, pending_state_path, action, payload):
+        launched["call"] = {
+            "pending_state_path": pending_state_path,
+            "action": action,
+            "payload": payload,
+        }
+        return {"message": "ok"}
+
+    monkeypatch.setattr(
+        streamlit_app,
+        "_pending_review_payload",
+        lambda _run_dir: {
+            "checkpoint_type": "chapter_review",
+            "pending_state_path": str(run_dir / "pending.json"),
+            "review_payload": {
+                "chapter_number": 4,
+                "title": "第四章",
+                "summary": "章节与前文严重割裂",
+                "blocking_issues": ["本章开头未自然承接上章人物或局势状态。"],
+            },
+        },
+    )
+    monkeypatch.setattr(streamlit_app, "resume_longform_action", _fake_resume)
+
+    streamlit_app._render_pending_review(_FakeStreamlit())
+
+    assert launched["call"]["action"] == "reject"
+    assert launched["call"]["payload"] == {
+        "chapter_rewrite_guidance": "先保持暂停，待人工处理。"
+    }
+    assert launched["rerun"] is True
 
 
 def test_render_run_monitor_uses_unkeyed_text_areas(monkeypatch):
