@@ -138,6 +138,7 @@ DISMISSIVE_CONTINUITY_MARKERS = (
 MOTION_CONTINUITY_MARKERS = (
     "离开",
     "摆脱",
+    "准备",
     "赶往",
     "赶到",
     "前往",
@@ -680,10 +681,11 @@ class NovelGeneratorAgent:
             if match:
                 return match.group(1)
         patterns = (
+            rf"^(?:[\u4e00-\u9fff]{{1,4}}的)?([\u4e00-\u9fff]{{2,12}}(?:{suffix_pattern}))(?:内|中|外|上|下|前|里)",
             rf"(?:在|于)([\u4e00-\u9fff]{{2,12}}(?:{suffix_pattern}))",
-            rf"(?:回到|返回|抵达|来到|赶到|奔赴|进入|踏入)([\u4e00-\u9fff]{{2,12}}(?:{suffix_pattern}))",
+            rf"(?:回到|返回|抵达|来到|赶到|赶往|奔赴|进入|踏入|冲进|躲进|潜入)([\u4e00-\u9fff]{{2,12}}(?:{suffix_pattern}))",
+            rf"(?:这里仍是|仍是|依旧是)([\u4e00-\u9fff]{{2,12}}(?:{suffix_pattern}))",
             rf"^([\u4e00-\u9fff]{{2,12}}(?:{suffix_pattern}))(?:内|中|外|上|下|前|里)",
-            rf"([\u4e00-\u9fff]{{2,12}}(?:{suffix_pattern}))(?:深处|尽头|附近|门前|门外|之中|里|外)?",
         )
         for pattern in patterns:
             match = re.search(pattern, normalized)
@@ -700,6 +702,15 @@ class NovelGeneratorAgent:
         if previous_anchor in current_anchor or current_anchor in previous_anchor:
             return False
         return True
+
+    def _summary_prepares_current_location(self, previous_summary: str, current_anchor: str) -> bool:
+        """Check whether the prior summary already establishes the upcoming destination."""
+        normalized_summary = self._normalize_text_for_match(previous_summary)
+        if not normalized_summary or not current_anchor:
+            return False
+        return current_anchor in normalized_summary and any(
+            marker in normalized_summary for marker in MOTION_CONTINUITY_MARKERS
+        )
 
     def _has_bridge_signal(self, opening: str) -> bool:
         """Detect whether the opening already contains an explicit transition bridge."""
@@ -782,13 +793,14 @@ class NovelGeneratorAgent:
 
         issues: list[dict[str, str]] = []
         has_bridge_signal = self._has_bridge_signal(opening)
-        previous_anchor = self._extract_location_anchor(previous_tail or previous_summary)
+        previous_anchor = self._extract_location_anchor(previous_tail) or self._extract_location_anchor(previous_summary)
         current_anchor = self._extract_location_anchor(opening)
 
         if (
             previous_anchor
             and current_anchor
             and self._location_anchors_conflict(previous_anchor, current_anchor)
+            and not self._summary_prepares_current_location(previous_summary, current_anchor)
             and not has_bridge_signal
         ):
             issues.append(
