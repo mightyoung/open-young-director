@@ -11,6 +11,143 @@ from writing_options import build_writing_guidance, normalize_writing_options
 
 logger = logging.getLogger(__name__)
 
+ABRUPT_TRANSITION_MARKERS = (
+    "翌日",
+    "次日",
+    "第二天",
+    "第三天",
+    "三天后",
+    "数日后",
+    "几日后",
+    "半个月后",
+    "一个月后",
+    "数月后",
+    "半年后",
+    "一年后",
+)
+
+TRANSITION_BRIDGE_SIGNALS = (
+    "赶往",
+    "来到",
+    "返回",
+    "回到",
+    "抵达",
+    "奔赴",
+    "路上",
+    "沿途",
+    "于是",
+    "因此",
+    "随后",
+    "不久",
+    "与此同时",
+    "一路",
+)
+
+HIGH_CONFIDENCE_LOCATION_SUFFIXES = (
+    "城",
+    "镇",
+    "街",
+    "巷",
+    "村",
+    "山",
+    "峰",
+    "谷",
+    "崖",
+    "洞",
+    "林",
+    "湖",
+    "河",
+    "海",
+    "岛",
+    "宫",
+    "殿",
+    "阁",
+    "楼",
+    "院",
+    "府",
+    "宅",
+    "门",
+    "宗",
+    "台",
+    "营",
+    "关",
+    "坊",
+    "园",
+    "寨",
+    "栈",
+    "庙",
+    "厅",
+    "室",
+    "牢",
+)
+
+CONSEQUENCE_MARKERS = (
+    "追杀",
+    "追兵",
+    "重伤",
+    "伤势",
+    "危机",
+    "爆炸",
+    "昏迷",
+    "决裂",
+    "生死",
+    "濒死",
+    "逃亡",
+    "反噬",
+    "崩塌",
+    "暴露",
+    "通缉",
+    "血战",
+)
+
+CONSEQUENCE_ACKNOWLEDGEMENT_MARKERS = (
+    "余波",
+    "后遗症",
+    "疗伤",
+    "包扎",
+    "恢复",
+    "风波",
+    "残局",
+    "代价",
+    "尚未",
+    "仍在",
+    "未散",
+)
+
+OPENING_LOCATION_PREFIX_MARKERS = (
+    "晨雾笼罩",
+    "夜色笼罩",
+    "暮色笼罩",
+    "薄雾笼罩",
+    "雾气笼罩",
+    "雨幕笼罩",
+    "风雪笼罩",
+    "钟声回荡在",
+    "灯火照着",
+)
+
+DISMISSIVE_CONTINUITY_MARKERS = (
+    "从未发生",
+    "像没发生",
+    "仿佛没发生",
+    "从来没有经历过",
+    "若无其事",
+    "全然不顾",
+    "抛在脑后",
+)
+
+MOTION_CONTINUITY_MARKERS = (
+    "离开",
+    "摆脱",
+    "准备",
+    "赶往",
+    "赶到",
+    "前往",
+    "转移",
+    "连夜",
+    "一路",
+)
+
 
 @dataclass
 class GeneratedChapter:
@@ -513,11 +650,233 @@ class NovelGeneratorAgent:
         chinese_chars = len(re.findall(r'[\u4e00-\u9fff]', content))
         return chinese_chars
 
+    def _normalize_text_for_match(self, text: str) -> str:
+        """Normalize text for lightweight deterministic matching."""
+        return re.sub(r"\s+", "", text or "")
+
+    def _extract_previous_chapter_tail(self, context: dict[str, Any] | None) -> str:
+        """Return the tail of the previous chapter when available."""
+        if not context:
+            return ""
+
+        previous_chapters = context.get("previous_chapters", []) or []
+        if not previous_chapters:
+            return ""
+
+        previous_content = str(previous_chapters[-1].get("content", "") or "")
+        return previous_content[-400:]
+
+    def _extract_location_anchor(self, text: str) -> str:
+        """Extract a conservative location anchor from the provided text."""
+        raw_text = text or ""
+        normalized = self._normalize_text_for_match(raw_text)
+        if not normalized:
+            return ""
+
+        suffix_pattern = "|".join(re.escape(item) for item in HIGH_CONFIDENCE_LOCATION_SUFFIXES)
+        for prefix in OPENING_LOCATION_PREFIX_MARKERS:
+            match = re.search(
+                rf"{re.escape(prefix)}([\u4e00-\u9fff]{{2,12}}(?:{suffix_pattern}))",
+                normalized,
+            )
+            if match:
+                return match.group(1)
+        patterns = (
+            rf"^(?:[\u4e00-\u9fff]{{1,4}}的)?([\u4e00-\u9fff]{{2,12}}(?:{suffix_pattern}))(?:内|中|外|上|下|前|里)",
+            rf"(?:在|于)([\u4e00-\u9fff]{{2,12}}(?:{suffix_pattern}))",
+            rf"(?:回到|返回|抵达|来到|赶到|赶往|奔赴|进入|踏入|冲进|躲进|潜入)([\u4e00-\u9fff]{{2,12}}(?:{suffix_pattern}))",
+            rf"(?:这里仍是|仍是|依旧是)([\u4e00-\u9fff]{{2,12}}(?:{suffix_pattern}))",
+            rf"^([\u4e00-\u9fff]{{2,12}}(?:{suffix_pattern}))(?:内|中|外|上|下|前|里)",
+        )
+        for pattern in patterns:
+            match = re.search(pattern, normalized)
+            if match:
+                return match.group(1)
+        return ""
+
+    def _location_anchors_conflict(self, previous_anchor: str, current_anchor: str) -> bool:
+        """Check whether two extracted anchors represent different scenes."""
+        if not previous_anchor or not current_anchor:
+            return False
+        if previous_anchor == current_anchor:
+            return False
+        if previous_anchor in current_anchor or current_anchor in previous_anchor:
+            return False
+        return True
+
+    def _summary_prepares_current_location(self, previous_summary: str, current_anchor: str) -> bool:
+        """Check whether the prior summary already establishes the upcoming destination."""
+        normalized_summary = self._normalize_text_for_match(previous_summary)
+        if not normalized_summary or not current_anchor:
+            return False
+        return current_anchor in normalized_summary and any(
+            marker in normalized_summary for marker in MOTION_CONTINUITY_MARKERS
+        )
+
+    def _has_bridge_signal(self, opening: str) -> bool:
+        """Detect whether the opening already contains an explicit transition bridge."""
+        normalized = self._normalize_text_for_match(opening)
+        if not normalized:
+            return False
+        return any(marker in normalized for marker in TRANSITION_BRIDGE_SIGNALS)
+
+    def _extract_time_jump_marker(self, opening: str) -> str:
+        """Return the first strong time-jump marker found in the opening."""
+        normalized = self._normalize_text_for_match(opening)
+        for marker in ABRUPT_TRANSITION_MARKERS:
+            if marker in normalized:
+                return marker
+        return ""
+
+    def _extract_consequence_marker(self, previous_context: str) -> str:
+        """Return the first strong unresolved consequence marker from prior context."""
+        normalized = self._normalize_text_for_match(previous_context)
+        for marker in CONSEQUENCE_MARKERS:
+            if marker in normalized:
+                return marker
+        return ""
+
+    def _opening_acknowledges_consequence(self, opening: str, consequence_marker: str) -> bool:
+        """Check whether the current opening acknowledges the prior consequence."""
+        normalized = self._normalize_text_for_match(opening)
+        if not normalized:
+            return False
+        if consequence_marker and consequence_marker in normalized:
+            return True
+        if (
+            consequence_marker in {"追兵", "追杀", "逃亡"}
+            and self._has_bridge_signal(normalized)
+            and any(marker in normalized for marker in MOTION_CONTINUITY_MARKERS)
+        ):
+            return True
+        return any(marker in normalized for marker in CONSEQUENCE_ACKNOWLEDGEMENT_MARKERS)
+
+    def _opening_dismisses_prior_consequence(self, opening: str) -> bool:
+        """Detect shallow mention patterns that explicitly dismiss prior consequences."""
+        normalized = self._normalize_text_for_match(opening)
+        if not normalized:
+            return False
+        return any(marker in normalized for marker in DISMISSIVE_CONTINUITY_MARKERS)
+
+    def _build_smoothness_issue(
+        self,
+        category: str,
+        previous_evidence: str,
+        current_evidence: str,
+        missing_link: str,
+    ) -> dict[str, str]:
+        """Create a stable issue payload for blocking smoothness failures."""
+        return {
+            "category": category,
+            "previous_evidence": previous_evidence,
+            "current_evidence": current_evidence,
+            "missing_transition_or_causal_link": missing_link,
+            "message": (
+                f"顺畅性问题[{category}] 上一章线索「{previous_evidence or '无'}」"
+                f" 与当前开篇「{current_evidence or '无'}」之间缺少{missing_link}。"
+            ),
+        }
+
+    def _check_transition_continuity(
+        self,
+        content: str,
+        previous_summary: str,
+        context: dict[str, Any] | None = None,
+    ) -> list[dict[str, str]]:
+        """Check deterministic chapter-to-chapter smoothness boundaries."""
+        opening = self._normalize_text_for_match(content[:600])
+        previous_tail = self._extract_previous_chapter_tail(context)
+        previous_context = self._normalize_text_for_match(f"{previous_summary}\n{previous_tail}")
+
+        # Chapter 1 or empty prior context: skip continuity gate.
+        if not previous_context:
+            return []
+
+        issues: list[dict[str, str]] = []
+        has_bridge_signal = self._has_bridge_signal(opening)
+        previous_anchor = self._extract_location_anchor(previous_tail) or self._extract_location_anchor(previous_summary)
+        current_anchor = self._extract_location_anchor(opening)
+
+        if (
+            previous_anchor
+            and current_anchor
+            and self._location_anchors_conflict(previous_anchor, current_anchor)
+            and not self._summary_prepares_current_location(previous_summary, current_anchor)
+            and not has_bridge_signal
+        ):
+            issues.append(
+                self._build_smoothness_issue(
+                    category="地点跳切无承接",
+                    previous_evidence=previous_anchor,
+                    current_evidence=current_anchor,
+                    missing_link="地点转换或行动路径交代",
+                )
+            )
+
+        time_jump_marker = self._extract_time_jump_marker(opening)
+        if time_jump_marker and not has_bridge_signal:
+            issues.append(
+                self._build_smoothness_issue(
+                    category="时间跳跃无锚点",
+                    previous_evidence=previous_anchor or previous_summary[:40],
+                    current_evidence=time_jump_marker,
+                    missing_link="时间变化后的状态承接",
+                )
+            )
+
+        consequence_marker = self._extract_consequence_marker(previous_context)
+        consequence_dismissed = self._opening_dismisses_prior_consequence(opening)
+        consequence_acknowledged = self._opening_acknowledges_consequence(opening, consequence_marker)
+        if consequence_marker and (
+            not consequence_acknowledged or consequence_dismissed
+        ):
+            issues.append(
+                self._build_smoothness_issue(
+                    category="上一章后果未被承接",
+                    previous_evidence=consequence_marker,
+                    current_evidence=opening[:40],
+                    missing_link="上一章后果的回应或延续",
+                )
+            )
+
+        issue_categories = {issue["category"] for issue in issues}
+        if len(issue_categories) >= 2 or consequence_dismissed:
+            issues.append(
+                self._build_smoothness_issue(
+                    category="表面流畅但因果断裂",
+                    previous_evidence=" / ".join(sorted(issue_categories)) or "表面承接但实质跳过前情",
+                    current_evidence=opening[:40],
+                    missing_link="地点/时间/后果之间的因果桥接",
+                )
+            )
+
+        return issues
+
+    def _build_rewrite_guidance(self, report: dict[str, Any]) -> str:
+        """Build focused rewrite guidance for smoothness-related failures."""
+        guidance = [
+            "保留本章既有关键事件，不要靠删除冲突来伪造顺畅。",
+            "开头前 2-3 句必须尽快交代谁、在哪、何时，并补上与上一章的承接。",
+        ]
+
+        blocking_issues = report.get("blocking_issues", []) if isinstance(report, dict) else []
+        joined_issues = " ".join(str(item) for item in blocking_issues)
+        if "地点跳切无承接" in joined_issues:
+            guidance.append("补足地点变化的过渡动作、路径或抵达说明。")
+        if "时间跳跃无锚点" in joined_issues:
+            guidance.append("交代时间跨度后的状态变化、缺失时段影响或切换原因。")
+        if "上一章后果未被承接" in joined_issues:
+            guidance.append("明确回应上一章遗留的危机、伤势、追击或未完成动作。")
+        if "表面流畅但因果断裂" in joined_issues:
+            guidance.append("把事件顺序改写为因果推进，避免只用时间顺序硬接。")
+
+        return " ".join(guidance)
+
     def _check_consistency(
         self,
         chapter: GeneratedChapter,
         previous_summary: str,
-        context: dict[str, Any] = None,
+        context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Check consistency of generated chapter and auto-extract character states."""
         content = chapter.content
@@ -662,6 +1021,20 @@ class NovelGeneratorAgent:
             recommendations.append("未能提取角色状态，请检查角色对话格式")
             overall_score = max(overall_score, 5.0)
 
+        continuity_issues = self._check_transition_continuity(content, previous_summary, context)
+        blocking_issues = [issue["message"] for issue in continuity_issues]
+        issue_types = ["scene_or_timeline_disconnect"] if blocking_issues else []
+        invalid = bool(blocking_issues or missing_events)
+        rewrite_guidance = ""
+
+        if blocking_issues:
+            overall_score = min(overall_score, 4.8)
+            recommendations.extend(blocking_issues)
+            rewrite_guidance = self._build_rewrite_guidance(
+                {"blocking_issues": blocking_issues, "missing_events": missing_events}
+            )
+            recommendations.append(f"顺畅性重写建议: {rewrite_guidance}")
+
         return {
             "character_consistency": character_consistency,
             "character_states": character_states,
@@ -669,6 +1042,11 @@ class NovelGeneratorAgent:
             "missing_events": missing_events,
             "overall_score": overall_score,
             "recommendations": recommendations,
+            "blocking_issues": blocking_issues,
+            "issue_types": issue_types,
+            "invalid": invalid,
+            "smoothness_details": continuity_issues,
+            "rewrite_guidance": rewrite_guidance,
         }
 
 
