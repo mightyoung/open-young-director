@@ -191,6 +191,10 @@ uv run python run_novel_generation.py --load <project_id> --generate 3 --no-auto
 - 同一 `run_id` / `run_dir` 的恢复执行
 - append-only 日志
 
+当前**尚未**内建章节级 `chapter_review` 平滑性拦截；如果你正在推进该能力，先看当前状态评审：
+
+- [smoothness_p0_review.md](/Users/muyi/Downloads/dev/young-writer/lib/knowledge_base/docs/smoothness_p0_review.md)
+
 ### 7.2 在 UI 中启动
 
 “生成控制台”中的“整本长篇生成”面板支持：
