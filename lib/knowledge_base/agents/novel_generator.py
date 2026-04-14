@@ -17,13 +17,20 @@ ABRUPT_TRANSITION_MARKERS = (
     "第二天",
     "第三天",
     "三天后",
+    "几天后",
     "数日后",
     "几日后",
+    "半月后",
     "半个月后",
+    "一月后",
     "一个月后",
     "数月后",
     "半年后",
     "一年后",
+    "转眼",
+    "另一边",
+    "另一处",
+    "与此同时",
 )
 
 TRANSITION_BRIDGE_SIGNALS = (
@@ -147,6 +154,9 @@ MOTION_CONTINUITY_MARKERS = (
     "连夜",
     "一路",
 )
+DEATH_MARKERS = ("死亡", "死去", "身亡", "陨落", "断气", "气绝", "毙命")
+ITEM_LOSS_MARKERS = ("碎裂", "破碎", "耗尽", "用尽", "燃尽", "消散", "遗失", "丢失", "毁掉", "损毁")
+ITEM_REAPPEAR_MARKERS = ("重新", "再次", "依然", "仍然", "又", "再度")
 
 
 @dataclass
@@ -220,65 +230,57 @@ class NovelGeneratorAgent:
         target_word_count = self._get_target_word_count()
         min_word_count = int(target_word_count * 0.8)  # Allow 20% tolerance
 
-        # Generate with word count validation and retry
-        max_retries = 2
-        content = None
-        orchestrator_result = None
-
-        for attempt in range(max_retries + 1):
-            if attempt > 0:
-                logger.info(f"[Generator] Retry {attempt}/{max_retries} for chapter {chapter_number}, previous word count was too low")
-
-            result = self._generate_content(
-                chapter_number=chapter_number,
-                title=title,
-                outline=outline_summary,
-                previous_summary=previous_summary,
-                context=context,
-                retry_attempt=attempt,
-                writing_options=writing_options,
-            )
-
-            content = result["content"]
-            # Capture orchestrator_result from first attempt (only used on retry_attempt == 0)
-            if attempt == 0 and result.get("orchestrator_result"):
-                orchestrator_result = result["orchestrator_result"]
-
-            word_count = self._count_words(content)
-            logger.info(f"[Generator] Chapter {chapter_number} attempt {attempt+1}: {word_count} chars (target: {target_word_count})")
-
-            if word_count >= min_word_count:
-                logger.info(f"[Generator] Word count {word_count} meets target {target_word_count}")
-                break
-            if attempt < max_retries:
-                logger.warning(f"[Generator] Word count {word_count} below target {target_word_count}, will retry")
-
-        word_count = self._count_words(content)
-
-        chapter = GeneratedChapter(
-            number=chapter_number,
+        rewrite_history: list[dict[str, Any]] = []
+        result = self._generate_candidate(
+            chapter_number=chapter_number,
             title=title,
-            content=content,
-            word_count=word_count,
-            metadata={
-                "outline_summary": outline_summary,
-                "key_events": outline_info.get("key_events", []),
-                "magic_line": magic_line,
-                "character_appearances": outline_info.get("characters", []),
-                "writing_options": normalize_writing_options(writing_options),
-                "generation_time": datetime.now().isoformat(),
-            },
-            plot_summary={
-                "l1_one_line_summary": outline_summary[:100] if outline_summary else "",
-                "l2_brief_summary": outline_summary,
-                "l3_key_plot_points": outline_info.get("key_events", []),
-                "magic_line": magic_line,
-            },
-            generation_time=datetime.now().isoformat(),
-            orchestrator_result=orchestrator_result,
+            outline=outline_summary,
+            previous_summary=previous_summary,
+            context=context,
+            writing_options=writing_options,
+            target_word_count=target_word_count,
+            min_word_count=min_word_count,
+        )
+        chapter = self._create_chapter(
+            chapter_number=chapter_number,
+            title=title,
+            content=result["content"],
+            outline_summary=outline_summary,
+            outline_info=outline_info,
+            magic_line=magic_line,
+            writing_options=writing_options,
+            orchestrator_result=result.get("orchestrator_result"),
         )
 
         chapter.consistency_report = self._check_consistency(chapter, previous_summary, context)
+        if chapter.consistency_report.get("invalid"):
+            rewrite_history.append(
+                {
+                    "attempt": 0,
+                    "mode": "initial",
+                    "invalid": True,
+                    "issue_types": list(chapter.consistency_report.get("issue_types", [])),
+                    "blocking_issues": list(chapter.consistency_report.get("blocking_issues", [])),
+                    "generated_at": datetime.now().isoformat(),
+                }
+            )
+            chapter = self._rewrite_invalid_chapter(
+                chapter=chapter,
+                previous_summary=previous_summary,
+                context=context,
+                writing_options=writing_options,
+                outline_summary=outline_summary,
+                outline_info=outline_info,
+                magic_line=magic_line,
+                target_word_count=target_word_count,
+                min_word_count=min_word_count,
+                rewrite_history=rewrite_history,
+            )
+        else:
+            chapter.consistency_report["rewrite_attempted"] = False
+            chapter.consistency_report["rewrite_succeeded"] = False
+        chapter.metadata["rewrite_history"] = list(rewrite_history)
+        chapter.consistency_report["rewrite_history"] = list(rewrite_history)
 
         return chapter
 
@@ -302,6 +304,157 @@ class NovelGeneratorAgent:
             logger.warning(f"Could not get chapter outline: {e}")
             return None
 
+    def _generate_candidate(
+        self,
+        *,
+        chapter_number: int,
+        title: str,
+        outline: str,
+        previous_summary: str,
+        context: dict[str, Any],
+        writing_options: dict[str, str] | None,
+        target_word_count: int,
+        min_word_count: int,
+        rewrite_guidance: str = "",
+        force_direct_llm: bool = False,
+    ) -> dict[str, Any]:
+        """Generate a candidate chapter with retry on low word count."""
+        max_retries = 2
+        content = ""
+        orchestrator_result = None
+
+        for attempt in range(max_retries + 1):
+            if attempt > 0:
+                logger.info(
+                    "[Generator] Retry %s/%s for chapter %s, previous word count was too low",
+                    attempt,
+                    max_retries,
+                    chapter_number,
+                )
+
+            result = self._generate_content(
+                chapter_number=chapter_number,
+                title=title,
+                outline=outline,
+                previous_summary=previous_summary,
+                context=context,
+                retry_attempt=attempt,
+                writing_options=writing_options,
+                rewrite_guidance=rewrite_guidance,
+                force_direct_llm=force_direct_llm,
+            )
+
+            content = result["content"]
+            if attempt == 0 and result.get("orchestrator_result"):
+                orchestrator_result = result["orchestrator_result"]
+
+            word_count = self._count_words(content)
+            logger.info(
+                "[Generator] Chapter %s attempt %s: %s chars (target: %s)",
+                chapter_number,
+                attempt + 1,
+                word_count,
+                target_word_count,
+            )
+
+            if word_count >= min_word_count:
+                logger.info("[Generator] Word count %s meets target %s", word_count, target_word_count)
+                break
+            if attempt < max_retries:
+                logger.warning("[Generator] Word count %s below target %s, will retry", word_count, target_word_count)
+
+        return {"content": content, "orchestrator_result": orchestrator_result}
+
+    def _create_chapter(
+        self,
+        *,
+        chapter_number: int,
+        title: str,
+        content: str,
+        outline_summary: str,
+        outline_info: dict[str, Any],
+        magic_line: str,
+        writing_options: dict[str, str] | None,
+        orchestrator_result: dict[str, Any] | None,
+    ) -> GeneratedChapter:
+        """Create a GeneratedChapter object from raw content."""
+        return GeneratedChapter(
+            number=chapter_number,
+            title=title,
+            content=content,
+            word_count=self._count_words(content),
+            metadata={
+                "outline_summary": outline_summary,
+                "key_events": outline_info.get("key_events", []),
+                "magic_line": magic_line,
+                "character_appearances": outline_info.get("characters", []),
+                "writing_options": normalize_writing_options(writing_options),
+                "generation_time": datetime.now().isoformat(),
+            },
+            plot_summary={
+                "l1_one_line_summary": outline_summary[:100] if outline_summary else "",
+                "l2_brief_summary": outline_summary,
+                "l3_key_plot_points": outline_info.get("key_events", []),
+                "magic_line": magic_line,
+            },
+            generation_time=datetime.now().isoformat(),
+            orchestrator_result=orchestrator_result,
+        )
+
+    def _rewrite_invalid_chapter(
+        self,
+        *,
+        chapter: GeneratedChapter,
+        previous_summary: str,
+        context: dict[str, Any],
+        writing_options: dict[str, str] | None,
+        outline_summary: str,
+        outline_info: dict[str, Any],
+        magic_line: str,
+        target_word_count: int,
+        min_word_count: int,
+        rewrite_history: list[dict[str, Any]],
+    ) -> GeneratedChapter:
+        """Run one targeted full-chapter rewrite for invalid output."""
+        guidance = self._build_rewrite_guidance(chapter.consistency_report or {})
+        result = self._generate_candidate(
+            chapter_number=chapter.number,
+            title=chapter.title,
+            outline=outline_summary,
+            previous_summary=previous_summary,
+            context=context,
+            writing_options=writing_options,
+            target_word_count=target_word_count,
+            min_word_count=min_word_count,
+            rewrite_guidance=guidance,
+            force_direct_llm=True,
+        )
+        rewritten = self._create_chapter(
+            chapter_number=chapter.number,
+            title=chapter.title,
+            content=result["content"],
+            outline_summary=outline_summary,
+            outline_info=outline_info,
+            magic_line=magic_line,
+            writing_options=writing_options,
+            orchestrator_result=result.get("orchestrator_result"),
+        )
+        rewritten.consistency_report = self._check_consistency(rewritten, previous_summary, context)
+        rewritten.consistency_report["rewrite_attempted"] = True
+        rewritten.consistency_report["rewrite_succeeded"] = not rewritten.consistency_report.get("invalid", False)
+        rewrite_history.append(
+            {
+                "attempt": 1,
+                "mode": "targeted_full_rewrite",
+                "invalid": bool(rewritten.consistency_report.get("invalid")),
+                "issue_types": list(rewritten.consistency_report.get("issue_types", [])),
+                "blocking_issues": list(rewritten.consistency_report.get("blocking_issues", [])),
+                "guidance": guidance,
+                "generated_at": datetime.now().isoformat(),
+            }
+        )
+        return rewritten
+
     def _generate_content(
         self,
         chapter_number: int,
@@ -311,6 +464,8 @@ class NovelGeneratorAgent:
         context: dict[str, Any],
         retry_attempt: int = 0,
         writing_options: dict[str, str] | None = None,
+        rewrite_guidance: str = "",
+        force_direct_llm: bool = False,
     ) -> dict[str, Any]:
         """Generate chapter content using LLM or orchestrator.
 
@@ -332,7 +487,7 @@ class NovelGeneratorAgent:
         target_word_count = self._get_target_word_count()
 
         # P1 FIX: Try using orchestrator (FILM_DRAMA mode) first when available
-        if self.orchestrator is not None and retry_attempt == 0:
+        if self.orchestrator is not None and retry_attempt == 0 and not rewrite_guidance and not force_direct_llm:
             # Only use orchestrator on first attempt
             try:
                 logger.info(f"[Generator] Using orchestrator for chapter {chapter_number}")
@@ -368,6 +523,7 @@ class NovelGeneratorAgent:
             protagonist_constraint=protagonist_constraint,
             volume_guidance=volume_guidance,
             writing_options=writing_options,
+            rewrite_guidance=rewrite_guidance,
         )
 
         try:
@@ -407,6 +563,7 @@ class NovelGeneratorAgent:
         protagonist_constraint: str = "",
         volume_guidance: str = "",
         writing_options: dict[str, str] | None = None,
+        rewrite_guidance: str = "",
     ) -> str:
         """Build generation prompt for kimi-cli (coding agent style).
 
@@ -480,6 +637,9 @@ class NovelGeneratorAgent:
 
 ## 本卷修订指令
 {volume_guidance or "无额外修订指令，按既有大纲与前文自然推进。"}
+
+## 质量纠偏指令
+{rewrite_guidance or "无额外纠偏要求。"}
 
 ## 写作要求
 1. {guidance['perspective']}
@@ -1021,33 +1181,108 @@ class NovelGeneratorAgent:
             recommendations.append("未能提取角色状态，请检查角色对话格式")
             overall_score = max(overall_score, 5.0)
 
-        continuity_issues = self._check_transition_continuity(content, previous_summary, context)
-        blocking_issues = [issue["message"] for issue in continuity_issues]
-        issue_types = ["scene_or_timeline_disconnect"] if blocking_issues else []
-        invalid = bool(blocking_issues or missing_events)
-        rewrite_guidance = ""
-
-        if blocking_issues:
+        continuity_issues = self._check_transition_continuity(
+            content=content,
+            previous_summary=previous_summary,
+            context=context,
+        )
+        world_fact_issues = self._check_world_fact_consistency(
+            content=content,
+            previous_summary=previous_summary,
+            previous_chapters=context.get("previous_chapters", []) if context else [],
+        )
+        blocking_issues = []
+        issue_types = []
+        if missing_events:
+            blocking_issues.append(f"缺少关键事件: {'; '.join(missing_events[:3])}")
+            issue_types.append("missing_key_events")
+        if continuity_issues:
+            blocking_issues.extend(
+                issue["message"] if isinstance(issue, dict) else str(issue)
+                for issue in continuity_issues
+            )
+            issue_types.append("scene_or_timeline_disconnect")
+        if world_fact_issues:
+            blocking_issues.extend(world_fact_issues)
+            issue_types.append("world_fact_violation")
+        smoothness_details = continuity_issues if continuity_issues and isinstance(continuity_issues[0], dict) else []
+        continuity_messages = [
+            issue["message"] if isinstance(issue, dict) else str(issue)
+            for issue in continuity_issues
+        ]
+        if continuity_messages or world_fact_issues or missing_events:
             overall_score = min(overall_score, 4.8)
-            recommendations.extend(blocking_issues)
+        if continuity_messages:
+            recommendations.extend(continuity_messages)
+
+        rewrite_guidance = ""
+        if blocking_issues:
             rewrite_guidance = self._build_rewrite_guidance(
                 {"blocking_issues": blocking_issues, "missing_events": missing_events}
             )
-            recommendations.append(f"顺畅性重写建议: {rewrite_guidance}")
+            recommendations.append(f"重写建议: {rewrite_guidance}")
 
         return {
             "character_consistency": character_consistency,
             "character_states": character_states,
             "plot_consistency": plot_consistency,
             "missing_events": missing_events,
-            "overall_score": overall_score,
-            "recommendations": recommendations,
+            "continuity_issues": continuity_messages,
+            "world_fact_issues": world_fact_issues,
             "blocking_issues": blocking_issues,
             "issue_types": issue_types,
-            "invalid": invalid,
-            "smoothness_details": continuity_issues,
+            "invalid": bool(blocking_issues),
+            "overall_score": overall_score,
+            "recommendations": recommendations,
+            "smoothness_details": smoothness_details,
             "rewrite_guidance": rewrite_guidance,
+            "summary": "；".join(blocking_issues[:3]) if blocking_issues else "章节满足当前质量闸门。",
         }
+
+    def _check_world_fact_consistency(
+        self,
+        *,
+        content: str,
+        previous_summary: str,
+        previous_chapters: list[dict[str, Any]],
+    ) -> list[str]:
+        """Detect obvious violations of established world facts."""
+        recent_context = [previous_summary]
+        if previous_chapters:
+            recent_context.append(str(previous_chapters[-1].get("content", ""))[-1200:])
+        recent_text = "\n".join(part for part in recent_context if part)
+        if not recent_text:
+            return []
+
+        issues: list[str] = []
+        for subject in self._extract_resolved_subjects(recent_text, DEATH_MARKERS):
+            if subject in content and re.search(rf"{re.escape(subject)}.*?(说|问|笑|走|站|出手|现身)", content):
+                issues.append(f"前文已明确 {subject} 退场或死亡，但本章再次将其作为活跃对象使用。")
+
+        for item in self._extract_resolved_subjects(recent_text, ITEM_LOSS_MARKERS):
+            if item in content and any(marker in content for marker in ITEM_REAPPEAR_MARKERS):
+                issues.append(f"前文已明确 {item} 不可再用或已消失，但本章出现了无铺垫的重新出现。")
+
+        return issues
+
+    def _extract_resolved_subjects(self, text: str, markers: tuple[str, ...]) -> list[str]:
+        """Extract named subjects marked as gone, dead, or consumed in prior text."""
+        if not text:
+            return []
+        subjects: list[str] = []
+        marker_pattern = "|".join(re.escape(marker) for marker in markers)
+        pattern = re.compile(rf"(?:^|[，。；、\s])([\u4e00-\u9fff]{{2,8}}?)(?:{marker_pattern})")
+        for match in pattern.finditer(text):
+            subject = match.group(1).strip()
+            for prefix in ("上一章", "上章", "此前", "之前", "曾经", "已经", "那件", "那把", "那枚"):
+                if subject.startswith(prefix):
+                    subject = subject[len(prefix):]
+            for suffix in ("也", "已", "曾", "又", "再"):
+                if subject.endswith(suffix):
+                    subject = subject[:-len(suffix)]
+            if subject and subject not in subjects:
+                subjects.append(subject)
+        return subjects[:6]
 
 
 def get_novel_generator(config_manager, novel_orchestrator=None, llm_client=None) -> NovelGeneratorAgent:

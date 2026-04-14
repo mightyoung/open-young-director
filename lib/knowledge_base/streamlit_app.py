@@ -561,6 +561,7 @@ def _pause_reason_label(reason: str) -> str:
         "outline_review": "大纲审批",
         "volume_review": "分卷审批",
         "risk_review": "风险复核",
+        "chapter_review": "章节复核",
     }
     return mapping.get(str(reason or "").strip(), str(reason or "").strip())
 
@@ -584,6 +585,7 @@ def _run_stage_label(stage: str) -> str:
         "volume.write": "分卷写作",
         "volume.review": "分卷审批",
         "risk.review": "风险复核",
+        "chapter.review": "章节复核",
         "chapter.generate": "章节生成",
     }
     return mapping.get(str(stage or "").strip(), str(stage or "").strip())
@@ -1214,6 +1216,52 @@ def _render_pending_review(st_mod: Any) -> None:
             )
             st_mod.session_state["yw_generation_log"] = result["message"]
             st_mod.rerun()
+        return
+
+    if checkpoint_type == "chapter_review":
+        chapter_number = review_payload.get("chapter_number", 0)
+        title = review_payload.get("title", "")
+        st_mod.error(review_payload.get("summary", "章节未通过质量闸门。"))
+        st_mod.markdown(f"第 `{chapter_number}` 章《{title}》未通过自动质量门。")
+        blocking_issues = review_payload.get("blocking_issues", [])
+        if blocking_issues:
+            st_mod.code("\n".join(f"- {item}" for item in blocking_issues), language="text")
+        guidance = st_mod.text_area(
+            "追加重写指令",
+            value="",
+            height=120,
+            key="yw_chapter_review_notes",
+            help="这些备注会附加到后续重试提示词中，用于重新生成当前章节。",
+        )
+        cols = st_mod.columns(3)
+        if cols[0].button("按当前规则重试", use_container_width=True, type="primary", key="yw_chapter_approve"):
+            result = resume_longform_action(
+                run_dir,
+                payload["pending_state_path"],
+                "approve",
+                {"chapter_rewrite_guidance": guidance},
+            )
+            st_mod.session_state["yw_generation_log"] = result["message"]
+            st_mod.rerun()
+        if cols[1].button("带备注重试", use_container_width=True, key="yw_chapter_revise"):
+            result = resume_longform_action(
+                run_dir,
+                payload["pending_state_path"],
+                "revise",
+                {"chapter_rewrite_guidance": guidance},
+            )
+            st_mod.session_state["yw_generation_log"] = result["message"]
+            st_mod.rerun()
+        if cols[2].button("保持暂停", use_container_width=True, key="yw_chapter_reject"):
+            result = resume_longform_action(
+                run_dir,
+                payload["pending_state_path"],
+                "reject",
+                {"chapter_rewrite_guidance": guidance},
+            )
+            st_mod.session_state["yw_generation_log"] = result["message"]
+            st_mod.rerun()
+        return
 
 
 def _render_chapters_tab(st_mod: Any) -> None:
