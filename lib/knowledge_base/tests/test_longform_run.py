@@ -5,12 +5,12 @@ from pathlib import Path
 
 from agents.novel_generator import GeneratedChapter
 from run_novel_generation import _pause_for_invalid_chapter
-from services.run_storage import create_run, read_status
 from services.longform_run import (
     CHECKPOINT_CHAPTER,
     CHECKPOINT_OUTLINE,
     STAGE_CHAPTER_REVIEW,
     STAGE_OUTLINE_REVIEW,
+    STRUCTURED_VOLUME_GUIDANCE_FIELDS,
     approval_payload_from_input,
     build_volume_risk_report,
     clear_pause,
@@ -20,6 +20,7 @@ from services.longform_run import (
     normalize_volume_guidance_payload,
     record_pause,
 )
+from services.run_storage import create_run, read_status
 
 
 class _Project:
@@ -214,6 +215,9 @@ def test_volume_guidance_helpers_normalize_and_format():
             "relationship_focus": "强化师徒对抗",
             "must_avoid": "不要新增支线角色",
             "tone_target": "压迫感更强",
+            "goal_lock": "守住宗门祖地",
+            "new_setting_budget": 1,
+            "anti_drift_notes": "优先回收伏笔，延后新体系扩写",
             "extra_notes": "尽快把主角推入主动局面",
         }
     )
@@ -221,8 +225,29 @@ def test_volume_guidance_helpers_normalize_and_format():
     formatted = format_volume_guidance(payload)
 
     assert payload["must_recover"] == "回收第一卷宗门裂痕"
+    assert payload["goal_lock"] == "守住宗门祖地"
+    assert payload["new_setting_budget"] == "1"
     assert "必须回收的伏笔/问题: 回收第一卷宗门裂痕" in formatted
     assert "明确避免的方向: 不要新增支线角色" in formatted
+    assert "当前主线目标锁: 守住宗门祖地" in formatted
+    assert "新设定预算: 1" in formatted
+
+
+def test_structured_volume_guidance_fields_keep_core_fields_and_allow_additions():
+    core_fields = {
+        "must_recover",
+        "relationship_focus",
+        "must_avoid",
+        "tone_target",
+        "extra_notes",
+    }
+    assert core_fields.issubset(set(STRUCTURED_VOLUME_GUIDANCE_FIELDS))
+
+
+def test_normalize_volume_guidance_payload_returns_strings_for_all_declared_fields():
+    normalized = normalize_volume_guidance_payload({"must_recover": 123, "extra_notes": None})
+    for key in STRUCTURED_VOLUME_GUIDANCE_FIELDS:
+        assert isinstance(normalized.get(key), str)
 
 
 def test_review_payload_for_volume_includes_chapter_highlights(temp_project_dir):

@@ -157,6 +157,72 @@ MOTION_CONTINUITY_MARKERS = (
 DEATH_MARKERS = ("死亡", "死去", "身亡", "陨落", "断气", "气绝", "毙命")
 ITEM_LOSS_MARKERS = ("碎裂", "破碎", "耗尽", "用尽", "燃尽", "消散", "遗失", "丢失", "毁掉", "损毁")
 ITEM_REAPPEAR_MARKERS = ("重新", "再次", "依然", "仍然", "又", "再度")
+ANTI_DRIFT_BRIDGE_CONNECTORS = (
+    "为了",
+    "因此",
+    "所以",
+    "必须",
+    "要想",
+    "才能",
+    "目标是",
+    "于是",
+    "借此",
+    "好让",
+)
+ANTI_DRIFT_GOAL_STOPWORDS = {
+    "当前",
+    "阶段",
+    "主线",
+    "目标",
+    "继续",
+    "推进",
+    "问题",
+    "事情",
+    "这个",
+    "那个",
+    "自己",
+    "他们",
+    "我们",
+    "已经",
+    "必须要",
+}
+ANTI_DRIFT_SETTING_NOUNS = (
+    "势力",
+    "门派",
+    "体系",
+    "境界",
+    "规则",
+    "秘境",
+    "神器",
+    "法则",
+    "系统",
+    "序列",
+    "途径",
+    "血脉",
+    "传承",
+    "阵营",
+    "宗门",
+    "王朝",
+    "组织",
+    "禁地",
+    "遗迹",
+)
+ANTI_DRIFT_INTRO_CUES = (
+    "新的",
+    "新出现的",
+    "又一",
+    "突然出现的",
+    "传说中的",
+    "从未听闻的",
+    "陌生的",
+)
+ANTI_DRIFT_INTRO_PATTERN = re.compile(
+    r"("
+    + "|".join(re.escape(cue) for cue in ANTI_DRIFT_INTRO_CUES)
+    + r")[\u4e00-\u9fff]{0,8}("
+    + "|".join(re.escape(noun) for noun in ANTI_DRIFT_SETTING_NOUNS)
+    + r")"
+)
 
 
 @dataclass
@@ -1029,8 +1095,163 @@ class NovelGeneratorAgent:
             guidance.append("明确回应上一章遗留的危机、伤势、追击或未完成动作。")
         if "表面流畅但因果断裂" in joined_issues:
             guidance.append("把事件顺序改写为因果推进，避免只用时间顺序硬接。")
+        if "结构漂移风险[" in joined_issues:
+            anti_drift = report.get("anti_drift_details", {}) if isinstance(report, dict) else {}
+            goal_lock = str(anti_drift.get("goal_lock", "") or "").strip()
+            budget = anti_drift.get("budget", 1)
+            if goal_lock:
+                guidance.append(f"先推进主线目标锁：{goal_lock}。")
+            guidance.append("新设定若非服务主线，则降权/延后，只保留最小必要信息，不扩写体系/规则/势力细节。")
+            if isinstance(budget, int) and budget >= 0:
+                guidance.append(f"中后期新设定预算={budget}：本章不得引入超过预算的强设定，必要时合并或后置。")
+            guidance.append("引入新设定后 1-2 段内，用“为了/因此/所以/必须/要想/才能/目标是/于是”等桥接词说明其如何推动主线目标。")
+            if goal_lock:
+                guidance.append(f"本章所有新增设定都必须明确服务该目标锁：{goal_lock}")
 
         return " ".join(guidance)
+
+    def _extract_goal_lock(self, context: dict[str, Any] | None) -> str:
+        """Extract the active goal lock from structured or freeform guidance."""
+        if not context:
+            return ""
+        payload = context.get("volume_guidance_payload")
+        if isinstance(payload, dict):
+            value = str(payload.get("goal_lock", "") or "").strip()
+            if value:
+                return value
+        return str(context.get("goal_lock", "") or "").strip()
+
+    def _goal_terms(self, goal_lock: str) -> list[str]:
+        """Split the goal lock into stable matching terms."""
+        terms: list[str] = []
+        for chunk in re.split(r"[，。；、：:！!？?\s/]+", goal_lock):
+            term = chunk.strip()
+            if len(term) < 2 or term in ANTI_DRIFT_GOAL_STOPWORDS or term in terms:
+                continue
+            terms.append(term)
+            if len(terms) >= 8:
+                break
+        return terms
+
+    def _extract_new_setting_intros(self, text: str) -> list[str]:
+        """Extract high-confidence new-setting introduction fragments."""
+        fragments: list[str] = []
+        for sentence in re.split(r"[。！？!?]\s*|\n+", text):
+            cleaned = sentence.strip()
+            if not cleaned:
+                continue
+            match = ANTI_DRIFT_INTRO_PATTERN.search(cleaned)
+            if not match:
+                continue
+            fragment = cleaned[:60]
+            if fragment not in fragments:
+                fragments.append(fragment)
+        return fragments
+
+    def _bridge_window(self, text: str, intro_fragment: str) -> tuple[str, bool]:
+        """Return the bridge-check window and its mode."""
+        paragraphs = [item.strip() for item in re.split(r"\n{2,}|\n", text) if item.strip()]
+        for index, paragraph in enumerate(paragraphs):
+            if intro_fragment in paragraph:
+                start = max(0, index - 1)
+                end = min(len(paragraphs), index + 2)
+                return "\n".join(paragraphs[start:end]), False
+        return text[:900], True
+
+    def _has_goal_bridge(self, text: str, goal_lock: str) -> bool:
+        """Check whether a nearby window bridges the new setting back to the goal."""
+        terms = self._goal_terms(goal_lock)
+        if not text or not terms:
+            return False
+        hits_goal_term = any(term in text for term in terms)
+        hits_connector = any(connector in text for connector in ANTI_DRIFT_BRIDGE_CONNECTORS)
+        return hits_goal_term and hits_connector
+
+    def _resolve_stage_gate(self, context: dict[str, Any] | None) -> tuple[bool, str, str | None]:
+        """Resolve whether the current chapter is in the mid/late-stage anti-drift window."""
+        context = context or {}
+        chapter_number = int(context.get("chapter_number") or 0)
+        total_chapters = int(context.get("total_chapters") or 0)
+        if chapter_number <= 0:
+            return False, "ratio", "missing_chapter_number"
+        if total_chapters > 0:
+            return (chapter_number / total_chapters) >= 0.5, "ratio", None
+        return chapter_number >= 30, "fixed_threshold_degraded", None
+
+    def _extract_new_setting_budget(self, context: dict[str, Any] | None) -> int:
+        """Extract the structured budget for new-setting introductions."""
+        payload = context.get("volume_guidance_payload") if context else None
+        if isinstance(payload, dict):
+            raw_budget = payload.get("new_setting_budget", "")
+            try:
+                return max(int(raw_budget), 0)
+            except (TypeError, ValueError):
+                pass
+        return 1
+
+    def _check_structure_drift(
+        self,
+        content: str,
+        previous_summary: str,
+        context: dict[str, Any] | None,
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """Detect mid/late-stage structure drift caused by unbridged new settings."""
+        del previous_summary
+        goal_lock = self._extract_goal_lock(context)
+        details: dict[str, Any] = {
+            "goal_lock": goal_lock,
+            "goal_terms": self._goal_terms(goal_lock),
+            "budget": self._extract_new_setting_budget(context),
+            "counted_intro_fragments": [],
+            "intro_count": 0,
+            "bridge_results": [],
+            "bridge_window_fallback_used": False,
+        }
+        if not goal_lock:
+            details["skipped_reason"] = "missing_goal_lock"
+            return [], details
+
+        is_mid_late, stage_gate_mode, skipped_reason = self._resolve_stage_gate(context)
+        details["stage_gate_mode"] = stage_gate_mode
+        if not is_mid_late:
+            details["skipped_reason"] = skipped_reason or "not_mid_late_stage"
+            return [], details
+
+        intro_fragments = self._extract_new_setting_intros(content)
+        details["counted_intro_fragments"] = intro_fragments[:8]
+        details["intro_count"] = len(intro_fragments)
+        if not intro_fragments:
+            return [], details
+
+        fallback_used = False
+        unbridged_fragments: list[str] = []
+        bridge_results: list[dict[str, Any]] = []
+        for fragment in intro_fragments:
+            window, used_fallback = self._bridge_window(content, fragment)
+            has_bridge = self._has_goal_bridge(window, goal_lock)
+            bridge_results.append({"fragment": fragment, "has_bridge": has_bridge})
+            if used_fallback:
+                fallback_used = True
+            if not has_bridge:
+                unbridged_fragments.append(fragment)
+        details["bridge_results"] = bridge_results
+        details["bridge_window_fallback_used"] = fallback_used
+
+        budget = int(details["budget"])
+        if len(intro_fragments) <= budget or not unbridged_fragments:
+            return [], details
+
+        evidence_terms = "、".join(details["goal_terms"][:3]) or "无"
+        evidence_fragments = " / ".join(unbridged_fragments[:2])
+        issue = {
+            "category": "structure_drift_risk",
+            "message": (
+                f"结构漂移风险[主线目标锁被新设定冲散]: "
+                f"budget={budget}，goal_terms={evidence_terms}，"
+                f"未桥接新设定={evidence_fragments}"
+            ),
+        }
+        return [issue], details
 
     def _check_consistency(
         self,
@@ -1205,12 +1426,20 @@ class NovelGeneratorAgent:
         if world_fact_issues:
             blocking_issues.extend(world_fact_issues)
             issue_types.append("world_fact_violation")
+        structure_drift_issues, anti_drift_details = self._check_structure_drift(
+            content=content,
+            previous_summary=previous_summary,
+            context=context,
+        )
+        if structure_drift_issues:
+            blocking_issues.extend(issue["message"] for issue in structure_drift_issues)
+            issue_types.append("structure_drift_risk")
         smoothness_details = continuity_issues if continuity_issues and isinstance(continuity_issues[0], dict) else []
         continuity_messages = [
             issue["message"] if isinstance(issue, dict) else str(issue)
             for issue in continuity_issues
         ]
-        if continuity_messages or world_fact_issues or missing_events:
+        if continuity_messages or world_fact_issues or missing_events or structure_drift_issues:
             overall_score = min(overall_score, 4.8)
         if continuity_messages:
             recommendations.extend(continuity_messages)
@@ -1218,7 +1447,11 @@ class NovelGeneratorAgent:
         rewrite_guidance = ""
         if blocking_issues:
             rewrite_guidance = self._build_rewrite_guidance(
-                {"blocking_issues": blocking_issues, "missing_events": missing_events}
+                {
+                    "blocking_issues": blocking_issues,
+                    "missing_events": missing_events,
+                    "anti_drift_details": anti_drift_details,
+                }
             )
             recommendations.append(f"重写建议: {rewrite_guidance}")
 
@@ -1235,6 +1468,7 @@ class NovelGeneratorAgent:
             "overall_score": overall_score,
             "recommendations": recommendations,
             "smoothness_details": smoothness_details,
+            "anti_drift_details": anti_drift_details,
             "rewrite_guidance": rewrite_guidance,
             "summary": "；".join(blocking_issues[:3]) if blocking_issues else "章节满足当前质量闸门。",
         }

@@ -7,6 +7,8 @@ from textwrap import dedent
 import types
 from unittest.mock import MagicMock
 
+import pytest
+
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT_DIR))
@@ -59,13 +61,17 @@ def _run_consistency_check(
     previous_summary: str,
     previous_content: str,
     current_content: str,
+    chapter_number: int = 2,
+    context_overrides: dict | None = None,
 ) -> dict:
     generator = _make_generator()
-    chapter = _make_chapter(2, "第二章", current_content)
+    chapter = _make_chapter(chapter_number, f"第{chapter_number}章", current_content)
     context = {
         "known_char_names": ["韩林", "柳如烟", "叶尘"],
         "previous_chapters": [{"content": dedent(previous_content).strip()}],
     }
+    if context_overrides:
+        context.update(context_overrides)
     return generator._check_consistency(chapter, previous_summary, context)
 
 
@@ -273,3 +279,201 @@ class TestNovelGeneratorSmoothnessConsistency:
 
         assert report["invalid"] is True
         assert "world_fact_violation" in report["issue_types"]
+
+    def test_consistency_report_flags_structure_drift_when_new_settings_exceed_budget(self):
+        report = _run_consistency_check(
+            previous_summary="上一章韩林立誓守住宗门祖地。",
+            previous_content="""
+            韩林确认祖地屏障正在崩裂，他唯一的目标就是守住宗门祖地。
+            """,
+            current_content="""
+            传说中的远古秘境忽然现世，引得满城修士震动。
+            又一神秘体系在废墟深处显露轮廓，人人都在议论新的修行法则。
+            韩林却只是站在原地听他们议论，没有再提守住宗门祖地这件事。
+            """,
+            chapter_number=40,
+            context_overrides={
+                "chapter_number": 40,
+                "total_chapters": 60,
+                "volume_guidance_payload": {
+                    "goal_lock": "守住宗门祖地",
+                    "new_setting_budget": "1",
+                },
+            },
+        )
+
+        assert report["invalid"] is True
+        assert "structure_drift_risk" in report["issue_types"]
+        assert any("结构漂移风险[" in issue for issue in report["blocking_issues"])
+        assert report["anti_drift_details"]["intro_count"] == 2
+
+    def test_consistency_report_allows_bridged_new_setting_within_budget(self):
+        report = _run_consistency_check(
+            previous_summary="上一章韩林决定守住宗门祖地。",
+            previous_content="""
+            宗门祖地的封印摇摇欲坠，韩林必须守住这里。
+            """,
+            current_content="""
+            传说中的远古秘境忽然现世。
+            韩林为了守住宗门祖地，必须先夺下秘境里的阵眼，因此立刻带人赶去。
+            """,
+            chapter_number=38,
+            context_overrides={
+                "chapter_number": 38,
+                "total_chapters": 60,
+                "volume_guidance_payload": {
+                    "goal_lock": "守住宗门祖地",
+                    "new_setting_budget": "1",
+                },
+            },
+        )
+
+        assert report["invalid"] is False
+        assert "structure_drift_risk" not in report["issue_types"]
+
+    def test_consistency_report_skips_structure_drift_in_early_stage(self):
+        report = _run_consistency_check(
+            previous_summary="上一章韩林要守住宗门祖地。",
+            previous_content="韩林还在为守住宗门祖地做准备。",
+            current_content="""
+            传说中的远古秘境忽然现世。
+            又一神秘体系在废墟深处显露轮廓。
+            """,
+            chapter_number=10,
+            context_overrides={
+                "chapter_number": 10,
+                "total_chapters": 60,
+                "volume_guidance_payload": {
+                    "goal_lock": "守住宗门祖地",
+                    "new_setting_budget": "1",
+                },
+            },
+        )
+
+        assert report["invalid"] is False
+        assert report["anti_drift_details"]["skipped_reason"] == "not_mid_late_stage"
+
+    def test_consistency_report_skips_structure_drift_without_goal_lock(self):
+        report = _run_consistency_check(
+            previous_summary="上一章韩林在祖地布阵。",
+            previous_content="韩林在祖地布阵。",
+            current_content="传说中的远古秘境忽然现世。",
+            chapter_number=35,
+            context_overrides={"chapter_number": 35, "total_chapters": 60},
+        )
+
+        assert report["invalid"] is False
+        assert report["anti_drift_details"]["skipped_reason"] == "missing_goal_lock"
+
+    def test_consistency_report_uses_fixed_threshold_when_total_chapters_missing(self):
+        report = _run_consistency_check(
+            previous_summary="上一章韩林决定守住宗门祖地。",
+            previous_content="韩林决定守住宗门祖地。",
+            current_content="""
+            传说中的远古秘境忽然现世。
+            又一神秘体系在废墟深处显露轮廓。
+            """,
+            chapter_number=35,
+            context_overrides={
+                "chapter_number": 35,
+                "volume_guidance_payload": {
+                    "goal_lock": "守住宗门祖地",
+                    "new_setting_budget": "1",
+                },
+            },
+        )
+
+        assert report["anti_drift_details"]["stage_gate_mode"] == "fixed_threshold_degraded"
+
+    def test_consistency_report_deduplicates_repeated_new_setting_intro_fragments(self):
+        report = _run_consistency_check(
+            previous_summary="上一章韩林决定守住宗门祖地。",
+            previous_content="韩林决定守住宗门祖地。",
+            current_content="""
+            传说中的远古秘境忽然现世，引得四方震动。
+            传说中的远古秘境忽然现世，引得四方震动。
+            韩林站在原地，没有再提守住宗门祖地。
+            """,
+            chapter_number=40,
+            context_overrides={
+                "chapter_number": 40,
+                "total_chapters": 60,
+                "volume_guidance_payload": {
+                    "goal_lock": "守住宗门祖地",
+                    "new_setting_budget": "0",
+                },
+            },
+        )
+
+        assert report["anti_drift_details"]["intro_count"] == 1
+        assert len(report["anti_drift_details"]["counted_intro_fragments"]) == 1
+
+    def test_structure_drift_requires_goal_term_and_connector_to_count_as_bridge(self):
+        report = _run_consistency_check(
+            previous_summary="上一章韩林立誓守住宗门祖地。",
+            previous_content="韩林立誓守住宗门祖地。",
+            current_content="""
+            传说中的远古秘境忽然现世，引得满城修士震动。
+            韩林想起守住宗门祖地，却不解释缘由，也不说明接下来要做什么。
+            又一神秘体系在废墟深处显露轮廓，人人都在议论新的修行法则。
+            """,
+            chapter_number=40,
+            context_overrides={
+                "chapter_number": 40,
+                "total_chapters": 60,
+                "volume_guidance_payload": {
+                    "goal_lock": "守住宗门祖地",
+                    "new_setting_budget": "1",
+                },
+            },
+        )
+
+        assert report["invalid"] is True
+        assert "structure_drift_risk" in report["issue_types"]
+        assert any("结构漂移风险[" in issue for issue in report["blocking_issues"])
+
+    @pytest.mark.parametrize(
+        "budget_value,expected_budget",
+        [
+            ("not-a-number", 1),
+            ("-2", 0),
+            (None, 1),
+        ],
+    )
+    def test_structure_drift_budget_parsing_is_deterministic(self, budget_value, expected_budget):
+        payload = {"goal_lock": "守住宗门祖地"}
+        if budget_value is not None:
+            payload["new_setting_budget"] = budget_value
+        report = _run_consistency_check(
+            previous_summary="上一章韩林立誓守住宗门祖地。",
+            previous_content="韩林立誓守住宗门祖地。",
+            current_content="""
+            传说中的远古秘境忽然现世，引得满城修士震动。
+            又一神秘体系在废墟深处显露轮廓，人人都在议论新的修行法则。
+            韩林却只是站在原地听他们议论，没有再提守住宗门祖地这件事。
+            """,
+            chapter_number=40,
+            context_overrides={
+                "chapter_number": 40,
+                "total_chapters": 60,
+                "volume_guidance_payload": payload,
+            },
+        )
+
+        assert report["anti_drift_details"]["budget"] == expected_budget
+
+    def test_structure_drift_records_missing_chapter_number_as_observable_skip_reason(self):
+        report = _run_consistency_check(
+            previous_summary="上一章韩林决定守住宗门祖地。",
+            previous_content="韩林决定守住宗门祖地。",
+            current_content="传说中的远古秘境忽然现世。",
+            chapter_number=40,
+            context_overrides={
+                "chapter_number": 0,
+                "total_chapters": 60,
+                "volume_guidance_payload": {"goal_lock": "守住宗门祖地"},
+            },
+        )
+
+        assert report["invalid"] is False
+        assert report["anti_drift_details"]["skipped_reason"] == "missing_chapter_number"
