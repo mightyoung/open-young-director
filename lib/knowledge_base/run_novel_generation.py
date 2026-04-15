@@ -79,8 +79,8 @@ from services.longform_run import (  # noqa: E402
     next_volume,
     normalize_volume_guidance_payload,
     record_pause,
-    review_payload_for_outline,
     review_payload_for_chapter,
+    review_payload_for_outline,
     review_payload_for_risk,
     review_payload_for_volume,
     save_longform_state,
@@ -493,6 +493,10 @@ def cmd_generate(args):
         project_id=project_id,
         command=command,
     )
+    status_payload = read_status(run_dir) if run_dir else {}
+    queued_volume_guidance_payload = normalize_volume_guidance_payload(
+        status_payload.get("queued_volume_guidance_payload")
+    )
 
     # 使用标题目录而非ID目录
     base_dir_override = str(project_dir)
@@ -634,6 +638,10 @@ def cmd_generate(args):
 
             # 构建上下文
             context = chapter_mgr.build_context(chapter_num)
+            context["chapter_number"] = chapter_num
+            context["total_chapters"] = int(getattr(project, "total_chapters", 0) or 0)
+            if any(queued_volume_guidance_payload.values()):
+                context["volume_guidance_payload"] = queued_volume_guidance_payload
             volume_guidance = str(getattr(args, "volume_guidance", "") or "").strip()
             if volume_guidance:
                 context["volume_guidance"] = volume_guidance

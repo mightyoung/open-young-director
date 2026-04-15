@@ -70,6 +70,9 @@ STRUCTURED_VOLUME_GUIDANCE_FIELDS = (
     "relationship_focus",
     "must_avoid",
     "tone_target",
+    "goal_lock",
+    "new_setting_budget",
+    "anti_drift_notes",
     "extra_notes",
 )
 
@@ -94,6 +97,9 @@ def format_volume_guidance(payload: dict[str, Any] | None) -> str:
         "relationship_focus": "需要强化的人物关系",
         "must_avoid": "明确避免的方向",
         "tone_target": "目标基调",
+        "goal_lock": "当前主线目标锁",
+        "new_setting_budget": "新设定预算",
+        "anti_drift_notes": "结构防漂移备注",
         "extra_notes": "补充说明",
     }
     lines = [
@@ -485,6 +491,7 @@ def review_payload_for_chapter(
         "missing_events": list(report.get("missing_events", [])),
         "continuity_issues": list(report.get("continuity_issues", [])),
         "world_fact_issues": list(report.get("world_fact_issues", [])),
+        "anti_drift_details": dict(report.get("anti_drift_details", {}) or {}),
         "rewrite_attempted": bool(report.get("rewrite_attempted")),
         "rewrite_succeeded": bool(report.get("rewrite_succeeded")),
         "rewrite_history": list(rewrite_history or []),

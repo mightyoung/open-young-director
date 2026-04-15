@@ -4,8 +4,8 @@ import argparse
 from pathlib import Path
 from types import SimpleNamespace
 
-import run_novel_generation
 from agents.novel_generator import GeneratedChapter
+import run_novel_generation
 from services.longform_run import (
     CHECKPOINT_CHAPTER,
     STAGE_CHAPTER_REVIEW,
@@ -203,6 +203,7 @@ def test_cmd_generate_only_applies_chapter_guidance_to_target_chapter(temp_proje
         id="project-123",
         title="demo",
         current_chapter=0,
+        total_chapters=120,
         metadata={},
     )
     fake_config = SimpleNamespace(
@@ -224,7 +225,7 @@ def test_cmd_generate_only_applies_chapter_guidance_to_target_chapter(temp_proje
 
         def save_chapter(self, **kwargs):
             project.current_chapter = kwargs["number"]
-            return None
+            return
 
         def save_plot_summary(self, _plot_summary):
             return None
@@ -264,6 +265,16 @@ def test_cmd_generate_only_applies_chapter_guidance_to_target_chapter(temp_proje
 
     monkeypatch.setattr(run_novel_generation, "get_config_manager", lambda: fake_config)
     monkeypatch.setattr(run_novel_generation, "_build_llm_clients", lambda _cfg: (None, None))
+    monkeypatch.setattr(
+        run_novel_generation,
+        "read_status",
+        lambda _run_dir: {
+            "queued_volume_guidance_payload": {
+                "goal_lock": "守住宗门祖地",
+                "new_setting_budget": "1",
+            }
+        },
+    )
     monkeypatch.setattr(run_novel_generation, "_create_orchestrator", lambda _cfg, _project_id: object())
     monkeypatch.setattr(run_novel_generation, "get_chapter_manager", lambda _project_id, base_dir_override=None: _FakeChapterManager())
     monkeypatch.setattr(
@@ -299,6 +310,9 @@ def test_cmd_generate_only_applies_chapter_guidance_to_target_chapter(temp_proje
     assert result == 0
     assert len(context_calls) == 2
     assert context_calls[0][0] == 1
+    assert context_calls[0][1]["chapter_number"] == 1
+    assert context_calls[0][1]["total_chapters"] == 120
+    assert context_calls[0][1]["volume_guidance_payload"]["goal_lock"] == "守住宗门祖地"
     assert context_calls[0][1]["volume_guidance"] == "整卷统一指令"
     assert context_calls[1][0] == 2
     assert context_calls[1][1]["volume_guidance"] == "仅重写第2章的补充指令"
