@@ -1129,104 +1129,11 @@ def cmd_publish(args):
         print("❌ 未配置番茄书号. 请在 .env 中设置 FANQIE_BOOK_ID")
         return 1
 
-    # 创建番茄发布器
-    publisher = FanqiePublisher(
-        book_id=fanqie_config.book_id,
-        volume_id=fanqie_config.volume_id,
-        upload_delay=fanqie_config.upload_delay_seconds,
-    )
-
-    # 检查认证状态
-    if not publisher._authenticated:
-        print("❌ Cookie 未加载或已过期")
-        print("   请检查 cookies/fanqie_cookies.json 文件")
-        return 1
-
-    print("\n📤 开始发布到番茄小说网...")
-    print(f"   书号: {fanqie_config.book_id}")
-    print(f"   项目: {config_mgr.current_project.title}")
-    print("-" * 50)
-
-    # 获取章节列表 - 使用标题目录
-    output_dir = getattr(config_mgr.generation, 'output_dir', None)
-    base_dir_override = str(Path(output_dir).resolve()) if output_dir else None
-    chapter_mgr = get_chapter_manager(config_mgr.current_project.id, base_dir_override=base_dir_override)
-    chapters = chapter_mgr.get_chapter_list()
-
-    if not chapters:
-        print("📭 暂无章节可发布")
-        return 0
-
-    # 确定要发布的章节范围
-    if args.all:
-        # 发布所有章节
-        start_num = 1
-        end_num = len(chapters)
-        chapter_range = range(1, end_num + 1)
-        print(f"   模式: 发布所有章节 (1-{end_num})")
-    else:
-        # 发布指定范围
-        parts = args.range.split("-")
-        if len(parts) == 2:
-            start_num = int(parts[0])
-            end_num = int(parts[1])
-        else:
-            start_num = int(parts[0])
-            end_num = start_num
-
-        chapter_range = range(start_num, end_num + 1)
-        print(f"   模式: 发布章节 {start_num}-{end_num}")
-
-    print()
-
-    # 发布章节
-    success_count = 0
-    fail_count = 0
-
-    for num in chapter_range:
-        # 查找对应章节
-        chapter_data = None
-        for ch in chapters:
-            if ch.number == num:
-                # 加载章节内容
-                chapter_content = chapter_mgr.get_chapter_content(num)
-                if chapter_content:
-                    chapter_data = {
-                        "number": num,
-                        "title": ch.title,
-                        "content": chapter_content,
-                    }
-                break
-
-        if not chapter_data:
-            print(f"   ⚠️ 章节 {num} 不存在或内容为空")
-            continue
-
-        print(f"📤 发布第 {num} 章: {chapter_data['title']}...")
-
-        result = publisher.upload_chapter(
-            chapter_number=chapter_data["number"],
-            title=chapter_data["title"],
-            content=chapter_data["content"],
-        )
-
-        if result.success:
-            print(f"   ✅ 成功 (ID: {result.chapter_id})")
-            success_count += 1
-        else:
-            print(f"   ❌ 失败: {result.message}")
-            fail_count += 1
-
-        # 间隔延迟
-        if num < end_num:
-            import time
-            time.sleep(fanqie_config.upload_delay_seconds)
-
-    print()
-    print("=" * 50)
-    print(f"✅ 发布完成! 成功: {success_count}, 失败: {fail_count}")
-
-    return 0 if fail_count == 0 else 1
+    print("❌ 当前版本未提供可用的番茄发布器实现")
+    print(f"   书号配置存在: {fanqie_config.book_id}")
+    print("   原有 cmd_publish 依赖的 FanqiePublisher 实现已不存在，继续执行会误报运行期成功路径。")
+    print("   请先恢复/重建番茄发布器，再重新启用 --publish / --publish-all。")
+    return 1
 
 
 def cmd_sync_derivatives(args):
