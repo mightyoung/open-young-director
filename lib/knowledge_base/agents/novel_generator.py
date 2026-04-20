@@ -169,6 +169,21 @@ ANTI_DRIFT_BRIDGE_CONNECTORS = (
     "借此",
     "好让",
 )
+GOAL_LOCK_NEGATION_MARKERS = (
+    "没有再提",
+    "不再提",
+    "只是想起",
+    "只是提到",
+    "仅是提到",
+    "口头提到",
+    "嘴上提到",
+    "却只是",
+    "却只是在",
+    "并未",
+    "未能",
+    "没能",
+    "无暇",
+)
 ANTI_DRIFT_GOAL_STOPWORDS = {
     "当前",
     "阶段",
@@ -314,6 +329,7 @@ class NovelGeneratorAgent:
             outline_summary=outline_summary,
             outline_info=outline_info,
             magic_line=magic_line,
+            context=context,
             writing_options=writing_options,
             orchestrator_result=result.get("orchestrator_result"),
         )
@@ -440,10 +456,13 @@ class NovelGeneratorAgent:
         outline_summary: str,
         outline_info: dict[str, Any],
         magic_line: str,
+        context: dict[str, Any] | None,
         writing_options: dict[str, str] | None,
         orchestrator_result: dict[str, Any] | None,
     ) -> GeneratedChapter:
         """Create a GeneratedChapter object from raw content."""
+        goal_lock = self._extract_goal_lock(context)
+        goal_terms = self._goal_terms(goal_lock)
         return GeneratedChapter(
             number=chapter_number,
             title=title,
@@ -456,12 +475,16 @@ class NovelGeneratorAgent:
                 "character_appearances": outline_info.get("characters", []),
                 "writing_options": normalize_writing_options(writing_options),
                 "generation_time": datetime.now().isoformat(),
+                "goal_lock": goal_lock,
+                "goal_terms": goal_terms,
             },
             plot_summary={
                 "l1_one_line_summary": outline_summary[:100] if outline_summary else "",
                 "l2_brief_summary": outline_summary,
                 "l3_key_plot_points": outline_info.get("key_events", []),
                 "magic_line": magic_line,
+                "goal_lock": goal_lock,
+                "goal_terms": goal_terms,
             },
             generation_time=datetime.now().isoformat(),
             orchestrator_result=orchestrator_result,
@@ -502,6 +525,7 @@ class NovelGeneratorAgent:
             outline_summary=outline_summary,
             outline_info=outline_info,
             magic_line=magic_line,
+            context=context,
             writing_options=writing_options,
             orchestrator_result=result.get("orchestrator_result"),
         )
@@ -578,7 +602,9 @@ class NovelGeneratorAgent:
         world_name = context.get("world_name", "")
         character_names = context.get("character_names", [])
         protagonist_constraint = context.get("protagonist_constraint", "")
-        volume_guidance = context.get("volume_guidance", "")
+        volume_guidance = self._compose_volume_guidance(context)
+        goal_lock_guidance = self._build_goal_lock_guidance(context)
+        chapter_guidance = str((context or {}).get("chapter_guidance", "") or "").strip()
 
         prompt = self._build_generation_prompt(
             chapter_number, title, outline, previous_summary, genre,
@@ -588,6 +614,8 @@ class NovelGeneratorAgent:
             retry_attempt=retry_attempt,
             protagonist_constraint=protagonist_constraint,
             volume_guidance=volume_guidance,
+            goal_lock_guidance=goal_lock_guidance,
+            chapter_guidance=chapter_guidance,
             writing_options=writing_options,
             rewrite_guidance=rewrite_guidance,
         )
@@ -628,6 +656,8 @@ class NovelGeneratorAgent:
         retry_attempt: int = 0,
         protagonist_constraint: str = "",
         volume_guidance: str = "",
+        goal_lock_guidance: str = "",
+        chapter_guidance: str = "",
         writing_options: dict[str, str] | None = None,
         rewrite_guidance: str = "",
     ) -> str:
@@ -701,8 +731,14 @@ class NovelGeneratorAgent:
 
 **【重要】** 上述约束必须严格遵守，不得违反。
 
+## 当前主线目标锁（稳定继承）
+{goal_lock_guidance or "无结构化目标锁，按既有大纲与前文自然推进。"}
+
 ## 本卷修订指令
 {volume_guidance or "无额外修订指令，按既有大纲与前文自然推进。"}
+
+## 本章附加指令
+{chapter_guidance or "无额外章节附加指令。"}
 
 ## 质量纠偏指令
 {rewrite_guidance or "无额外纠偏要求。"}
@@ -1107,6 +1143,14 @@ class NovelGeneratorAgent:
             guidance.append("引入新设定后 1-2 段内，用“为了/因此/所以/必须/要想/才能/目标是/于是”等桥接词说明其如何推动主线目标。")
             if goal_lock:
                 guidance.append(f"本章所有新增设定都必须明确服务该目标锁：{goal_lock}")
+        if "目标锁假继承[" in joined_issues:
+            anti_drift = report.get("anti_drift_details", {}) if isinstance(report, dict) else {}
+            goal_lock = str(anti_drift.get("goal_lock", "") or "").strip()
+            guidance.append("不要只改摘要、开头一句或宣言式台词来制造对齐。")
+            guidance.append("必须把正文关键事件、冲突选择与行动结果改写为持续推进主线目标。")
+            guidance.append("与主线无关的段落降权或后置，避免正文主体被支线闲笔冲散。")
+            if goal_lock:
+                guidance.append(f"重写时围绕目标锁重组正文推进链：{goal_lock}")
 
         return " ".join(guidance)
 
@@ -1120,6 +1164,50 @@ class NovelGeneratorAgent:
             if value:
                 return value
         return str(context.get("goal_lock", "") or "").strip()
+
+    def _build_goal_lock_guidance(self, context: dict[str, Any] | None) -> str:
+        """Build the stable goal-lock prompt block from the volume-level source of truth."""
+        goal_lock = self._extract_goal_lock(context)
+        if not goal_lock:
+            return ""
+        return "\n".join(
+            [
+                f"- 当前主线目标锁: {goal_lock}",
+                "- 本章核心推进、关键冲突和行动结果都必须持续服务这个目标锁。",
+                "- 摘要、关键事件和正文主体必须共享同一目标锁语义，不能只在摘要或宣言句里假对齐。",
+                "- 若引入新设定，必须立即说明它如何帮助推进该目标锁。",
+            ]
+        )
+
+    def _compose_volume_guidance(self, context: dict[str, Any] | None) -> str:
+        """Merge structured volume guidance payload with chapter-specific notes."""
+        context = context or {}
+        raw_guidance = str(context.get("volume_guidance", "") or "").strip()
+        payload = context.get("volume_guidance_payload")
+        if not isinstance(payload, dict):
+            return raw_guidance
+
+        labels = {
+            "must_recover": "必须回收的伏笔/问题",
+            "relationship_focus": "需要强化的人物关系",
+            "must_avoid": "明确避免的方向",
+            "tone_target": "目标基调",
+            "goal_lock": "当前主线目标锁",
+            "new_setting_budget": "新设定预算",
+            "anti_drift_notes": "结构防漂移备注",
+            "extra_notes": "补充说明",
+        }
+        structured_lines = [
+            f"- {labels[key]}: {str(value).strip()}"
+            for key, value in payload.items()
+            if key in labels and str(value).strip()
+        ]
+        structured_guidance = "\n".join(structured_lines).strip()
+        if not structured_guidance:
+            return raw_guidance
+        if not raw_guidance:
+            return structured_guidance
+        return f"{structured_guidance}\n{raw_guidance}"
 
     def _goal_terms(self, goal_lock: str) -> list[str]:
         """Split the goal lock into stable matching terms."""
@@ -1166,6 +1254,113 @@ class NovelGeneratorAgent:
         hits_goal_term = any(term in text for term in terms)
         hits_connector = any(connector in text for connector in ANTI_DRIFT_BRIDGE_CONNECTORS)
         return hits_goal_term and hits_connector
+
+    def _build_goal_lock_windows(self, content: str) -> list[str]:
+        """Build deterministic body windows for goal-lock alignment checks."""
+        paragraphs = [item.strip() for item in re.split(r"\n{2,}|\n", content) if item.strip()]
+        if len(paragraphs) >= 2:
+            return paragraphs[:8]
+
+        sentences = [item.strip() for item in re.split(r"[。！？!?]\s*", content) if item.strip()]
+        if not sentences:
+            return [content[:220]] if content else []
+
+        windows: list[str] = []
+        for index in range(0, len(sentences), 2):
+            window = "。".join(sentences[index:index + 2]).strip()
+            if window:
+                windows.append(window[:220])
+        return windows[:8]
+
+    def _find_goal_lock_matches(self, text: str, goal_terms: list[str]) -> list[str]:
+        """Return the goal terms present in a text snippet in stable order."""
+        matches: list[str] = []
+        for term in goal_terms:
+            if term in text and term not in matches:
+                matches.append(term)
+        return matches
+
+    def _window_negates_goal_lock(self, window: str) -> bool:
+        """Detect goal mentions that explicitly do not advance the target."""
+        return any(marker in window for marker in GOAL_LOCK_NEGATION_MARKERS)
+
+    def _summary_text_for_goal_lock(self, chapter: GeneratedChapter) -> str:
+        """Collect summary-like fields that should share the goal-lock anchor."""
+        plot_summary = chapter.plot_summary if isinstance(chapter.plot_summary, dict) else {}
+        summary_parts = [
+            str(plot_summary.get("l2_brief_summary", "") or "").strip(),
+            str(plot_summary.get("brief_summary", "") or "").strip(),
+            str(plot_summary.get("l1_one_line_summary", "") or "").strip(),
+            str(plot_summary.get("one_line_summary", "") or "").strip(),
+            str(chapter.metadata.get("outline_summary", "") or "").strip(),
+        ]
+        return "\n".join(part for part in summary_parts if part)
+
+    def _check_goal_lock_alignment(
+        self,
+        chapter: GeneratedChapter,
+        context: dict[str, Any] | None,
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """Detect false inheritance where the summary aligns but the body does not."""
+        goal_lock = self._extract_goal_lock(context)
+        goal_terms = self._goal_terms(goal_lock)
+        details: dict[str, Any] = {
+            "goal_lock": goal_lock,
+            "goal_terms": goal_terms,
+            "summary_alignment": False,
+            "body_alignment": False,
+            "summary_matches": [],
+            "body_matches": [],
+            "checked_windows": [],
+            "matched_fragments": [],
+        }
+        if not goal_lock:
+            details["alignment_skipped_reason"] = "missing_goal_lock"
+            return [], details
+
+        summary_text = self._summary_text_for_goal_lock(chapter)
+        summary_matches = self._find_goal_lock_matches(summary_text, goal_terms)
+        details["summary_matches"] = summary_matches
+        details["summary_alignment"] = bool(summary_matches or goal_lock in summary_text)
+
+        body_matches: list[dict[str, Any]] = []
+        for window in self._build_goal_lock_windows(chapter.content):
+            matched_terms = self._find_goal_lock_matches(window, goal_terms)
+            details["checked_windows"].append(window[:140])
+            if not matched_terms:
+                continue
+            negated = self._window_negates_goal_lock(window)
+            aligned = not negated and (
+                goal_lock in window
+                or any(connector in window for connector in ANTI_DRIFT_BRIDGE_CONNECTORS)
+                or len(matched_terms) >= 2
+            )
+            fragment = window[:140]
+            body_matches.append(
+                {
+                    "fragment": fragment,
+                    "matched_terms": matched_terms,
+                    "negated": negated,
+                    "aligned": aligned,
+                }
+            )
+            if aligned:
+                details["body_alignment"] = True
+
+        details["body_matches"] = body_matches[:5]
+        details["matched_fragments"] = [item["fragment"] for item in body_matches[:3]]
+
+        if details["summary_alignment"] and not details["body_alignment"]:
+            issue = {
+                "category": "goal_lock_false_inheritance",
+                "message": (
+                    f"目标锁假继承[摘要命中但正文掉锚]: "
+                    f"goal_lock={goal_lock}，摘要已对齐，但正文关键段落未围绕该目标推进。"
+                ),
+            }
+            return [issue], details
+
+        return [], details
 
     def _resolve_stage_gate(self, context: dict[str, Any] | None) -> tuple[bool, str, str | None]:
         """Resolve whether the current chapter is in the mid/late-stage anti-drift window."""
@@ -1426,11 +1621,22 @@ class NovelGeneratorAgent:
         if world_fact_issues:
             blocking_issues.extend(world_fact_issues)
             issue_types.append("world_fact_violation")
+        goal_lock_alignment_issues, goal_lock_details = self._check_goal_lock_alignment(
+            chapter=chapter,
+            context=context,
+        )
         structure_drift_issues, anti_drift_details = self._check_structure_drift(
             content=content,
             previous_summary=previous_summary,
             context=context,
         )
+        anti_drift_details = {
+            **anti_drift_details,
+            **goal_lock_details,
+        }
+        if goal_lock_alignment_issues:
+            blocking_issues.extend(issue["message"] for issue in goal_lock_alignment_issues)
+            issue_types.append("goal_lock_false_inheritance")
         if structure_drift_issues:
             blocking_issues.extend(issue["message"] for issue in structure_drift_issues)
             issue_types.append("structure_drift_risk")

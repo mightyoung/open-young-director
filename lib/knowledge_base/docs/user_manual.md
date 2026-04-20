@@ -188,12 +188,14 @@ uv run python run_novel_generation.py --load <project_id> --generate 3 --no-auto
 
 - outline 审批暂停
 - 每卷 volume 审批暂停
+- 章节级 `chapter_review` 质量闸门暂停
 - 同一 `run_id` / `run_dir` 的恢复执行
 - append-only 日志
 
-当前**尚未**内建章节级 `chapter_review` 平滑性拦截；如果你正在推进该能力，先看当前状态评审：
+当前 chapter review 链路会复用既有 consistency report / anti-drift 闭环；如果你正在推进或排查该能力，可结合以下文档一起看：
 
 - [smoothness_p0_review.md](/Users/muyi/Downloads/dev/young-writer/lib/knowledge_base/docs/smoothness_p0_review.md)
+- [longform_run_contract.md](/Users/muyi/Downloads/dev/young-writer/lib/knowledge_base/docs/longform_run_contract.md)
 
 ### 7.2 在 UI 中启动
 
@@ -271,6 +273,37 @@ uv run python run_novel_generation.py \
 - `character_intro`
 - 或 volume 审批备注
 
+### 7.5 卷级 guidance 继承与章节复核
+
+长篇模式下，卷级审批可以写入结构化 guidance payload；当前合同里的核心字段包括：
+
+- `must_recover`
+- `relationship_focus`
+- `must_avoid`
+- `tone_target`
+- `goal_lock`
+- `new_setting_budget`
+- `anti_drift_notes`
+- `extra_notes`
+
+使用上要注意三条规则：
+
+1. `next_volume_guidance_payload` 才是结构化上游真源，`status.json.queued_volume_guidance_payload` 只是镜像给 UI 读。
+2. `goal_lock` 一旦存在，就应该作为章节 prompt 的稳定锚点；one-shot `chapter_guidance` 只能追加，不能覆盖卷级目标锁。
+3. 章节摘要只有在质量闸门确认正文也围绕 `goal_lock` 推进后，才应该晋升为下游 `previous_summary`。
+
+当章节未通过质量闸门时，运行会暂停到 `chapter.review`。Review payload 至少应暴露：
+
+- `chapter_number` / `title`
+- `summary`
+- `issue_types`
+- `blocking_issues`
+- `anti_drift_details`
+- `rewrite_attempted` / `rewrite_succeeded` / `rewrite_history`
+
+如果出现“摘要看起来对，但正文没围绕目标推进”的假继承问题，优先在 `anti_drift_details` 中查 `goal_lock`、命中词、对齐 verdict 和相关证据窗口。
+
+
 ## 8. 运行状态说明
 
 ### 8.1 常见状态
@@ -297,6 +330,7 @@ uv run python run_novel_generation.py \
 - `outline.review`
 - `volume.plan`
 - `volume.write`
+- `chapter.review`
 - `volume.review`
 - `risk.pause`
 - `finalize.export`
@@ -321,7 +355,7 @@ UI 中可直接查看：
 - stdout/stderr tail
 - 章节列表
 - 章节正文与报告
-- 长篇待审批节点
+- 长篇待审批节点（包括 `outline_review`、`volume_review`、`chapter_review`、`risk_review`）
 
 ## 10. 验证与回归
 
@@ -336,9 +370,19 @@ uv run pytest lib/knowledge_base/tests -q
 
 ```bash
 uv run pytest \
+  lib/knowledge_base/tests/agents/test_novel_generator.py \
   lib/knowledge_base/tests/test_longform_run.py \
-  lib/knowledge_base/tests/test_streamlit_app.py \
-  lib/knowledge_base/tests/test_run_storage.py -q
+  lib/knowledge_base/tests/test_run_novel_generation.py \
+  lib/knowledge_base/tests/test_streamlit_app.py -q
+```
+
+如果你正在验证 `goal_lock` 继承 / chapter review / summary promotion，至少补跑：
+
+```bash
+uv run pytest \
+  lib/knowledge_base/tests/agents/test_novel_generator.py \
+  lib/knowledge_base/tests/test_longform_run.py \
+  lib/knowledge_base/tests/test_run_novel_generation.py -q
 ```
 
 验证 CLI 是否暴露了新参数：
@@ -369,7 +413,8 @@ uv run python lib/knowledge_base/run_novel_generation.py --help
 - `status.json.error_message`
 - `stdout.log`
 - `stderr.log`
-- 长篇模式下当前是否正处于 `outline.review` 或 `volume.review`
+- 长篇模式下当前是否正处于 `outline.review`、`chapter.review`、`volume.review` 或 `risk.pause`
+- `status.json.chapter_quality_report` 是否已记录本章拦截原因
 
 ### 11.4 测试失败
 
