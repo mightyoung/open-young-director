@@ -141,6 +141,33 @@ class TestNovelGeneratorWritingOptions:
         assert "必须回收的伏笔/问题" in prompt
         assert "下一卷必须尽快回收师门裂痕" in prompt
 
+    def test_generate_content_keeps_goal_lock_visible_alongside_chapter_guidance(self):
+        llm_client = MagicMock()
+        llm_client.generate.return_value = "第五章\n" + ("韩林为了守住宗门祖地，在夜色中调度伏兵。 " * 80)
+        generator = NovelGeneratorAgent(
+            config_manager=DummyConfigManager(),
+            llm_client=llm_client,
+        )
+
+        generator._generate_content(
+            chapter_number=5,
+            title="第五章",
+            outline="韩林在祖地夜巡时察觉伏兵。",
+            previous_summary="上一章韩林决定死守祖地。",
+            context={
+                "volume_guidance": "本章要先写夜袭祖地时的伏兵调度。",
+                "volume_guidance_payload": {
+                    "goal_lock": "守住宗门祖地",
+                    "new_setting_budget": "1",
+                },
+            },
+        )
+
+        prompt = llm_client.generate.call_args.args[0][0]["content"]
+
+        assert "本章要先写夜袭祖地时的伏兵调度。" in prompt
+        assert "当前主线目标锁: 守住宗门祖地" in prompt
+
 class TestNovelGeneratorSmoothnessConsistency:
     def test_consistency_report_flags_location_jump_without_bridge(self):
         report = _run_consistency_check(
@@ -477,3 +504,39 @@ class TestNovelGeneratorSmoothnessConsistency:
 
         assert report["invalid"] is False
         assert report["anti_drift_details"]["skipped_reason"] == "missing_chapter_number"
+
+    def test_structure_drift_uses_body_instead_of_outline_summary_for_goal_lock_alignment(self):
+        generator = _make_generator()
+        chapter = MODULE.GeneratedChapter(
+            number=40,
+            title="第四十章",
+            content=dedent(
+                """
+                传说中的远古秘境忽然现世，引得满城修士震动。
+                又一神秘体系在废墟深处显露轮廓，人人都在议论新的修行法则。
+                韩林却只是站在原地听他们议论，没有再提守住宗门祖地这件事。
+                """
+            ).strip(),
+            word_count=120,
+            metadata={
+                "key_events": [],
+                "outline_summary": "韩林为了守住宗门祖地继续推进主线。",
+            },
+        )
+
+        report = generator._check_consistency(
+            chapter,
+            previous_summary="上一章韩林立誓守住宗门祖地。",
+            context={
+                "chapter_number": 40,
+                "total_chapters": 60,
+                "volume_guidance_payload": {
+                    "goal_lock": "守住宗门祖地",
+                    "new_setting_budget": "1",
+                },
+                "previous_chapters": [{"content": "韩林立誓守住宗门祖地。"}],
+            },
+        )
+
+        assert report["invalid"] is True
+        assert "structure_drift_risk" in report["issue_types"]

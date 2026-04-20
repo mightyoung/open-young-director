@@ -652,7 +652,7 @@ def cmd_generate(args):
                 and chapter_guidance_target is not None
                 and int(chapter_guidance_target) == chapter_num
             ):
-                context["volume_guidance"] = chapter_guidance
+                context["chapter_guidance"] = chapter_guidance
 
             # 生成章节
             current_stage = STAGE_CHAPTER_GENERATE

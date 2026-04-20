@@ -315,7 +315,8 @@ def test_cmd_generate_only_applies_chapter_guidance_to_target_chapter(temp_proje
     assert context_calls[0][1]["volume_guidance_payload"]["goal_lock"] == "守住宗门祖地"
     assert context_calls[0][1]["volume_guidance"] == "整卷统一指令"
     assert context_calls[1][0] == 2
-    assert context_calls[1][1]["volume_guidance"] == "仅重写第2章的补充指令"
+    assert context_calls[1][1]["volume_guidance"] == "整卷统一指令"
+    assert context_calls[1][1]["chapter_guidance"] == "仅重写第2章的补充指令"
     assert project.current_chapter == 2
     assert (Path(project_dir) / "generation_results.json").exists()
 

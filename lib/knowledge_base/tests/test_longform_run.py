@@ -147,6 +147,70 @@ def test_pause_for_invalid_chapter_writes_chapter_review_payload(temp_project_di
     assert pending["review_payload"]["issue_types"] == ["scene_or_timeline_disconnect"]
 
 
+def test_pause_for_invalid_chapter_preserves_anti_drift_review_details(temp_project_dir):
+    project_dir = temp_project_dir / "project"
+    run_dir = create_run(
+        project_dir=project_dir,
+        run_id="run-002",
+        project_id="project-123",
+        command=["--generate-full"],
+    )
+    state = initial_longform_state(
+        project=_Project(),
+        run_id="run-002",
+        run_dir=run_dir,
+        chapters_per_volume=60,
+        approval_mode="outline+volume",
+        auto_approve=False,
+    )
+    chapter = GeneratedChapter(
+        number=5,
+        title="第五章",
+        content="测试内容",
+        word_count=4,
+        metadata={"rewrite_history": [{"attempt": 1, "mode": "rewrite"}]},
+        consistency_report={
+            "summary": "结构漂移风险导致章节暂停",
+            "blocking_issues": ["结构漂移风险[主线目标锁被新设定冲散]: budget=1，goal_terms=守住宗门祖地"],
+            "issue_types": ["structure_drift_risk"],
+            "missing_events": [],
+            "continuity_issues": [],
+            "world_fact_issues": [],
+            "anti_drift_details": {
+                "goal_lock": "守住宗门祖地",
+                "budget": 1,
+                "intro_count": 2,
+            },
+            "rewrite_attempted": True,
+            "rewrite_succeeded": False,
+            "rewrite_guidance": "先推进主线目标锁：守住宗门祖地。",
+            "smoothness_details": [
+                {
+                    "category": "structure_drift_risk",
+                    "message": "结构漂移风险[主线目标锁被新设定冲散]",
+                }
+            ],
+        },
+    )
+
+    result = _pause_for_invalid_chapter(
+        run_dir=run_dir,
+        state=state,
+        project_id="project-123",
+        command=["--generate-full"],
+        run_started_at=datetime.now(),
+        chapter=chapter,
+    )
+
+    status = read_status(run_dir)
+    pending = approval_payload_from_input(status["pending_state_path"])
+
+    assert result == 0
+    assert pending["review_payload"]["anti_drift_details"]["goal_lock"] == "守住宗门祖地"
+    assert pending["review_payload"]["rewrite_guidance"] == "先推进主线目标锁：守住宗门祖地。"
+    assert pending["review_payload"]["smoothness_details"][0]["category"] == "structure_drift_risk"
+
+
 def test_approval_payload_from_file_and_inline_json(temp_project_dir):
     payload_path = temp_project_dir / "payload.json"
     payload_path.write_text('{"outline": "revised"}', encoding="utf-8")
