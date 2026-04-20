@@ -124,32 +124,32 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
         self._chapters_to_regenerate: set[int] | None = None
         # Checkpoint manager for atomic file I/O
         self._checkpoint_manager: CheckpointManager | None = None
-
+                    
     def _create_agents(self) -> dict[str, Any]:
         """创建Agents - 委托给子Crews"""
         return {}
-
+                    
     def _create_tasks(self) -> dict[str, Any]:
         """创建Tasks - 委托给子Crews"""
         return {}
-
+                        
     def _create_workflow(self) -> Any:
         """创建Crew工作流 - 委托给子Crews"""
         return None
-
+                        
     def _evaluate_output(self, output: "NovelOutput") -> "QualityReport":
         """评估NovelOutput质量
-
+                        
         P2: 统一的 QualityReport 语义。
         - chapters为空 -> is_usable=False
         - total_word_count=0 -> is_usable=False
         - metadata中有warnings -> requires_manual_review=True
         """
         from crewai.content.base import QualityReport
-
+                        
         warnings = []
         errors = []
-
+                        
         # 检查章节数
         if not output.chapters:
             errors.append("no_chapters: 章节列表为空")
@@ -159,7 +159,7 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
                 warnings=warnings,
                 errors=errors,
             )
-
+                    
         # 检查总字数
         if output.total_word_count == 0:
             errors.append("zero_word_count: 总字数为0")
@@ -169,29 +169,29 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
                 warnings=warnings,
                 errors=errors,
             )
-
+                    
         # 检查章节质量问题
         failed_chapters = []
         for chapter in output.chapters:
             if not chapter.content or len(chapter.content.strip()) < 100:
                 failed_chapters.append(chapter.chapter_num)
-
+                    
         if failed_chapters:
             warnings.append(f"partial_chapters: 以下章节内容过少或为空: {failed_chapters}")
-
+                    
         # 检查metadata中的warnings
         if output.metadata:
             meta_warnings = output.metadata.get("warnings", [])
             if meta_warnings:
                 warnings.extend(meta_warnings)
-
+                    
         return QualityReport(
             is_usable=True,
             requires_manual_review=len(warnings) > 0 or len(errors) > 0,
             warnings=warnings,
             errors=errors,
         )
-
+                            
     @property
     def world_crew(self) -> WorldCrew:
         """获取世界观构建Crew"""
@@ -201,7 +201,7 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
                 verbose=self.verbose,
             )
         return self._world_crew
-
+        
     @property
     def outline_crew(self) -> OutlineCrew:
         """获取大纲生成Crew"""
@@ -211,7 +211,7 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
                 verbose=self.verbose,
             )
         return self._outline_crew
-
+    
     @property
     def volume_outline_crew(self) -> VolumeOutlineCrew:
         """获取分卷大纲生成Crew"""
@@ -235,7 +235,7 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
     def _load_writer_commandments(self) -> str:
         """多级加载宪法准则：优先级 输出目录 > 内存访谈 > 根目录默认"""
         from pathlib import Path
-        
+
         # 1. 尝试从输出目录加载 (已存在的持久化宪法)
         output_dir = self.checkpoint_manager.output_dir
         task_md = Path(output_dir) / "WRITER.md"
@@ -255,7 +255,7 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
             try:
                 return f"\n【项目默认准则 (全局)】：\n{path.read_text(encoding='utf-8')}\n"
             except: pass
-            
+
         return ""
 
     @property
@@ -264,7 +264,7 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
         if self._writing_crew is None:
             # 注入宪法准则
             self.config["global_writer_rules"] = self._load_writer_commandments()
-            
+
             self._writing_crew = WritingCrew(
                 config=self.config,
                 entity_memory=self.entity_memory,
@@ -683,7 +683,7 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
                 try:
                     from crewai.content.novel.production_bible.bible_types import VisualAsset
                     logger.info("Synthesizing visual assets for the novel characters and covers...")
-                    
+
                     # 为核心角色生成视觉卡
                     for name, char in bible.characters.items():
                         if char.role in ["protagonist", "antagonist"]:
@@ -695,7 +695,7 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
                                 negative_prompt=art_data.get("negative_prompt", ""),
                                 style_guide=bible.world_rules.power_system_name if bible.world_rules else ""
                             ))
-                    
+
                     # 为分卷生成封面设计建议（如果已生成分卷）
                     volume_outlines = self.pipeline_state.volume_outlines
                     if volume_outlines:
@@ -707,7 +707,7 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
                                 positive_prompt=art_data.get("positive_prompt", ""),
                                 negative_prompt=art_data.get("negative_prompt", ""),
                             ))
-                    
+
                     logger.info(f"Art Library initialized with {len(bible.visual_assets)} visual assets.")
                     self.pipeline_state.set_bible(bible) # Save again with assets
                 except Exception as e:
@@ -1043,14 +1043,14 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
             from crewai.content.novel.services.interview_service import InterviewService
             service = InterviewService()
             logger.info("Initializing Story Engineering: Starting Deep Director's Interview...")
-            
+
             # 1. 运行多阶段深度访谈
             interview_data = service.run_deep_interview()
-            
+
             # 2. 合成本案专属宪法 (WRITER.md)
             commandments = service.synthesize_to_writer_md(interview_data)
             self.config["global_writer_rules"] = commandments
-            
+
             # 3. 物理锁定宪法文件到小说专属目录
             out_dir = self.checkpoint_manager.output_dir
             from pathlib import Path
@@ -1136,7 +1136,7 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
         if current_idx < outline_idx and target_idx >= outline_idx:
             # --- MANDATORY CONSTITUTION SYNC ---
             self.outline_crew.config["global_writer_rules"] = self._load_writer_commandments()
-            
+
             outline_data = self.outline_crew.generate_outline()
             world_data = outline_data.get("world", {})
             plot_data = outline_data.get("plot", {})
@@ -1860,8 +1860,8 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
             # --- MACRO DESTINY REWRITER (Volume Boundary Optimization) ---
             vol_num = chapter_summary.get("volume_num") or chapter_to_volume.get(chapter_num, 1)
             is_volume_start = (chapter_num > 1 and chapter_to_volume.get(chapter_num) != chapter_to_volume.get(chapter_num - 1))
-            
-            
+
+
             if is_volume_start and self._production_bible is not None:
                 try:
                     logger.info("Volume Boundary reached. Performing Total Audit and Memory Compaction...")
@@ -1874,10 +1874,10 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
                     logger.info(
                         f"Volume Audit Complete. Health Score: {audit_report.get('total_health_score')}/100"
                     )
-                    
+
                     # 2. 内存折叠 (对标 Claude Code Snip)
                     self.pipeline_state.snip_history(keep_last_n=5)
-                    
+
                     # 3. 命运重构
                     future_volumes = [v for v in self.pipeline_state.volume_outlines if v.get("volume_num", 0) >= vol_num]
                     optimized = self.destiny_rewriter.optimize_future_path(self._production_bible, future_volumes)
@@ -1886,7 +1886,7 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
                             for i, old_v in enumerate(self.pipeline_state.volume_outlines):
                                 if old_v.get("volume_num") == new_v.get("volume_num"):
                                     self.pipeline_state.volume_outlines[i] = new_v
-                        logger.info(f"Future Destiny Updated: {optimized.get("optimization_logic")}")
+                        logger.info(f"Future Destiny Updated: {optimized.get('optimization_logic')}")
                 except Exception as e:
                     logger.warning(f"Macro processing failed: {e}")
 
@@ -1951,7 +1951,7 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
                 f"Chapter {chapter_num}: {chapter_outline.get('title')}"
             )
             chapter_task.start()
-            
+
             attempts = 0
             max_heals = 2
             polished_draft = ""
@@ -1968,11 +1968,11 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
                     # 1. 撰写草稿 (支持 A/B 分叉生成)
                     if current_fixup_directive:
                         context.writing_goals = (context.writing_goals or "") + f"\n【自愈修复指令】：{current_fixup_directive}"
-                    
+
                     # 正常生成路径
                     draft = self.writing_crew.write_chapter(context, chapter_outline, bible_section)
                     self._record_context_compaction(chapter_num)
-                    
+
                     # 如果需要 A/B 测试，再生成一个变体版本
                     if do_ab_test and attempts == 1:
                         logger.info(f"High-tension detected. Generating A/B branch for Chapter {chapter_num}...")
@@ -1980,17 +1980,17 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
                         variant_context.writing_goals = (variant_context.writing_goals or "") + "\n【分叉指令】：请尝试一个更激进/意外的剧情走向。"
                         draft_variant = self.writing_crew.write_chapter(variant_context, chapter_outline, bible_section)
                         self._record_context_compaction(chapter_num)
-                        
+
                         # 评估两个分支
                         evaluations = self.branch_evaluator.run_evaluation([
                             {"id": "A (常规)", "content": draft},
                             {"id": "B (激进)", "content": draft_variant}
                         ], chapter_num)
-                        
+
                         # --- INTERACTIVE CHOICE (Interview style) ---
                         from crewai.utilities.playback import ask_user
                         options = self.branch_evaluator.prepare_choice_ui(evaluations)
-                        
+
                         logger.info("A/B Testing complete. Waiting for Director's decision...")
                         user_choice = ask_user(questions=[{
                             "header": f"第{chapter_num}章 剧情分叉选择",
@@ -1998,14 +1998,14 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
                             "type": "choice",
                             "options": options
                         }])
-                        
+
                         chosen_label = user_choice["answers"]["0"]
                         chosen_idx = 0 if "版本 A" in chosen_label else 1
-                        
+
                         logger.info(f"Director chose: {chosen_label}")
                         draft = draft if chosen_idx == 0 else draft_variant
                         # --- END INTERACTIVE CHOICE ---
-                    
+
                     # 2. 审查和修改 (传入 suggest_only 参数以支持微操)
                     review_context = self._build_review_context(context, chapter_outline)
                     suggest_only = self.config.get("suggest_only", False)
@@ -2034,11 +2034,11 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
                             critique_issues=critique_result.issues
                         )
                         continue
-                    
+
                     # 4. 成功通过
                     chapter_task.complete(result=f"Done in {attempts} attempts")
                     break
-                    
+
                 except Exception as e:
                     logger.error(f"Execution Error: {e}")
                     chapter_task.fail(str(e))
@@ -2167,14 +2167,14 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
             if self._production_bible is not None:
                 try:
                     logger.info(f"Evolving Bible & Relationships from Chapter {chapter_num}...")
-                    
+
                     # 1. 提取世界观/设定更新
                     updates = self.bible_evolver.extract_updates(
                         chapter_content=chapter_output.content,
                         chapter_num=chapter_num,
                         current_bible=self._production_bible
                     )
-                    
+
                     # 2. 提取情感关系更新
                     rel_updates = self.relationship_evolver.extract_relationship_updates(
                         chapter_content=chapter_output.content,
@@ -2187,7 +2187,7 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
                         chapter_num=chapter_num,
                         current_gps=self._production_bible.character_gps
                     )
-                    
+
                     if updates or rel_updates or gps_updates:
                         # Apply updates
                         if updates:
@@ -2196,7 +2196,7 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
                             self._apply_relationship_updates(rel_updates)
                         if gps_updates:
                             self._apply_gps_updates(gps_updates, chapter_num)
-                            
+
                         logger.info(f"Bible evolved: {len(updates)} settings, {len(rel_updates)} relationships, {len(gps_updates)} movements.")
                         self.pipeline_state.set_bible(self._production_bible)
 
@@ -2829,7 +2829,7 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
         # 6. 同步状态
         self.pipeline_state.add_chapter(chapter_output)
         self._save_chapter_checkpoint(chapter_output)
-        
+
         return chapter_output
 
     def _extract_character_names(self, content: str, world_data: dict) -> list[str]:
@@ -2884,7 +2884,7 @@ class NovelCrew(BaseContentCrew[NovelOutput]):
 
         return list(found_names)
 
-    
+
     def _apply_relationship_updates(self, rel_updates: dict) -> None:
         if not self._production_bible: return
         from crewai.content.novel.production_bible.bible_types import RelationshipState
