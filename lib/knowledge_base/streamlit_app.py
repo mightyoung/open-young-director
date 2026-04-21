@@ -17,6 +17,13 @@ sys.path.insert(0, str(ROOT_DIR))
 
 from agents.chapter_manager import ChapterManager, get_chapter_manager  # noqa: E402
 from agents.config_manager import get_config_manager  # noqa: E402
+from services.longform_run import (  # noqa: E402
+    approval_entry_detail_parts as _approval_entry_detail_parts,
+    approval_entry_summary as _approval_entry_summary,
+    approval_history_summary as _approval_history_summary,
+    approval_preview_text as _approval_preview_text,
+    compile_chapter_rewrite_guidance,
+)
 from services.run_storage import (  # noqa: E402
     create_run,
     format_eta,
@@ -601,6 +608,8 @@ def _recent_run_preview(run_id: str) -> dict[str, str | bool]:
             "status": "",
             "pause_reason": "",
             "has_pending_review": False,
+            "latest_approval": "",
+            "approval_history": "",
         }
     run_dir = runs_root / run_id
     if not run_dir.exists():
@@ -611,8 +620,13 @@ def _recent_run_preview(run_id: str) -> dict[str, str | bool]:
             "status": "",
             "pause_reason": "",
             "has_pending_review": False,
+            "latest_approval": "",
+            "approval_history": "",
         }
     status = read_status(run_dir)
+    state = _read_json(Path(str(status.get("longform_state_path", "") or "")))
+    approval_summary = _approval_history_summary(state, limit=1)
+    approval_history = _approval_history_summary(state, limit=3)
     return {
         "stdout": read_log_tail(run_dir, "stdout", max_chars=1200),
         "stderr": read_log_tail(run_dir, "stderr", max_chars=800),
@@ -620,6 +634,8 @@ def _recent_run_preview(run_id: str) -> dict[str, str | bool]:
         "status": _run_status_label(str(status.get("status", "") or "")),
         "pause_reason": _pause_reason_label(str(status.get("pause_reason", "") or "")),
         "has_pending_review": bool(status.get("pending_state_path")),
+        "latest_approval": approval_summary,
+        "approval_history": approval_history,
     }
 
 
@@ -873,6 +889,7 @@ def _render_generation_tab(st_mod: Any) -> None:
                     3: "阶段",
                     4: "进度",
                     5: "排队指令首行",
+                    6: "最近审批",
                 },
             )
             run_ids = [row[1] for row in recent_rows]
@@ -892,6 +909,10 @@ def _render_generation_tab(st_mod: Any) -> None:
                 if preview["has_pending_review"]:
                     status_line += " | 存在待审批节点"
                 st_mod.caption(status_line)
+                if preview["latest_approval"]:
+                    st_mod.caption(f"最近审批: {preview['latest_approval'].splitlines()[0]}")
+                if preview["approval_history"]:
+                    st_mod.code(preview["approval_history"], language="text")
                 st_mod.text_area("所选运行 stdout 预览", value=preview["stdout"], height=120)
                 if preview["stderr"]:
                     st_mod.text_area("所选运行 stderr 预览", value=preview["stderr"], height=80)
@@ -961,6 +982,9 @@ def _recent_run_rows(limit: int = 5) -> list[list[str]]:
             continue
         guidance = str(status.get("queued_volume_guidance", "") or "").strip()
         guidance_head = guidance.splitlines()[0] if guidance else ""
+        state = _read_json(Path(str(status.get("longform_state_path", "") or "")))
+        approval_summary = _approval_history_summary(state, limit=1)
+        approval_head = approval_summary.splitlines()[0] if approval_summary else ""
         rows.append(
             [
                 "当前" if run_dir.name == active_run_id else "",
@@ -969,6 +993,7 @@ def _recent_run_rows(limit: int = 5) -> list[list[str]]:
                 _run_stage_label(str(status.get("current_stage", "init"))),
                 f"{status.get('chapters_completed', 0)} / {status.get('chapters_total', 0)}",
                 guidance_head,
+                approval_head,
             ]
         )
     return rows
@@ -985,6 +1010,147 @@ def _pending_review_payload(run_dir: Path | None) -> dict[str, Any]:
     if not payload:
         return {}
     payload["pending_state_path"] = pending_state_path
+    return payload
+
+
+def _non_empty_lines(values: list[str]) -> str:
+    items = [str(item).strip() for item in values if str(item).strip()]
+    return "\n".join(f"- {item}" for item in items)
+
+
+def _chapter_review_structured_sections(review_payload: dict[str, Any]) -> list[tuple[str, str]]:
+    issue_types = [str(item).strip() for item in review_payload.get("issue_types", []) if str(item).strip()]
+    warning_issues = [str(item).strip() for item in review_payload.get("warning_issues", []) if str(item).strip()]
+    rewrite_plan = review_payload.get("rewrite_plan", {}) or {}
+    issue_categories = [
+        str(item).strip() for item in rewrite_plan.get("issue_categories", []) if str(item).strip()
+    ]
+
+    sections: list[tuple[str, str]] = []
+    if issue_types:
+        sections.append(("问题类型", _non_empty_lines(issue_types)))
+    if issue_categories:
+        sections.append(("问题分类", _non_empty_lines(issue_categories)))
+    if warning_issues:
+        sections.append(("语义告警", _non_empty_lines(warning_issues)))
+    return sections
+
+
+def _chapter_review_evidence(review_payload: dict[str, Any]) -> list[tuple[str, str]]:
+    anti_drift = review_payload.get("anti_drift_details", {}) or {}
+    chapter_intent_contract = review_payload.get("chapter_intent_contract", {}) or {}
+    semantic_review = review_payload.get("semantic_review", {}) or {}
+    rewrite_plan = review_payload.get("rewrite_plan", {}) or {}
+
+    sections: list[tuple[str, str]] = []
+
+    goal_lock = str(anti_drift.get("goal_lock", "") or "").strip()
+    if goal_lock:
+        lines = [f"- 当前目标锁: {goal_lock}"]
+        if anti_drift.get("summary_alignment") is not None:
+            lines.append(f"- 摘要对齐: {bool(anti_drift.get('summary_alignment'))}")
+        if anti_drift.get("body_alignment") is not None:
+            lines.append(f"- 正文对齐: {bool(anti_drift.get('body_alignment'))}")
+        goal_terms = [str(item).strip() for item in anti_drift.get("goal_terms", []) if str(item).strip()]
+        if goal_terms:
+            lines.append(f"- 命中词: {' / '.join(goal_terms[:6])}")
+        matched_fragments = [str(item).strip() for item in anti_drift.get("matched_fragments", []) if str(item).strip()]
+        if matched_fragments:
+            lines.append("- 已命中片段:")
+            lines.extend(f"  - {item}" for item in matched_fragments[:3])
+        unaligned_fragments = [str(item).strip() for item in anti_drift.get("unaligned_fragments", []) if str(item).strip()]
+        if unaligned_fragments:
+            lines.append("- 未对齐片段:")
+            lines.extend(f"  - {item}" for item in unaligned_fragments[:3])
+        sections.append(("目标锁证据", "\n".join(lines)))
+
+    bridge_results = anti_drift.get("bridge_results", []) or []
+    if bridge_results:
+        lines = [
+            f"- 新设定预算: {anti_drift.get('budget', 0)}",
+            f"- 引入片段数: {anti_drift.get('intro_count', 0)}",
+        ]
+        unbridged_fragments = [str(item).strip() for item in anti_drift.get("unbridged_fragments", []) if str(item).strip()]
+        if unbridged_fragments:
+            lines.append("- 未桥接新设定:")
+            lines.extend(f"  - {item}" for item in unbridged_fragments[:3])
+        sections.append(("结构漂移证据", "\n".join(lines)))
+
+    if chapter_intent_contract:
+        lines = []
+        planned_action = str(chapter_intent_contract.get("planned_action", "") or "").strip()
+        if planned_action:
+            lines.append(f"- 本章计划动作: {planned_action}")
+        contract_goal_lock = str(chapter_intent_contract.get("goal_lock", "") or "").strip()
+        if contract_goal_lock:
+            lines.append(f"- 合同目标锁: {contract_goal_lock}")
+        success_checks = [
+            str(item).strip() for item in chapter_intent_contract.get("success_checks", []) if str(item).strip()
+        ]
+        if success_checks:
+            lines.append("- 执行合同:")
+            lines.extend(f"  - {item}" for item in success_checks[:4])
+        sections.append(("生成前执行合同", "\n".join(lines)))
+
+    semantic_issues = semantic_review.get("issues", []) or []
+    if semantic_issues:
+        lines = [f"- warning_only: {bool(semantic_review.get('warning_only'))}"]
+        for item in semantic_issues[:4]:
+            if not isinstance(item, dict):
+                continue
+            category = str(item.get("category", "") or "").strip()
+            message = str(item.get("message", "") or "").strip()
+            if category or message:
+                lines.append(f"- {category or 'issue'}: {message}")
+        sections.append(("语义复核", "\n".join(lines)))
+
+    if rewrite_plan:
+        lines = []
+        must_keep = [str(item).strip() for item in rewrite_plan.get("must_keep", []) if str(item).strip()]
+        fixes = [str(item).strip() for item in rewrite_plan.get("fixes", []) if str(item).strip()]
+        success_criteria = [
+            str(item).strip() for item in rewrite_plan.get("success_criteria", []) if str(item).strip()
+        ]
+        operations = [item for item in rewrite_plan.get("operations", []) if isinstance(item, dict)]
+        if must_keep:
+            lines.append("- 保留要求:")
+            lines.extend(f"  - {item}" for item in must_keep[:3])
+        if fixes:
+            lines.append("- 本次修复:")
+            lines.extend(f"  - {item}" for item in fixes[:4])
+        if success_criteria:
+            lines.append("- 验收条件:")
+            lines.extend(f"  - {item}" for item in success_criteria[:4])
+        if operations:
+            lines.append("- Patch 操作:")
+            for item in operations[:4]:
+                phase = str(item.get("phase", "") or "").strip()
+                action = str(item.get("action", "") or "").strip()
+                target = str(item.get("target", "") or "").strip()
+                instruction = str(item.get("instruction", "") or "").strip()
+                header = " / ".join(part for part in (phase, action, target) if part)
+                if header and instruction:
+                    lines.append(f"  - {header}: {instruction}")
+                elif instruction:
+                    lines.append(f"  - {instruction}")
+        sections.append(("结构化重写方案", "\n".join(lines)))
+
+    return sections
+
+
+def _chapter_review_resume_payload(review_payload: dict[str, Any], extra_notes: str) -> dict[str, Any]:
+    rewrite_plan = dict(review_payload.get("rewrite_plan", {}) or {})
+    notes = str(extra_notes or "").strip()
+    if not rewrite_plan:
+        return {"chapter_rewrite_guidance": notes}
+    guidance = compile_chapter_rewrite_guidance(rewrite_plan, extra_notes=notes)
+    payload: dict[str, Any] = {
+        "chapter_rewrite_guidance": guidance or notes,
+    }
+    if rewrite_plan:
+        payload["chapter_rewrite_plan"] = rewrite_plan
+    if notes:
+        payload["notes"] = notes
     return payload
 
 
@@ -1014,6 +1180,9 @@ def _volume_review_summary(payload: dict[str, Any]) -> str:
         f"已生成章节: {review_payload.get('generated_chapter_count', 0)} / {review_payload.get('planned_chapter_count', 0)}",
         f"总字数: {review_payload.get('total_word_count', 0)}",
     ]
+    registry_summary = str(review_payload.get("cross_volume_registry_summary", "") or "").strip()
+    if registry_summary:
+        lines.extend(["", "跨卷状态:", registry_summary])
     opening_summary = str(review_payload.get("opening_summary", "")).strip()
     closing_summary = str(review_payload.get("closing_summary", "")).strip()
     if opening_summary:
@@ -1030,6 +1199,65 @@ def _volume_review_summary(payload: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _volume_registry_defaults(review_payload: dict[str, Any]) -> dict[str, str]:
+    registry = review_payload.get("cross_volume_registry", {}) or {}
+    return {
+        "unresolved_goals": "\n".join(
+            str(item).strip() for item in registry.get("unresolved_goals", []) if str(item).strip()
+        ),
+        "open_promises": "\n".join(
+            str(item).strip() for item in registry.get("open_promises", []) if str(item).strip()
+        ),
+        "dangling_settings": "\n".join(
+            str(item).strip() for item in registry.get("dangling_settings", []) if str(item).strip()
+        ),
+    }
+
+
+def _volume_guidance_draft(review_payload: dict[str, Any]) -> dict[str, str]:
+    registry = review_payload.get("cross_volume_registry", {}) or {}
+    highlights = review_payload.get("chapter_highlights", []) or []
+
+    unresolved_goals = [str(item).strip() for item in registry.get("unresolved_goals", []) if str(item).strip()]
+    open_promises = [str(item).strip() for item in registry.get("open_promises", []) if str(item).strip()]
+    dangling_settings = [str(item).strip() for item in registry.get("dangling_settings", []) if str(item).strip()]
+
+    must_recover_candidates = open_promises[:2] or unresolved_goals[:1]
+    relationship_focus = ""
+    tone_target = ""
+    extra_notes = ""
+
+    for item in highlights:
+        if not isinstance(item, dict):
+            continue
+        summary = str(item.get("summary", "") or "").strip()
+        title = str(item.get("title", "") or "").strip()
+        if summary and not extra_notes:
+            extra_notes = f"延续本卷收束态势，优先接住《{title or '本卷后段'}》里形成的局势：{summary[:80]}"
+        key_events = [str(event).strip() for event in item.get("key_events", []) if str(event).strip()]
+        if key_events and not relationship_focus:
+            relationship_focus = "围绕本卷后段关键事件继续施压相关人物关系：" + "；".join(key_events[:2])
+        if summary and not tone_target:
+            if any(marker in summary for marker in ("反转", "危机", "死守", "追击", "冲突", "压迫")):
+                tone_target = "延续高压推进，避免松散转场"
+            elif any(marker in summary for marker in ("收束", "余波", "恢复", "修整")):
+                tone_target = "保持收束后的余波感，避免突然换档"
+
+    must_avoid_parts: list[str] = []
+    if dangling_settings:
+        must_avoid_parts.append("不要扩写尚未桥接的新设定")
+    if unresolved_goals:
+        must_avoid_parts.append("不要让支线闲笔冲散当前目标锁")
+
+    return {
+        "must_recover": "；".join(must_recover_candidates),
+        "relationship_focus": relationship_focus,
+        "must_avoid": "；".join(must_avoid_parts),
+        "tone_target": tone_target,
+        "extra_notes": extra_notes,
+    }
+
+
 def _queued_guidance_summary(status: dict[str, Any]) -> str:
     queued_guidance = str(status.get("queued_volume_guidance", "") or "").strip()
     if queued_guidance:
@@ -1042,6 +1270,77 @@ def _queued_guidance_summary(status: dict[str, Any]) -> str:
     if not guidance:
         return ""
     return guidance
+
+
+def _longform_control_panel_sections(status: dict[str, Any]) -> list[tuple[str, str]]:
+    longform_state_path = status.get("longform_state_path")
+    if not longform_state_path:
+        return []
+
+    state = _read_json(Path(longform_state_path))
+    if not state:
+        return []
+
+    sections: list[tuple[str, str]] = []
+
+    payload = state.get("next_volume_guidance_payload", {}) or {}
+    payload_lines: list[str] = []
+    goal_lock = str(payload.get("goal_lock", "") or "").strip()
+    if goal_lock:
+        payload_lines.append(f"- 当前 goal_lock: {goal_lock}")
+    for label, key in (
+        ("必须回收", "must_recover"),
+        ("人物关系", "relationship_focus"),
+        ("明确避免", "must_avoid"),
+        ("目标基调", "tone_target"),
+        ("新设定预算", "new_setting_budget"),
+        ("防漂移备注", "anti_drift_notes"),
+        ("补充说明", "extra_notes"),
+    ):
+        value = str(payload.get(key, "") or "").strip()
+        if value:
+            payload_lines.append(f"- {label}: {value}")
+    if payload_lines:
+        sections.append(("卷级控制面板", "\n".join(payload_lines)))
+
+    registry = state.get("cross_volume_registry", {}) or {}
+    registry_lines: list[str] = []
+    for label, key in (
+        ("跨卷未完成目标", "unresolved_goals"),
+        ("尚未回收承诺/伏笔", "open_promises"),
+        ("已引入但未桥接设定", "dangling_settings"),
+    ):
+        values = [str(item).strip() for item in registry.get(key, []) if str(item).strip()]
+        if values:
+            registry_lines.append(f"- {label}: {'；'.join(values[:5])}")
+    if registry_lines:
+        sections.append(("跨卷状态", "\n".join(registry_lines)))
+
+    approval_history_summary = _approval_history_summary(state)
+    if approval_history_summary:
+        sections.append(("审批轨迹", approval_history_summary))
+
+    pending_state_path = status.get("pending_state_path")
+    if pending_state_path:
+        pending_payload = _read_json(Path(pending_state_path))
+        review_payload = pending_payload.get("review_payload", {}) if isinstance(pending_payload, dict) else {}
+        checkpoint_type = str(pending_payload.get("checkpoint_type", "") or "").strip()
+        pending_lines = []
+        if checkpoint_type:
+            pending_lines.append(f"- 待处理节点: {checkpoint_type}")
+        summary = str(review_payload.get("summary", "") or "").strip()
+        if summary:
+            pending_lines.append(f"- 摘要: {summary}")
+        issue_types = [str(item).strip() for item in review_payload.get("issue_types", []) if str(item).strip()]
+        if issue_types:
+            pending_lines.append(f"- 问题类型: {' / '.join(issue_types[:4])}")
+        blocking_issues = [str(item).strip() for item in review_payload.get("blocking_issues", []) if str(item).strip()]
+        if blocking_issues:
+            pending_lines.append(f"- 首条阻断: {blocking_issues[0]}")
+        if pending_lines:
+            sections.append(("最近待审批", "\n".join(pending_lines)))
+
+    return sections
 
 
 def _render_run_status_summary(st_mod: Any, payload: dict[str, Any]) -> None:
@@ -1078,6 +1377,15 @@ def _render_run_status_summary(st_mod: Any, payload: dict[str, Any]) -> None:
     queued_guidance = _queued_guidance_summary(status)
     if queued_guidance:
         st_mod.info(f"下一卷排队指令:\n{queued_guidance}")
+
+    control_sections = _longform_control_panel_sections(status)
+    if control_sections:
+        st_mod.markdown("**Longform Control Panel**")
+        cols = st_mod.columns(len(control_sections))
+        for column, (label, body) in zip(cols, control_sections):
+            with column:
+                st_mod.markdown(f"**{label}**")
+                st_mod.code(body, language="text")
 
     if payload.get("run_dir"):
         st_mod.caption(f"运行目录: `{payload['run_dir']}`")
@@ -1136,16 +1444,54 @@ def _render_pending_review(st_mod: Any) -> None:
         volume_index = review_payload.get("volume_index", payload.get("current_volume", 0))
         st_mod.markdown(f"第 `{volume_index}` 卷已完成。")
         st_mod.info(_volume_review_summary(payload))
-        must_recover = st_mod.text_area("必须回收的伏笔/问题", value="", height=90, key="yw_volume_must_recover")
-        relationship_focus = st_mod.text_area("需要强化的人物关系", value="", height=90, key="yw_volume_relationship_focus")
-        must_avoid = st_mod.text_area("明确避免的方向", value="", height=90, key="yw_volume_must_avoid")
-        tone_target = st_mod.text_input("目标基调", value="", key="yw_volume_tone_target")
+        guidance_draft = _volume_guidance_draft(review_payload)
+        registry_defaults = _volume_registry_defaults(review_payload)
+        must_recover = st_mod.text_area(
+            "必须回收的伏笔/问题",
+            value=guidance_draft["must_recover"],
+            height=90,
+            key="yw_volume_must_recover",
+        )
+        relationship_focus = st_mod.text_area(
+            "需要强化的人物关系",
+            value=guidance_draft["relationship_focus"],
+            height=90,
+            key="yw_volume_relationship_focus",
+        )
+        must_avoid = st_mod.text_area(
+            "明确避免的方向",
+            value=guidance_draft["must_avoid"],
+            height=90,
+            key="yw_volume_must_avoid",
+        )
+        tone_target = st_mod.text_input("目标基调", value=guidance_draft["tone_target"], key="yw_volume_tone_target")
         extra_notes = st_mod.text_area(
             "补充说明",
-            value="",
+            value=guidance_draft["extra_notes"],
             height=90,
             key="yw_volume_extra_notes",
             help="这些结构化指令会被整理后传入下一卷生成提示词。",
+        )
+        unresolved_goals = st_mod.text_area(
+            "跨卷未完成目标",
+            value=registry_defaults["unresolved_goals"],
+            height=90,
+            key="yw_volume_unresolved_goals",
+            help="每行一条。留空并提交会显式清空该 bucket。",
+        )
+        open_promises = st_mod.text_area(
+            "尚未回收承诺/伏笔",
+            value=registry_defaults["open_promises"],
+            height=90,
+            key="yw_volume_open_promises",
+            help="每行一条。留空并提交会显式清空该 bucket。",
+        )
+        dangling_settings = st_mod.text_area(
+            "已引入但未桥接设定",
+            value=registry_defaults["dangling_settings"],
+            height=90,
+            key="yw_volume_dangling_settings",
+            help="每行一条。留空并提交会显式清空该 bucket。",
         )
         guidance_payload = {
             "must_recover": must_recover,
@@ -1153,6 +1499,9 @@ def _render_pending_review(st_mod: Any) -> None:
             "must_avoid": must_avoid,
             "tone_target": tone_target,
             "extra_notes": extra_notes,
+            "unresolved_goals": [line.strip() for line in unresolved_goals.splitlines() if line.strip()],
+            "open_promises": [line.strip() for line in open_promises.splitlines() if line.strip()],
+            "dangling_settings": [line.strip() for line in dangling_settings.splitlines() if line.strip()],
         }
         preview_lines = [
             f"- 必须回收的伏笔/问题: {must_recover}",
@@ -1160,10 +1509,20 @@ def _render_pending_review(st_mod: Any) -> None:
             f"- 明确避免的方向: {must_avoid}",
             f"- 目标基调: {tone_target}",
             f"- 补充说明: {extra_notes}",
+            f"- 跨卷未完成目标: {'；'.join(guidance_payload['unresolved_goals'])}",
+            f"- 尚未回收承诺/伏笔: {'；'.join(guidance_payload['open_promises'])}",
+            f"- 已引入但未桥接设定: {'；'.join(guidance_payload['dangling_settings'])}",
         ]
-        if any(value.strip() for value in guidance_payload.values()):
+        if any(value.strip() if isinstance(value, str) else bool(value) for value in guidance_payload.values()):
             st_mod.caption("下一卷指令预览")
-            st_mod.code("\n".join(line for line, value in zip(preview_lines, guidance_payload.values()) if value.strip()), language="text")
+            st_mod.code(
+                "\n".join(
+                    line
+                    for line, value in zip(preview_lines, guidance_payload.values())
+                    if (value.strip() if isinstance(value, str) else bool(value))
+                ),
+                language="text",
+            )
         cols = st_mod.columns(2)
         if cols[0].button("批准并进入下一卷", use_container_width=True, type="primary", key="yw_volume_approve"):
             result = resume_longform_action(
@@ -1226,6 +1585,16 @@ def _render_pending_review(st_mod: Any) -> None:
         blocking_issues = review_payload.get("blocking_issues", [])
         if blocking_issues:
             st_mod.code("\n".join(f"- {item}" for item in blocking_issues), language="text")
+        structured_sections = _chapter_review_structured_sections(review_payload)
+        if structured_sections:
+            cols = st_mod.columns(len(structured_sections))
+            for column, (label, body) in zip(cols, structured_sections):
+                with column:
+                    st_mod.markdown(f"**{label}**")
+                    st_mod.code(body, language="text")
+        for label, body in _chapter_review_evidence(review_payload):
+            with st_mod.expander(label, expanded=label in {"结构化重写方案", "目标锁证据"}):
+                st_mod.code(body, language="text")
         guidance = st_mod.text_area(
             "追加重写指令",
             value="",
@@ -1233,13 +1602,14 @@ def _render_pending_review(st_mod: Any) -> None:
             key="yw_chapter_review_notes",
             help="这些备注会附加到后续重试提示词中，用于重新生成当前章节。",
         )
+        resume_payload = _chapter_review_resume_payload(review_payload, guidance)
         cols = st_mod.columns(3)
         if cols[0].button("按当前规则重试", use_container_width=True, type="primary", key="yw_chapter_approve"):
             result = resume_longform_action(
                 run_dir,
                 payload["pending_state_path"],
                 "approve",
-                {"chapter_rewrite_guidance": guidance},
+                resume_payload,
             )
             st_mod.session_state["yw_generation_log"] = result["message"]
             st_mod.rerun()
@@ -1248,7 +1618,7 @@ def _render_pending_review(st_mod: Any) -> None:
                 run_dir,
                 payload["pending_state_path"],
                 "revise",
-                {"chapter_rewrite_guidance": guidance},
+                resume_payload,
             )
             st_mod.session_state["yw_generation_log"] = result["message"]
             st_mod.rerun()
@@ -1257,7 +1627,7 @@ def _render_pending_review(st_mod: Any) -> None:
                 run_dir,
                 payload["pending_state_path"],
                 "reject",
-                {"chapter_rewrite_guidance": guidance},
+                resume_payload,
             )
             st_mod.session_state["yw_generation_log"] = result["message"]
             st_mod.rerun()

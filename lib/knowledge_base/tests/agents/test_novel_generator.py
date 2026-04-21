@@ -1,6 +1,7 @@
 """Tests for NovelGeneratorAgent writing option prompt integration."""
 
 import importlib.util
+import json
 from pathlib import Path
 import sys
 from textwrap import dedent
@@ -12,6 +13,7 @@ import pytest
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT_DIR))
+FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
 AGENTS_DIR = ROOT_DIR / "agents"
 PACKAGE = types.ModuleType("agents")
@@ -63,9 +65,15 @@ def _run_consistency_check(
     current_content: str,
     chapter_number: int = 2,
     context_overrides: dict | None = None,
+    metadata_overrides: dict | None = None,
+    plot_summary: dict | None = None,
 ) -> dict:
     generator = _make_generator()
     chapter = _make_chapter(chapter_number, f"第{chapter_number}章", current_content)
+    if metadata_overrides:
+        chapter.metadata.update(metadata_overrides)
+    if plot_summary:
+        chapter.plot_summary = dict(plot_summary)
     context = {
         "known_char_names": ["韩林", "柳如烟", "叶尘"],
         "previous_chapters": [{"content": dedent(previous_content).strip()}],
@@ -73,6 +81,11 @@ def _run_consistency_check(
     if context_overrides:
         context.update(context_overrides)
     return generator._check_consistency(chapter, previous_summary, context)
+
+
+def _load_anti_drift_golden_cases() -> list[dict]:
+    fixture_path = FIXTURES_DIR / "anti_drift_golden_cases.json"
+    return json.loads(fixture_path.read_text(encoding="utf-8"))
 
 
 def _assert_transition_issue(report: dict, phrase: str) -> None:
@@ -148,25 +161,67 @@ class TestNovelGeneratorWritingOptions:
             config_manager=DummyConfigManager(),
             llm_client=llm_client,
         )
+        context = {
+            "volume_guidance": "本章要先写夜袭祖地时的伏兵调度。",
+            "volume_guidance_payload": {
+                "goal_lock": "守住宗门祖地",
+                "new_setting_budget": "1",
+            },
+            "chapter_guidance": "补上夜袭开始前与上一章的战场承接。",
+        }
+        context["chapter_intent_contract"] = generator._build_chapter_intent_contract(
+            outline="韩林在祖地夜巡时察觉伏兵。",
+            context=context,
+            chapter_guidance=context["chapter_guidance"],
+        )
 
         generator._generate_content(
             chapter_number=5,
             title="第五章",
             outline="韩林在祖地夜巡时察觉伏兵。",
             previous_summary="上一章韩林决定死守祖地。",
-            context={
-                "volume_guidance": "本章要先写夜袭祖地时的伏兵调度。",
-                "volume_guidance_payload": {
-                    "goal_lock": "守住宗门祖地",
-                    "new_setting_budget": "1",
-                },
-            },
+            context=context,
         )
 
         prompt = llm_client.generate.call_args.args[0][0]["content"]
 
         assert "本章要先写夜袭祖地时的伏兵调度。" in prompt
         assert "当前主线目标锁: 守住宗门祖地" in prompt
+        assert "本章执行合同" in prompt
+        assert "本章附加指令定位: 只补充执行方式，不覆盖主线目标锁。" in prompt
+        assert "正文至少一个关键行动、冲突选择或结果必须直接推进目标锁：守住宗门祖地" in prompt
+
+    def test_generate_chapter_rewrites_outline_before_generation_when_intent_drifts(self):
+        llm_client = MagicMock()
+        llm_client.generate.return_value = "第五章\n" + ("韩林为了守住宗门祖地，立刻调度伏兵并重整祖地防线。 " * 80)
+        generator = NovelGeneratorAgent(
+            config_manager=DummyConfigManager(),
+            llm_client=llm_client,
+        )
+        generator._get_chapter_outline = MagicMock(
+            return_value={
+                "title": "第五章",
+                "summary": "传说中的远古秘境忽然现世，众人议论新的修行体系。",
+                "key_events": [],
+            },
+        )
+
+        generator.generate_chapter(
+            chapter_number=5,
+            previous_summary="上一章韩林决定死守祖地。",
+            context={
+                "volume_guidance_payload": {
+                    "goal_lock": "守住宗门祖地",
+                    "new_setting_budget": "0",
+                },
+                "chapter_guidance": "补上夜袭前与上一章祖地危机的承接。",
+            },
+        )
+
+        prompt = llm_client.generate.call_args.args[0][0]["content"]
+        assert "原始大纲：传说中的远古秘境忽然现世" in prompt
+        assert "执行重写：开场先承接上一章局势，再把关键行动、冲突选择和结果对准主线目标锁：守住宗门祖地" in prompt
+        assert "附加指令仅作为补充执行方式，不得覆盖主线" in prompt
 
 class TestNovelGeneratorSmoothnessConsistency:
     def test_consistency_report_flags_location_jump_without_bridge(self):
@@ -357,6 +412,10 @@ class TestNovelGeneratorSmoothnessConsistency:
 
         assert report["invalid"] is False
         assert "structure_drift_risk" not in report["issue_types"]
+        assert "structure_drift_watch" in [
+            item["category"] for item in report["semantic_review"]["issues"]
+        ]
+        assert any("语义复核告警:" in item for item in report["recommendations"])
 
     def test_consistency_report_skips_structure_drift_in_early_stage(self):
         report = _run_consistency_check(
@@ -540,3 +599,189 @@ class TestNovelGeneratorSmoothnessConsistency:
 
         assert report["invalid"] is True
         assert "structure_drift_risk" in report["issue_types"]
+
+    def test_consistency_report_builds_structured_rewrite_plan_for_goal_lock_false_inheritance(self):
+        generator = _make_generator()
+        context = {
+            "chapter_number": 40,
+            "total_chapters": 60,
+            "volume_guidance_payload": {
+                "goal_lock": "守住宗门祖地",
+                "new_setting_budget": "1",
+            },
+        }
+        context["chapter_intent_contract"] = generator._build_chapter_intent_contract(
+            outline="韩林必须调度伏兵守住祖地。",
+            context=context,
+            chapter_guidance="补上夜袭前的战场承接。",
+        )
+        context["chapter_intent_check"] = generator._check_chapter_intent(
+            outline="韩林必须调度伏兵守住祖地。",
+            context=context,
+        )
+        chapter = MODULE.GeneratedChapter(
+            number=40,
+            title="第四十章",
+            content=dedent(
+                """
+                韩林只是想起守住宗门祖地，却只是站在祖地墙头观望众人慌乱。
+                他嘴上说不能退，却把整章篇幅都耗在无关紧要的闲谈里。
+                """
+            ).strip(),
+            word_count=80,
+            metadata={"key_events": [], "outline_summary": ""},
+            plot_summary={"l2_brief_summary": "韩林为了守住宗门祖地继续推进防线。"},
+        )
+
+        report = generator._check_consistency(
+            chapter,
+            previous_summary="上一章韩林决定死守祖地并立刻调度伏兵。",
+            context=context,
+        )
+
+        assert report["invalid"] is True
+        assert "goal_lock_false_inheritance" in report["issue_types"]
+        assert report["chapter_intent_contract"]["goal_lock"] == "守住宗门祖地"
+        assert "chapter_intent_rewrite_applied" not in [
+            item["category"] for item in report["semantic_review"]["issues"]
+        ]
+        assert report["rewrite_plan"]["issue_types"] == ["goal_lock_false_inheritance"]
+        assert report["rewrite_plan"]["schema_version"] == "rewrite_plan.v2"
+        assert report["rewrite_plan"]["strategy"] == "targeted_patch"
+        assert any(
+            "重写时围绕目标锁重组正文推进链：守住宗门祖地"
+            in item
+            for item in report["rewrite_plan"]["fixes"]
+        )
+        assert any(
+            item["action"] == "rebuild_goal_lock_chain"
+            and item["target"] == "goal_lock_progression"
+            and "守住宗门祖地" in item["instruction"]
+            for item in report["rewrite_plan"]["operations"]
+        )
+        assert report["chapter_intent_check"]["passed"] is True
+        assert "【本次修复】" in report["rewrite_guidance"]
+        assert "【验收条件】" in report["rewrite_guidance"]
+
+    def test_consistency_report_builds_structured_rewrite_plan_for_smoothness_failures(self):
+        report = _run_consistency_check(
+            previous_summary="上一章深夜，韩林刚在客栈拿到密信，还没来得及拆开。",
+            previous_content="""
+            深夜的客栈里只剩一盏孤灯。
+            韩林捏着刚拿到的密信，警惕地听着门外的动静。
+            """,
+            current_content="""
+            三天后，韩林已经站在山门前。
+            他收起皱巴巴的密信，像是中间什么都没有发生。
+            """,
+        )
+
+        assert report["invalid"] is True
+        assert report["rewrite_plan"]["issue_types"] == ["scene_or_timeline_disconnect"]
+        assert report["rewrite_plan"]["issue_categories"] == ["时间跳跃无锚点"]
+        assert "交代时间跨度后的状态变化、缺失时段影响或切换原因。" in report["rewrite_plan"]["fixes"]
+        assert "若发生时间跳跃，正文必须解释时间跨度带来的状态变化。" in report["rewrite_plan"]["success_criteria"]
+        assert any(
+            item["action"] == "anchor_time_jump"
+            and item["target"] == "time_transition"
+            for item in report["rewrite_plan"]["operations"]
+        )
+        assert "【本次修复】" in report["rewrite_guidance"]
+        assert "时间跨度带来的状态变化" in report["rewrite_guidance"]
+
+    def test_chapter_intent_check_rewrites_unaligned_outline_before_generation(self):
+        generator = _make_generator()
+        context = {
+            "volume_guidance_payload": {
+                "goal_lock": "守住宗门祖地",
+                "new_setting_budget": "0",
+            },
+            "chapter_guidance": "补上祖地危机与上一章的承接。",
+        }
+        context["chapter_intent_contract"] = generator._build_chapter_intent_contract(
+            outline="传说中的远古秘境忽然现世，众人议论新的修行体系。",
+            context=context,
+            chapter_guidance=context["chapter_guidance"],
+        )
+
+        result = generator._check_chapter_intent(
+            outline="传说中的远古秘境忽然现世，众人议论新的修行体系。",
+            context=context,
+        )
+
+        assert result["passed"] is False
+        assert "goal_lock_missing_from_plan" in result["issues"]
+        assert "unbridged_new_setting_in_plan" in result["issues"]
+        assert "守住宗门祖地" in result["rewritten_outline"]
+        assert "传说中的远古秘境忽然现世" in result["rewritten_outline"]
+
+    def test_consistency_report_adds_warning_only_semantic_review_when_precheck_rewrites_outline(self):
+        generator = _make_generator()
+        context = {
+            "chapter_number": 12,
+            "total_chapters": 60,
+            "volume_guidance_payload": {
+                "goal_lock": "守住宗门祖地",
+                "new_setting_budget": "0",
+            },
+            "chapter_guidance": "补上祖地危机与上一章的承接。",
+        }
+        context["chapter_intent_contract"] = generator._build_chapter_intent_contract(
+            outline="传说中的远古秘境忽然现世，众人议论新的修行体系。",
+            context=context,
+            chapter_guidance=context["chapter_guidance"],
+        )
+        context["chapter_intent_check"] = generator._check_chapter_intent(
+            outline="传说中的远古秘境忽然现世，众人议论新的修行体系。",
+            context=context,
+        )
+        chapter = MODULE.GeneratedChapter(
+            number=12,
+            title="第十二章",
+            content=dedent(
+                """
+                韩林为了守住宗门祖地，连夜调度伏兵封住山门缺口。
+                他当场改写守阵次序，让祖地防线重新稳定下来。
+                """
+            ).strip(),
+            word_count=80,
+            metadata={"key_events": [], "outline_summary": ""},
+            plot_summary={"l2_brief_summary": "韩林为了守住宗门祖地重整防线。"},
+        )
+
+        report = generator._check_consistency(
+            chapter,
+            previous_summary="上一章韩林决定死守祖地并立刻调度伏兵。",
+            context=context,
+        )
+
+        assert report["invalid"] is False
+        assert "chapter_intent_rewrite_applied" in [
+            item["category"] for item in report["semantic_review"]["issues"]
+        ]
+        assert any("生成前意图检查已重写章节大纲" in item for item in report["warning_issues"])
+
+
+@pytest.mark.parametrize(
+    "case",
+    _load_anti_drift_golden_cases(),
+    ids=lambda case: case["name"],
+)
+def test_consistency_report_matches_anti_drift_golden_cases(case):
+    report = _run_consistency_check(
+        previous_summary=case["previous_summary"],
+        previous_content=case["previous_content"],
+        current_content=case["current_content"],
+        chapter_number=case["chapter_number"],
+        context_overrides=case.get("context_overrides"),
+        metadata_overrides=case.get("metadata_overrides"),
+        plot_summary=case.get("plot_summary"),
+    )
+
+    assert report["invalid"] is case["expected_invalid"]
+    assert report["issue_types"] == case["expected_issue_types"]
+    expected_actions = case.get("expected_rewrite_actions", [])
+    if expected_actions:
+        rewrite_actions = [item.get("action") for item in report.get("rewrite_plan", {}).get("operations", [])]
+        for action in expected_actions:
+            assert action in rewrite_actions

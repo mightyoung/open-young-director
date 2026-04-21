@@ -72,11 +72,15 @@ from services.longform_run import (  # noqa: E402
     approval_payload_from_input,
     build_volume_risk_report,
     clear_pause,
+    compile_chapter_rewrite_guidance,
+    format_longform_registry,
     format_volume_guidance,
     initial_longform_state,
     load_json_file,
     load_longform_state,
+    merge_longform_registry,
     next_volume,
+    normalize_longform_registry,
     normalize_volume_guidance_payload,
     record_pause,
     review_payload_for_chapter,
@@ -1877,6 +1881,11 @@ def _continue_longform_run(args, *, state: dict[str, Any], run_dir: Path, run_st
 
     while True:
         volume_guidance = str(state.get("next_volume_guidance", "") or "").strip()
+        registry_guidance = format_longform_registry(state.get("cross_volume_registry"))
+        if registry_guidance:
+            volume_guidance = "\n".join(
+                part for part in [registry_guidance, volume_guidance] if str(part).strip()
+            ).strip()
         chapter_guidance = str(state.get("next_chapter_guidance", "") or "").strip()
         chapter_guidance_target = state.get("next_chapter_guidance_chapter")
         current_volume = int(state.get("current_volume") or 0)
@@ -2118,6 +2127,7 @@ def cmd_generate_full(args):
                 )
                 return 0
             guidance_payload = normalize_volume_guidance_payload(approval_payload)
+            registry_payload = normalize_longform_registry(approval_payload)
             freeform_guidance = str(
                 approval_payload.get("next_volume_guidance")
                 or approval_payload.get("notes")
@@ -2126,6 +2136,11 @@ def cmd_generate_full(args):
             structured_guidance = format_volume_guidance(guidance_payload)
             state["next_volume_guidance_payload"] = guidance_payload
             state["next_volume_guidance"] = structured_guidance or freeform_guidance
+            if any(key in approval_payload for key in registry_payload):
+                state["cross_volume_registry"] = merge_longform_registry(
+                    state.get("cross_volume_registry"),
+                    approval_payload,
+                )
             state["last_completed_volume"] = current_volume
             state["current_stage"] = STAGE_VOLUME_PLAN
             state = clear_pause(run_dir, state)
@@ -2213,12 +2228,16 @@ def cmd_generate_full(args):
                 )
                 return 0
 
-            notes = str(
-                approval_payload.get("chapter_rewrite_guidance")
-                or approval_payload.get("notes")
-                or ""
-            ).strip()
-            state["next_chapter_guidance"] = notes
+            review_payload = dict((pending_state.get("review_payload") or {}))
+            submitted_rewrite_plan = approval_payload.get("chapter_rewrite_plan")
+            rewrite_plan = submitted_rewrite_plan if isinstance(submitted_rewrite_plan, dict) else review_payload.get("rewrite_plan")
+            notes = str(approval_payload.get("notes") or "").strip()
+            explicit_guidance = str(approval_payload.get("chapter_rewrite_guidance") or "").strip()
+            guidance = explicit_guidance or compile_chapter_rewrite_guidance(
+                rewrite_plan,
+                extra_notes=notes,
+            )
+            state["next_chapter_guidance"] = guidance
             state["next_chapter_guidance_chapter"] = chapter_number or None
             state = clear_pause(run_dir, state)
             state["current_stage"] = STAGE_VOLUME_PLAN
