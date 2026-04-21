@@ -1,4 +1,4 @@
-# Open Young Director - AI Novel Writing System / AI小说创作系统
+# Open Young Director / 青年导演
 
 [English](#english) | [中文](#中文)
 
@@ -8,95 +8,165 @@
 
 ### Overview
 
-**Open Young Director** is an AI-powered novel writing system built on [crewAI](https://github.com/crewAIInc/crewAI). It provides a complete pipeline for generating long-form fiction (200万+ words) with multi-agent orchestration, Production Bible consistency enforcement, and parallel chapter generation.
+**Open Young Director** is a crewAI-based monorepo whose actively maintained novel-writing workflow currently lives in `lib/knowledge_base/`.
 
-### Key Features
+The current deliverable is a local, single-user writing workbench for long-form web fiction. It combines:
 
-- **Multi-Agent Orchestration**: World-building, plot planning, and writing agents work in concert
-- **Production Bible**: Hollywood-style canonical reference ensuring consistency across volumes/chapters
-- **Parallel Generation**: Async chapter writing with configurable concurrency
-- **PostPass Pipeline**: Critique → Revision → Polish workflow per chapter
-- **Pipeline Persistence**: Save/resume from any stage (outline, volume, summary, writing)
-- **Specialized Agents**: Interiority checker, POV checker, outline verifier
-- **Typed Config**: Strongly-typed configuration system (NovelConfig)
-- **Stage Services**: Modular stage services for independent testing
-- **Structured Failure Semantics**: Clear success/partial/failed status
+- a Streamlit control panel
+- a CLI for project creation, chapter generation, and full-novel runs
+- pause/resume checkpoints for outline, volume, and chapter review
+- consistency, anti-drift, and review history tracking
+- derivative-content generation hooks for podcast/video-style assets
 
-### Architecture
+This repository also contains the upstream-style `crewai` packages and tools, but if you want to run the novel system today, start from `lib/knowledge_base/`.
 
+### Current Scope
+
+What is working today:
+
+- local project creation and loading
+- chapter-by-chapter generation
+- full-novel generation with approval checkpoints
+- structured writing options shared by UI and CLI
+- resumable runs backed by canonical run state
+- chapter review payloads with anti-drift evidence and rewrite plans
+- cross-volume registry tracking for unresolved goals, promises, and dangling settings
+
+What this repository is not claiming today:
+
+- hosted multi-user service
+- production deployment target
+- distributed worker cluster
+- Docker/Kubernetes delivery lane
+
+### Main Entry Points
+
+- UI: [`lib/knowledge_base/streamlit_app.py`](./lib/knowledge_base/streamlit_app.py)
+- CLI: [`lib/knowledge_base/run_novel_generation.py`](./lib/knowledge_base/run_novel_generation.py)
+- Longform contract: [`lib/knowledge_base/docs/longform_run_contract.md`](./lib/knowledge_base/docs/longform_run_contract.md)
+- Operator manual: [`lib/knowledge_base/docs/user_manual.md`](./lib/knowledge_base/docs/user_manual.md)
+
+### Repository Layout
+
+```text
+lib/
+├── crewai/                    # Core crewAI framework and CLI
+├── crewai-tools/              # Tool integrations
+└── knowledge_base/            # Active young-writer workspace
+    ├── agents/                # Novel generation, orchestration, feedback loop
+    ├── services/              # Run storage and longform workflow helpers
+    ├── llm/                   # Provider clients and prompt plumbing
+    ├── consistency/           # Consistency models and manager
+    ├── consumers/             # Derivative-content consumers
+    ├── media/                 # Media generation adapters/executors
+    ├── streamlit_app.py       # Local control panel
+    ├── run_novel_generation.py # Main CLI
+    ├── writing_options.py     # Shared writing-option presets
+    ├── docs/                  # Operator docs and workflow contracts
+    └── tests/                 # Focused tests for the workbench
 ```
-lib/crewai/src/crewai/content/novel/
-├── agents/
-│   ├── world_agent.py          # World-building agent
-│   ├── plot_agent.py           # Plot planning agent
-│   ├── draft_agent.py          # Chapter drafting (with Bible constraints)
-│   ├── interiority_checker.py   # Inner monologue validator
-│   └── pov_checker.py          # Point-of-view validator
-├── crews/
-│   ├── novel_crew.py           # Main orchestrator
-│   ├── writing_crew.py         # Parallel chapter writer
-│   ├── review_crew.py          # Critique/revision/polish
-│   ├── volume_outline_crew.py  # Volume outline generator
-│   └── chapter_summary_crew.py  # Chapter summary generator
-├── production_bible/
-│   ├── bible_types.py          # BibleSection, CharacterProfile
-│   ├── bible_builder.py        # ProductionBible builder
-│   └── section_builder.py      # Per-volume BibleSection builder
-├── pipeline_state.py            # Cross-stage persistence
-└── novel_types.py              # WritingContext, PlotData, etc.
-```
-
-### Pipeline Stages
-
-1. **World** → Build world lore, magic systems, geography
-2. **Outline** → Plot arc, series overview, character backgrounds
-3. **Evaluation** → Verify outline quality (optional gate)
-4. **Volume Outlines** → Per-volume structure
-5. **Chapter Summaries** → Per-chapter beat outlines
-6. **Writing** → Draft → Critique → Revision → Polish
-7. **Complete** → Final output
 
 ### Quick Start
 
 ```bash
-# Install dependencies
-uv lock && uv sync
-
-# Generate a novel (玄幻史诗, 200万字)
-uv run crewai create novel --title "仙侠史诗" --genre xianxia --word-count 2000000
-
-# Resume from a saved state
-uv run crewai create novel --title "仙侠史诗" --resume-from pipeline_state.json
+uv sync
+cp lib/knowledge_base/.env.example lib/knowledge_base/.env
 ```
 
-### Configuration
-
-Environment variables (see `.env.example`):
+Minimum environment you will usually need:
 
 ```bash
-# LLM Configuration
-OPENAI_API_KEY=sk-...
-
-# Optional: Moonshot/Kimi for Chinese content
-KIMI_API_KEY=...
+KIMI_API_KEY=your_key
 KIMI_BASE_URL=https://api.moonshot.cn/v1
+KIMI_MODEL_NAME=moonshot-v1-8k
 ```
 
-### CLI Commands
+Launch the local UI:
 
 ```bash
-# Create new novel
-uv run crewai create novel --title "Title" --genre genre --word-count N
-
-# Resume from saved state
-uv run crewai create novel --title "Title" --resume-from state.json
-
-# Run tests
-uv run pytest lib/crewai/tests/
-
-# Type check
-uvx mypy lib/crewai/src
+cd lib/knowledge_base
+uv run streamlit run streamlit_app.py
 ```
+
+Create a project from the CLI:
+
+```bash
+cd lib/knowledge_base
+uv run python run_novel_generation.py \
+  --new "Taigu Demon Emperor" \
+  --genre "xianxia" \
+  --outline "A discarded disciple inherits an ancient demonic legacy and rises." \
+  --world "A cultivation world with sects, realms, and forbidden inheritances." \
+  --characters "Han Lin: patient, restrained, ambitious." \
+  --chapters 120
+```
+
+Generate a few chapters:
+
+```bash
+uv run python run_novel_generation.py --load <project_id> --generate 3
+```
+
+Start a resumable longform run:
+
+```bash
+uv run python run_novel_generation.py \
+  --load <project_id> \
+  --generate-full \
+  --chapters-per-volume 60 \
+  --approval-mode outline+volume
+```
+
+Resume a paused run:
+
+```bash
+uv run python run_novel_generation.py \
+  --load <project_id> \
+  --generate-full \
+  --run-id <run_id> \
+  --run-dir <run_dir> \
+  --resume-state <pending_state.json> \
+  --submit-approval approve
+```
+
+Inspect supported writing knobs:
+
+```bash
+uv run python run_novel_generation.py --show-writing-options
+```
+
+### Longform Workflow Notes
+
+Longform runs write canonical state into:
+
+- `lib/knowledge_base/novels/<title>_<project_id>/runs/<run_id>/longform_state.v1.json`
+
+Important behavior:
+
+- `status.json` is telemetry, not the authoritative resume source
+- pending review files are derived envelopes for operator review
+- `approval_history` is append-only across reject/revise/approve loops
+- `chapter_review` payloads can include anti-drift evidence, warning issues, semantic review, and structured rewrite plans
+- `volume_review` payloads can include cross-volume registry state for unresolved goals, open promises, and dangling settings
+
+### Tests
+
+Focused workbench tests live under `lib/knowledge_base/tests/`.
+
+Run the main regression set:
+
+```bash
+uv run pytest \
+  lib/knowledge_base/tests/agents/test_novel_generator.py \
+  lib/knowledge_base/tests/test_longform_run.py \
+  lib/knowledge_base/tests/test_run_novel_generation.py \
+  lib/knowledge_base/tests/test_streamlit_app.py -q
+```
+
+### Notes
+
+- `lib/knowledge_base/.env` is local-only and should not be committed.
+- Generated project data under `lib/knowledge_base/config/`, `novels/`, `generated_scripts/`, and run directories can contain local working state and should be reviewed before committing.
 
 ---
 
@@ -104,114 +174,168 @@ uvx mypy lib/crewai/src
 
 ### 概述
 
-**Open Young Director** 是基于 [crewAI](https://github.com/crewAIInc/crewAI) 构建的 AI 小说创作系统。提供完整流水线生成长篇小说（200万+字），支持多智能体编排、Production Bible 一致性约束、并行章节生成。
+**Open Young Director（青年导演）** 是一个基于 crewAI 的单仓库项目，当前真正处于持续维护状态的小说创作系统位于 `lib/knowledge_base/`。
 
-### 核心特性
+现在这套系统的定位是一个本地、单用户的长篇网文创作工作台，核心能力包括：
 
-- **多智能体编排**：世界构建、情节规划、写作智能体协同工作
-- **Production Bible**：好莱坞式规范参考，确保卷/章节间一致性
-- **并行生成**：基于 asyncio 的可配置并发章节写作
-- **PostPass 流水线**：每章批判 → 修改 → 润色工作流
-- **流水线持久化**：可在任意阶段保存/恢复（大纲、卷、概要、写作）
-- **专项检查**：内心独白检查、视角检查、大纲验证
-- **Typed Config**：强类型配置系统（NovelConfig）
-- **阶段服务架构**：可独立测试的模块化阶段服务
-- **结构化失败语义**：success/partial/failed 状态明确
+- Streamlit 可视化控制台
+- 用于建项目、生成章节、整本长篇运行的 CLI
+- 大纲、分卷、章节复核等可暂停/可恢复检查点
+- 一致性、anti-drift、审批历史追踪
+- 播客/视频提示词等衍生内容生成挂钩
 
-### 技术架构
+仓库里仍然保留 `crewai` 主体框架和工具包，但如果你要使用当前的小说系统，应优先从 `lib/knowledge_base/` 开始。
 
+### 当前范围
+
+当前已经覆盖：
+
+- 本地创建和加载项目
+- 逐章生成
+- 整本长篇生成与人工审批检查点
+- UI 和 CLI 共用的结构化写作参数
+- 基于规范化 run state 的恢复执行
+- 带 anti-drift 证据和重写计划的章节复核
+- 跨卷未完成目标、伏笔、设定线程的 registry 管理
+
+当前不应误解为：
+
+- 线上多用户服务
+- 可直接发布的生产部署方案
+- 分布式 worker 集群
+- Docker / Kubernetes 交付形态
+
+### 主要入口
+
+- UI：[`lib/knowledge_base/streamlit_app.py`](./lib/knowledge_base/streamlit_app.py)
+- CLI：[`lib/knowledge_base/run_novel_generation.py`](./lib/knowledge_base/run_novel_generation.py)
+- 长篇运行合同：[`lib/knowledge_base/docs/longform_run_contract.md`](./lib/knowledge_base/docs/longform_run_contract.md)
+- 操作手册：[`lib/knowledge_base/docs/user_manual.md`](./lib/knowledge_base/docs/user_manual.md)
+
+### 仓库结构
+
+```text
+lib/
+├── crewai/                    # crewAI 核心框架与 CLI
+├── crewai-tools/              # 工具集成
+└── knowledge_base/            # 当前 young-writer 工作台
+    ├── agents/                # 小说生成、编排、反馈循环
+    ├── services/              # run 存储与长篇流程辅助逻辑
+    ├── llm/                   # 模型客户端与 prompt 适配
+    ├── consistency/           # 一致性模型与管理器
+    ├── consumers/             # 衍生内容消费链路
+    ├── media/                 # 媒体生成适配器
+    ├── streamlit_app.py       # 本地控制台
+    ├── run_novel_generation.py # 主 CLI
+    ├── writing_options.py     # 共用写作参数预设
+    ├── docs/                  # 操作文档与运行合同
+    └── tests/                 # 工作台相关测试
 ```
-lib/crewai/src/crewai/content/novel/
-├── agents/
-│   ├── world_agent.py          # 世界观构建智能体
-│   ├── plot_agent.py           # 情节规划智能体
-│   ├── draft_agent.py          # 章节起草（支持Bible约束）
-│   ├── interiority_checker.py   # 内心独白检查器
-│   └── pov_checker.py          # 视角检查器
-├── crews/
-│   ├── novel_crew.py           # 主编排器
-│   ├── writing_crew.py         # 并行章节写作
-│   ├── review_crew.py          # 批判/修改/润色
-│   ├── volume_outline_crew.py  # 卷大纲生成
-│   └── chapter_summary_crew.py # 章节概要生成
-├── config/
-│   └── novel_config.py         # Typed Config (NovelConfig)
-├── services/
-│   ├── base_stage_service.py   # 阶段服务基类
-│   ├── outline_stage_service.py # Outline 阶段服务
-│   ├── volume_stage_service.py  # Volume 阶段服务
-│   ├── summary_stage_service.py # Summary 阶段服务
-│   ├── writing_stage_service.py # Writing 阶段服务
-│   ├── approval_coordinator.py # 审批协调器
-│   └── replay_coordinator.py    # 重放协调器
-├── production_bible/
-│   ├── bible_types.py          # BibleSection, CharacterProfile
-│   ├── bible_builder.py        # ProductionBible 构建器
-│   └── section_builder.py      # 分卷 BibleSection 构建器
-├── pipeline_state.py            # 跨阶段持久化
-└── novel_types.py              # WritingContext, PlotData 等
-```
-
-### 流水线阶段
-
-1. **World** → 构建世界观、修炼体系、地理设定
-2. **Outline** → 情节弧线、系列概述、角色背景
-3. **Evaluation** → 大纲质量评估（可选关卡）
-4. **Volume Outlines** → 分卷结构
-5. **Chapter Summaries** → 章节节拍大纲
-6. **Writing** → 起草 → 批判 → 修改 → 润色
-7. **Complete** → 最终输出
 
 ### 快速开始
 
 ```bash
-# 安装依赖
-uv lock && uv sync
-
-# 生成小说（仙侠史诗，200万字）
-uv run crewai create novel --title "仙侠史诗" --genre xianxia --word-count 2000000
-
-# 从保存状态恢复
-uv run crewai create novel --title "仙侠史诗" --resume-from pipeline_state.json
+uv sync
+cp lib/knowledge_base/.env.example lib/knowledge_base/.env
 ```
 
-### 配置
-
-环境变量（参见 `.env.example`）：
+通常至少需要配置：
 
 ```bash
-# LLM 配置
-OPENAI_API_KEY=sk-...
-
-# 可选：使用 Moonshot/Kimi（适合中文内容）
-KIMI_API_KEY=...
+KIMI_API_KEY=your_key
 KIMI_BASE_URL=https://api.moonshot.cn/v1
+KIMI_MODEL_NAME=moonshot-v1-8k
 ```
 
-### CLI 命令
+启动本地 UI：
 
 ```bash
-# 创建新小说（完整生成）
-uv run crewai create novel "标题" --words 100000 --chapters 10
-
-# 在大纲阶段停止（查看大纲）
-uv run crewai create novel "标题" --stop-at outline
-
-# 从保存状态恢复继续
-uv run crewai create novel "标题" --resume-from summary
-
-# 逐章审核模式
-uv run crewai create novel "标题" --review-each-chapter
-
-# 运行测试
-uv run pytest lib/crewai/tests/
-
-# 类型检查
-uvx mypy lib/crewai/src
+cd lib/knowledge_base
+uv run streamlit run streamlit_app.py
 ```
+
+用 CLI 创建项目：
+
+```bash
+cd lib/knowledge_base
+uv run python run_novel_generation.py \
+  --new "太古魔帝传" \
+  --genre "玄幻修仙" \
+  --outline "少年韩林获得上古魔帝传承，逆天崛起。" \
+  --world "修真世界，宗门林立，传承与禁地并存。" \
+  --characters "韩林：隐忍、克制、目标明确。" \
+  --chapters 120
+```
+
+生成几章正文：
+
+```bash
+uv run python run_novel_generation.py --load <project_id> --generate 3
+```
+
+启动可恢复的整本长篇流程：
+
+```bash
+uv run python run_novel_generation.py \
+  --load <project_id> \
+  --generate-full \
+  --chapters-per-volume 60 \
+  --approval-mode outline+volume
+```
+
+恢复暂停中的 run：
+
+```bash
+uv run python run_novel_generation.py \
+  --load <project_id> \
+  --generate-full \
+  --run-id <run_id> \
+  --run-dir <run_dir> \
+  --resume-state <pending_state.json> \
+  --submit-approval approve
+```
+
+查看支持的写作参数：
+
+```bash
+uv run python run_novel_generation.py --show-writing-options
+```
+
+### 长篇运行说明
+
+长篇模式的规范化状态文件位于：
+
+- `lib/knowledge_base/novels/<title>_<project_id>/runs/<run_id>/longform_state.v1.json`
+
+几个关键点：
+
+- `status.json` 只是遥测快照，不是恢复时的权威状态源
+- pending review 文件只是给操作者查看/提交审批用的派生 envelope
+- `approval_history` 会在 reject / revise / approve 循环里追加保留
+- `chapter_review` 可暴露 anti-drift 证据、warning、语义复核结果和结构化重写计划
+- `volume_review` 可暴露跨卷 registry，用于维护未完成目标、未回收伏笔和未桥接设定
+
+### 测试
+
+工作台相关测试主要位于 `lib/knowledge_base/tests/`。
+
+建议回归命令：
+
+```bash
+uv run pytest \
+  lib/knowledge_base/tests/agents/test_novel_generator.py \
+  lib/knowledge_base/tests/test_longform_run.py \
+  lib/knowledge_base/tests/test_run_novel_generation.py \
+  lib/knowledge_base/tests/test_streamlit_app.py -q
+```
+
+### 备注
+
+- `lib/knowledge_base/.env` 只用于本地开发，不应提交。
+- `lib/knowledge_base/config/`、`novels/`、`generated_scripts/` 和各类 run 目录可能包含本地工作状态，提交前应单独检查。
 
 ---
 
 ## License / 许可证
 
-MIT License - See [LICENSE](./LICENSE)
+MIT License. See [LICENSE](./LICENSE).
