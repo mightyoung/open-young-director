@@ -75,6 +75,11 @@ STRUCTURED_VOLUME_GUIDANCE_FIELDS = (
     "anti_drift_notes",
     "extra_notes",
 )
+LONGFORM_REGISTRY_FIELDS = (
+    "unresolved_goals",
+    "open_promises",
+    "dangling_settings",
+)
 
 
 def _now_iso() -> str:
@@ -108,6 +113,145 @@ def format_volume_guidance(payload: dict[str, Any] | None) -> str:
         if value
     ]
     return "\n".join(lines)
+
+
+def normalize_longform_registry(payload: dict[str, Any] | None) -> dict[str, list[str]]:
+    data = payload if isinstance(payload, dict) else {}
+    normalized: dict[str, list[str]] = {}
+    for key in LONGFORM_REGISTRY_FIELDS:
+        raw_value = data.get(key, [])
+        values = raw_value if isinstance(raw_value, list) else str(raw_value or "").splitlines()
+        normalized[key] = [str(item).strip() for item in values if str(item).strip()]
+    return normalized
+
+
+def format_longform_registry(payload: dict[str, Any] | None) -> str:
+    normalized = normalize_longform_registry(payload)
+    labels = {
+        "unresolved_goals": "跨卷未完成目标",
+        "open_promises": "尚未回收承诺/伏笔",
+        "dangling_settings": "已引入但未桥接设定",
+    }
+    lines: list[str] = []
+    for key in LONGFORM_REGISTRY_FIELDS:
+        values = normalized.get(key, [])
+        if not values:
+            continue
+        lines.append(f"- {labels[key]}: {'；'.join(values[:5])}")
+    return "\n".join(lines)
+
+
+def approval_action_label(action: str) -> str:
+    labels = {
+        "approve": "批准",
+        "revise": "修订",
+        "reject": "拒绝",
+    }
+    return labels.get(action, action or "unknown")
+
+
+def approval_checkpoint_label(checkpoint_type: str) -> str:
+    labels = {
+        CHECKPOINT_OUTLINE: "大纲审批",
+        CHECKPOINT_VOLUME: "分卷审批",
+        CHECKPOINT_RISK: "风险复核",
+        CHECKPOINT_CHAPTER: "章节复核",
+    }
+    return labels.get(str(checkpoint_type or "").strip(), str(checkpoint_type or "").strip())
+
+
+def approval_preview_text(value: Any, limit: int = 24) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    return text[:limit]
+
+
+def approval_entry_detail_parts(entry: dict[str, Any]) -> list[str]:
+    checkpoint_type = str(entry.get("checkpoint_type", "") or "").strip()
+    payload = entry.get("payload", {}) or {}
+    if not isinstance(payload, dict):
+        payload = {}
+
+    detail_parts: list[str] = []
+    if checkpoint_type == CHECKPOINT_CHAPTER:
+        rewrite_plan = payload.get("chapter_rewrite_plan", {}) or {}
+        if isinstance(rewrite_plan, dict):
+            operations = rewrite_plan.get("operations", []) or []
+            if operations:
+                detail_parts.append(f"patch={len(operations)}")
+        notes = approval_preview_text(payload.get("notes"))
+        guidance = approval_preview_text(payload.get("chapter_rewrite_guidance"))
+        if notes:
+            detail_parts.append(f"notes={notes}")
+        elif guidance:
+            detail_parts.append(f"guidance={guidance}")
+    elif checkpoint_type == CHECKPOINT_VOLUME:
+        must_recover = approval_preview_text(payload.get("must_recover"))
+        if must_recover:
+            detail_parts.append(f"must_recover={must_recover}")
+        registry_count = 0
+        for key in LONGFORM_REGISTRY_FIELDS:
+            values = payload.get(key, []) or []
+            if isinstance(values, list):
+                registry_count += len([str(item).strip() for item in values if str(item).strip()])
+        if registry_count:
+            detail_parts.append(f"registry={registry_count}")
+    elif checkpoint_type == CHECKPOINT_OUTLINE:
+        outline_fields = [
+            label
+            for label, key in (
+                ("outline", "outline"),
+                ("world", "world_setting"),
+                ("characters", "character_intro"),
+            )
+            if str(payload.get(key, "") or "").strip()
+        ]
+        if outline_fields:
+            detail_parts.append(f"fields={','.join(outline_fields)}")
+    elif checkpoint_type == CHECKPOINT_RISK:
+        notes = approval_preview_text(payload.get("notes"))
+        if notes:
+            detail_parts.append(f"notes={notes}")
+    return detail_parts
+
+
+def approval_entry_summary(entry: dict[str, Any]) -> str:
+    checkpoint_type = str(entry.get("checkpoint_type", "") or "").strip()
+    action = str(entry.get("action", "") or "").strip()
+    submitted_at = str(entry.get("submitted_at", "") or "").strip().replace("T", " ")[:16]
+    checkpoint_label = approval_checkpoint_label(checkpoint_type) or checkpoint_type or "未知节点"
+    header = f"- {submitted_at or 'unknown time'} {checkpoint_label} -> {approval_action_label(action)}"
+
+    detail_parts = approval_entry_detail_parts(entry)
+    if not detail_parts:
+        return header
+    return f"{header}\n  {', '.join(detail_parts)}"
+
+
+def approval_history_summary(state: dict[str, Any], limit: int = 3) -> str:
+    history = state.get("approval_history", []) or []
+    if not isinstance(history, list):
+        return ""
+    recent_entries = [entry for entry in history if isinstance(entry, dict)][-limit:]
+    if not recent_entries:
+        return ""
+    return "\n".join(approval_entry_summary(entry) for entry in recent_entries)
+
+
+def merge_longform_registry(
+    current: dict[str, Any] | None,
+    updates: dict[str, Any] | None,
+) -> dict[str, list[str]]:
+    merged = normalize_longform_registry(current)
+    update_data = updates if isinstance(updates, dict) else {}
+    for key in LONGFORM_REGISTRY_FIELDS:
+        if key not in update_data:
+            continue
+        raw_value = update_data.get(key, [])
+        values = raw_value if isinstance(raw_value, list) else str(raw_value or "").splitlines()
+        merged[key] = [str(item).strip() for item in values if str(item).strip()]
+    return merged
 
 
 def longform_state_path(run_dir: str | Path) -> Path:
@@ -299,6 +443,7 @@ def initial_longform_state(
         "risk_report_path": None,
         "next_volume_guidance": "",
         "next_volume_guidance_payload": {},
+        "cross_volume_registry": normalize_longform_registry(None),
         "next_chapter_guidance": "",
         "next_chapter_guidance_chapter": None,
         "approval_history": [],
@@ -413,6 +558,8 @@ def review_payload_for_volume(longform_state: dict[str, Any]) -> dict[str, Any]:
         "volume_end_chapter": longform_state.get("current_volume_end_chapter", 0),
         "chapters_completed": longform_state.get("chapters_completed", 0),
         "planned_chapter_count": plan.get("chapter_count", 0) if plan else 0,
+        "cross_volume_registry": normalize_longform_registry(longform_state.get("cross_volume_registry")),
+        "cross_volume_registry_summary": format_longform_registry(longform_state.get("cross_volume_registry")),
     }
     project_dir_raw = str(longform_state.get("project_dir", "")).strip()
     project_dir = Path(project_dir_raw).resolve() if project_dir_raw else None
@@ -491,13 +638,68 @@ def review_payload_for_chapter(
         "missing_events": list(report.get("missing_events", [])),
         "continuity_issues": list(report.get("continuity_issues", [])),
         "world_fact_issues": list(report.get("world_fact_issues", [])),
+        "warning_issues": list(report.get("warning_issues", [])),
+        "semantic_review": dict(report.get("semantic_review", {}) or {}),
         "smoothness_details": list(report.get("smoothness_details", [])),
         "anti_drift_details": dict(report.get("anti_drift_details", {}) or {}),
+        "chapter_intent_contract": dict(report.get("chapter_intent_contract", {}) or {}),
+        "rewrite_plan": dict(report.get("rewrite_plan", {}) or {}),
         "rewrite_guidance": str(report.get("rewrite_guidance", "") or "").strip(),
         "rewrite_attempted": bool(report.get("rewrite_attempted")),
         "rewrite_succeeded": bool(report.get("rewrite_succeeded")),
         "rewrite_history": list(rewrite_history or []),
     }
+
+
+def compile_chapter_rewrite_guidance(
+    rewrite_plan: dict[str, Any] | None,
+    *,
+    extra_notes: str = "",
+) -> str:
+    """Compile a stable chapter rewrite guidance string from structured patch data plus operator notes."""
+    rewrite_plan = rewrite_plan or {}
+    lines: list[str] = []
+
+    must_keep = [str(item).strip() for item in rewrite_plan.get("must_keep", []) if str(item).strip()]
+    operations = [item for item in rewrite_plan.get("operations", []) if isinstance(item, dict)]
+    success_criteria = [
+        str(item).strip() for item in rewrite_plan.get("success_criteria", []) if str(item).strip()
+    ]
+    fixes = [str(item).strip() for item in rewrite_plan.get("fixes", []) if str(item).strip()]
+
+    if must_keep:
+        lines.append("保留要求：")
+        lines.extend(f"{index + 1}. {item}" for index, item in enumerate(must_keep[:2]))
+
+    if operations:
+        lines.append("Patch 操作：")
+        for index, item in enumerate(operations[:4], start=1):
+            phase = str(item.get("phase", "") or "").strip()
+            action = str(item.get("action", "") or "").strip()
+            target = str(item.get("target", "") or "").strip()
+            instruction = str(item.get("instruction", "") or "").strip()
+            rationale = str(item.get("rationale", "") or "").strip()
+            header = " / ".join(part for part in (phase, action, target) if part)
+            if header and rationale:
+                lines.append(f"{index}. [{header}] {instruction}（原因：{rationale}）")
+            elif header:
+                lines.append(f"{index}. [{header}] {instruction}")
+            elif instruction:
+                lines.append(f"{index}. {instruction}")
+    elif fixes:
+        lines.append("本次修复：")
+        lines.extend(f"{index + 1}. {item}" for index, item in enumerate(fixes[:4]))
+
+    if success_criteria:
+        lines.append("验收条件：")
+        lines.extend(f"{index + 1}. {item}" for index, item in enumerate(success_criteria[:3]))
+
+    notes = str(extra_notes or "").strip()
+    if notes:
+        lines.append("人工补充：")
+        lines.append(notes)
+
+    return "\n".join(lines).strip()
 
 
 def next_volume(longform_state: dict[str, Any]) -> dict[str, Any]:
@@ -530,11 +732,15 @@ def apply_outline_revision(project: Any, payload: dict[str, Any]) -> None:
 def approval_payload_from_input(raw_value: str | None) -> dict[str, Any]:
     if not raw_value:
         return {}
-    candidate = Path(raw_value)
-    if candidate.exists():
-        return load_json_file(candidate)
+    raw_value = raw_value.strip()
     try:
         parsed = json.loads(raw_value)
     except Exception:
+        try:
+            candidate = Path(raw_value)
+            if candidate.exists():
+                return load_json_file(candidate)
+        except OSError:
+            pass
         return {"note": raw_value}
     return parsed if isinstance(parsed, dict) else {"value": parsed}

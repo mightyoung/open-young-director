@@ -311,13 +311,27 @@ class NovelGeneratorAgent:
         target_word_count = self._get_target_word_count()
         min_word_count = int(target_word_count * 0.8)  # Allow 20% tolerance
 
+        generation_context = dict(context or {})
+        generation_context["chapter_intent_contract"] = self._build_chapter_intent_contract(
+            outline=outline_summary,
+            context=generation_context,
+            chapter_guidance=str(generation_context.get("chapter_guidance", "") or "").strip(),
+        )
+        generation_context["chapter_intent_check"] = self._check_chapter_intent(
+            outline=outline_summary,
+            context=generation_context,
+        )
+        generation_context["generation_outline"] = str(
+            generation_context["chapter_intent_check"].get("rewritten_outline", "") or outline_summary
+        )
+
         rewrite_history: list[dict[str, Any]] = []
         result = self._generate_candidate(
             chapter_number=chapter_number,
             title=title,
-            outline=outline_summary,
+            outline=generation_context["generation_outline"],
             previous_summary=previous_summary,
-            context=context,
+            context=generation_context,
             writing_options=writing_options,
             target_word_count=target_word_count,
             min_word_count=min_word_count,
@@ -329,12 +343,12 @@ class NovelGeneratorAgent:
             outline_summary=outline_summary,
             outline_info=outline_info,
             magic_line=magic_line,
-            context=context,
+            context=generation_context,
             writing_options=writing_options,
             orchestrator_result=result.get("orchestrator_result"),
         )
 
-        chapter.consistency_report = self._check_consistency(chapter, previous_summary, context)
+        chapter.consistency_report = self._check_consistency(chapter, previous_summary, generation_context)
         if chapter.consistency_report.get("invalid"):
             rewrite_history.append(
                 {
@@ -349,7 +363,7 @@ class NovelGeneratorAgent:
             chapter = self._rewrite_invalid_chapter(
                 chapter=chapter,
                 previous_summary=previous_summary,
-                context=context,
+                context=generation_context,
                 writing_options=writing_options,
                 outline_summary=outline_summary,
                 outline_info=outline_info,
@@ -363,6 +377,9 @@ class NovelGeneratorAgent:
             chapter.consistency_report["rewrite_succeeded"] = False
         chapter.metadata["rewrite_history"] = list(rewrite_history)
         chapter.consistency_report["rewrite_history"] = list(rewrite_history)
+        chapter.consistency_report["chapter_intent_contract"] = dict(
+            generation_context.get("chapter_intent_contract", {}) or {}
+        )
 
         return chapter
 
@@ -477,6 +494,9 @@ class NovelGeneratorAgent:
                 "generation_time": datetime.now().isoformat(),
                 "goal_lock": goal_lock,
                 "goal_terms": goal_terms,
+                "chapter_intent_contract": dict(
+                    (context or {}).get("chapter_intent_contract", {}) or {}
+                ),
             },
             plot_summary={
                 "l1_one_line_summary": outline_summary[:100] if outline_summary else "",
@@ -506,10 +526,11 @@ class NovelGeneratorAgent:
     ) -> GeneratedChapter:
         """Run one targeted full-chapter rewrite for invalid output."""
         guidance = self._build_rewrite_guidance(chapter.consistency_report or {})
+        generation_outline = str(context.get("generation_outline", "") or outline_summary)
         result = self._generate_candidate(
             chapter_number=chapter.number,
             title=chapter.title,
-            outline=outline_summary,
+            outline=generation_outline,
             previous_summary=previous_summary,
             context=context,
             writing_options=writing_options,
@@ -605,6 +626,15 @@ class NovelGeneratorAgent:
         volume_guidance = self._compose_volume_guidance(context)
         goal_lock_guidance = self._build_goal_lock_guidance(context)
         chapter_guidance = str((context or {}).get("chapter_guidance", "") or "").strip()
+        if not (context or {}).get("chapter_intent_contract"):
+            context["chapter_intent_contract"] = self._build_chapter_intent_contract(
+                outline=outline,
+                context=context,
+                chapter_guidance=chapter_guidance,
+            )
+        chapter_intent_contract = self._format_chapter_intent_contract(
+            (context or {}).get("chapter_intent_contract")
+        )
 
         prompt = self._build_generation_prompt(
             chapter_number, title, outline, previous_summary, genre,
@@ -615,6 +645,7 @@ class NovelGeneratorAgent:
             protagonist_constraint=protagonist_constraint,
             volume_guidance=volume_guidance,
             goal_lock_guidance=goal_lock_guidance,
+            chapter_intent_contract=chapter_intent_contract,
             chapter_guidance=chapter_guidance,
             writing_options=writing_options,
             rewrite_guidance=rewrite_guidance,
@@ -657,6 +688,7 @@ class NovelGeneratorAgent:
         protagonist_constraint: str = "",
         volume_guidance: str = "",
         goal_lock_guidance: str = "",
+        chapter_intent_contract: str = "",
         chapter_guidance: str = "",
         writing_options: dict[str, str] | None = None,
         rewrite_guidance: str = "",
@@ -733,6 +765,9 @@ class NovelGeneratorAgent:
 
 ## 当前主线目标锁（稳定继承）
 {goal_lock_guidance or "无结构化目标锁，按既有大纲与前文自然推进。"}
+
+## 本章执行合同
+{chapter_intent_contract or "无额外执行合同，默认要求开头尽快承接上一章并保持主线一致。"}
 
 ## 本卷修订指令
 {volume_guidance or "无额外修订指令，按既有大纲与前文自然推进。"}
@@ -1116,43 +1151,255 @@ class NovelGeneratorAgent:
 
     def _build_rewrite_guidance(self, report: dict[str, Any]) -> str:
         """Build focused rewrite guidance for smoothness-related failures."""
-        guidance = [
-            "保留本章既有关键事件，不要靠删除冲突来伪造顺畅。",
-            "开头前 2-3 句必须尽快交代谁、在哪、何时，并补上与上一章的承接。",
-        ]
+        return self._format_rewrite_guidance(self._build_rewrite_plan(report))
 
+    def _append_rewrite_operation(
+        self,
+        rewrite_plan: dict[str, Any],
+        *,
+        phase: str,
+        action: str,
+        target: str,
+        instruction: str,
+        rationale: str,
+        success_signal: str,
+    ) -> None:
+        """Append a machine-readable rewrite operation without duplicating equivalent steps."""
+        instruction = str(instruction or "").strip()
+        if not instruction:
+            return
+
+        operations = rewrite_plan.setdefault("operations", [])
+        signature = (phase, action, target, instruction)
+        for existing in operations:
+            if not isinstance(existing, dict):
+                continue
+            existing_signature = (
+                str(existing.get("phase", "") or "").strip(),
+                str(existing.get("action", "") or "").strip(),
+                str(existing.get("target", "") or "").strip(),
+                str(existing.get("instruction", "") or "").strip(),
+            )
+            if existing_signature == signature:
+                return
+
+        operations.append(
+            {
+                "phase": phase,
+                "action": action,
+                "target": target,
+                "instruction": instruction,
+                "rationale": str(rationale or "").strip(),
+                "success_signal": str(success_signal or "").strip(),
+            }
+        )
+
+    def _build_rewrite_plan(self, report: dict[str, Any]) -> dict[str, Any]:
+        """Build a structured rewrite plan while preserving string guidance compatibility."""
+        smoothness_details = report.get("smoothness_details", []) if isinstance(report, dict) else []
+        smoothness_categories: list[str] = []
+        for item in smoothness_details:
+            if not isinstance(item, dict):
+                continue
+            category = str(item.get("category", "") or "").strip()
+            if category and category not in smoothness_categories:
+                smoothness_categories.append(category)
+        guidance_plan: dict[str, Any] = {
+            "schema_version": "rewrite_plan.v2",
+            "strategy": "targeted_patch",
+            "issue_types": list(report.get("issue_types", [])) if isinstance(report, dict) else [],
+            "issue_categories": smoothness_categories,
+            "must_keep": [
+                "保留本章既有关键事件，不要靠删除冲突来伪造顺畅。",
+                "开头前 2-3 句必须尽快交代谁、在哪、何时，并补上与上一章的承接。",
+            ],
+            "fixes": [],
+            "success_criteria": [],
+            "operations": [],
+        }
         blocking_issues = report.get("blocking_issues", []) if isinstance(report, dict) else []
+        anti_drift = report.get("anti_drift_details", {}) if isinstance(report, dict) else {}
+        goal_lock = str(anti_drift.get("goal_lock", "") or "").strip()
+        budget = anti_drift.get("budget", 1)
         joined_issues = " ".join(str(item) for item in blocking_issues)
-        if "地点跳切无承接" in joined_issues:
-            guidance.append("补足地点变化的过渡动作、路径或抵达说明。")
-        if "时间跳跃无锚点" in joined_issues:
-            guidance.append("交代时间跨度后的状态变化、缺失时段影响或切换原因。")
-        if "上一章后果未被承接" in joined_issues:
-            guidance.append("明确回应上一章遗留的危机、伤势、追击或未完成动作。")
-        if "表面流畅但因果断裂" in joined_issues:
-            guidance.append("把事件顺序改写为因果推进，避免只用时间顺序硬接。")
-        if "结构漂移风险[" in joined_issues:
-            anti_drift = report.get("anti_drift_details", {}) if isinstance(report, dict) else {}
-            goal_lock = str(anti_drift.get("goal_lock", "") or "").strip()
-            budget = anti_drift.get("budget", 1)
-            if goal_lock:
-                guidance.append(f"先推进主线目标锁：{goal_lock}。")
-            guidance.append("新设定若非服务主线，则降权/延后，只保留最小必要信息，不扩写体系/规则/势力细节。")
-            if isinstance(budget, int) and budget >= 0:
-                guidance.append(f"中后期新设定预算={budget}：本章不得引入超过预算的强设定，必要时合并或后置。")
-            guidance.append("引入新设定后 1-2 段内，用“为了/因此/所以/必须/要想/才能/目标是/于是”等桥接词说明其如何推动主线目标。")
-            if goal_lock:
-                guidance.append(f"本章所有新增设定都必须明确服务该目标锁：{goal_lock}")
-        if "目标锁假继承[" in joined_issues:
-            anti_drift = report.get("anti_drift_details", {}) if isinstance(report, dict) else {}
-            goal_lock = str(anti_drift.get("goal_lock", "") or "").strip()
-            guidance.append("不要只改摘要、开头一句或宣言式台词来制造对齐。")
-            guidance.append("必须把正文关键事件、冲突选择与行动结果改写为持续推进主线目标。")
-            guidance.append("与主线无关的段落降权或后置，避免正文主体被支线闲笔冲散。")
-            if goal_lock:
-                guidance.append(f"重写时围绕目标锁重组正文推进链：{goal_lock}")
 
-        return " ".join(guidance)
+        if "地点跳切无承接" in smoothness_categories or "地点跳切无承接" in joined_issues:
+            guidance_plan["fixes"].append("补足地点变化的过渡动作、路径或抵达说明。")
+            guidance_plan["success_criteria"].append("开场地点变化必须带过渡动作或抵达锚点，不能直接切场。")
+            self._append_rewrite_operation(
+                guidance_plan,
+                phase="opening",
+                action="bridge_transition",
+                target="scene_entry",
+                instruction="补足地点变化的过渡动作、路径或抵达说明。",
+                rationale="地点跳切无承接",
+                success_signal="开场地点变化必须带过渡动作或抵达锚点，不能直接切场。",
+            )
+        if "时间跳跃无锚点" in smoothness_categories or "时间跳跃无锚点" in joined_issues:
+            guidance_plan["fixes"].append("交代时间跨度后的状态变化、缺失时段影响或切换原因。")
+            guidance_plan["success_criteria"].append("若发生时间跳跃，正文必须解释时间跨度带来的状态变化。")
+            self._append_rewrite_operation(
+                guidance_plan,
+                phase="opening",
+                action="anchor_time_jump",
+                target="time_transition",
+                instruction="交代时间跨度后的状态变化、缺失时段影响或切换原因。",
+                rationale="时间跳跃无锚点",
+                success_signal="若发生时间跳跃，正文必须解释时间跨度带来的状态变化。",
+            )
+        if "上一章后果未被承接" in smoothness_categories or "上一章后果未被承接" in joined_issues:
+            guidance_plan["fixes"].append("明确回应上一章遗留的危机、伤势、追击或未完成动作。")
+            guidance_plan["success_criteria"].append("开头必须接住上一章的后果，不能让危机凭空消失。")
+            self._append_rewrite_operation(
+                guidance_plan,
+                phase="opening",
+                action="restore_carryover",
+                target="carryover_consequence",
+                instruction="明确回应上一章遗留的危机、伤势、追击或未完成动作。",
+                rationale="上一章后果未被承接",
+                success_signal="开头必须接住上一章的后果，不能让危机凭空消失。",
+            )
+        if "表面流畅但因果断裂" in smoothness_categories or "表面流畅但因果断裂" in joined_issues:
+            guidance_plan["fixes"].append("把事件顺序改写为因果推进，避免只用时间顺序硬接。")
+            guidance_plan["success_criteria"].append("关键情节必须形成因果链，而不是只维持表面顺接。")
+            self._append_rewrite_operation(
+                guidance_plan,
+                phase="body",
+                action="restore_causality",
+                target="causal_chain",
+                instruction="把事件顺序改写为因果推进，避免只用时间顺序硬接。",
+                rationale="表面流畅但因果断裂",
+                success_signal="关键情节必须形成因果链，而不是只维持表面顺接。",
+            )
+        if "missing_key_events" in guidance_plan["issue_types"]:
+            missing_events = [str(item) for item in report.get("missing_events", []) if str(item).strip()]
+            if missing_events:
+                guidance_plan["fixes"].append(f"把缺失关键事件补回正文推进链：{'；'.join(missing_events[:3])}")
+                guidance_plan["success_criteria"].append("大纲中的关键事件必须真实发生，而不是只留在摘要里。")
+                self._append_rewrite_operation(
+                    guidance_plan,
+                    phase="body",
+                    action="restore_outline_event",
+                    target="key_event_chain",
+                    instruction=f"把缺失关键事件补回正文推进链：{'；'.join(missing_events[:3])}",
+                    rationale="missing_key_events",
+                    success_signal="大纲中的关键事件必须真实发生，而不是只留在摘要里。",
+                )
+        if "world_fact_violation" in guidance_plan["issue_types"]:
+            guidance_plan["fixes"].append("回收或改写与既有世界事实冲突的描写，保持人物、生死与物件状态一致。")
+            guidance_plan["success_criteria"].append("重写后不得出现与前文既定事实直接冲突的设定。")
+            self._append_rewrite_operation(
+                guidance_plan,
+                phase="body",
+                action="reconcile_canon_fact",
+                target="world_fact_conflict",
+                instruction="回收或改写与既有世界事实冲突的描写，保持人物、生死与物件状态一致。",
+                rationale="world_fact_violation",
+                success_signal="重写后不得出现与前文既定事实直接冲突的设定。",
+            )
+        if "structure_drift_risk" in guidance_plan["issue_types"] or "结构漂移风险[" in joined_issues:
+            if goal_lock:
+                guidance_plan["fixes"].append(f"先推进主线目标锁：{goal_lock}。")
+                self._append_rewrite_operation(
+                    guidance_plan,
+                    phase="body",
+                    action="advance_goal_lock",
+                    target="main_plot_progression",
+                    instruction=f"先推进主线目标锁：{goal_lock}。",
+                    rationale="structure_drift_risk",
+                    success_signal=f"新增设定必须明确服务目标锁：{goal_lock}" if goal_lock else "任何新增设定都必须在近邻段落中桥接回主线目标。",
+                )
+            guidance_plan["fixes"].append("新设定若非服务主线，则降权/延后，只保留最小必要信息，不扩写体系/规则/势力细节。")
+            self._append_rewrite_operation(
+                guidance_plan,
+                phase="body",
+                action="trim_new_setting",
+                target="new_setting_intro",
+                instruction="新设定若非服务主线，则降权/延后，只保留最小必要信息，不扩写体系/规则/势力细节。",
+                rationale="structure_drift_risk",
+                success_signal="任何新增设定都必须在近邻段落中桥接回主线目标。",
+            )
+            if isinstance(budget, int) and budget >= 0:
+                guidance_plan["fixes"].append(
+                    f"中后期新设定预算={budget}：本章不得引入超过预算的强设定，必要时合并或后置。"
+                )
+                self._append_rewrite_operation(
+                    guidance_plan,
+                    phase="body",
+                    action="enforce_budget",
+                    target="new_setting_budget",
+                    instruction=f"中后期新设定预算={budget}：本章不得引入超过预算的强设定，必要时合并或后置。",
+                    rationale="structure_drift_risk",
+                    success_signal="任何新增设定都必须在近邻段落中桥接回主线目标。",
+                )
+            guidance_plan["fixes"].append(
+                "引入新设定后 1-2 段内，用“为了/因此/所以/必须/要想/才能/目标是/于是”等桥接词说明其如何推动主线目标。"
+            )
+            guidance_plan["success_criteria"].append("任何新增设定都必须在近邻段落中桥接回主线目标。")
+            self._append_rewrite_operation(
+                guidance_plan,
+                phase="body",
+                action="bridge_to_goal_lock",
+                target="goal_lock_bridge",
+                instruction="引入新设定后 1-2 段内，用“为了/因此/所以/必须/要想/才能/目标是/于是”等桥接词说明其如何推动主线目标。",
+                rationale="structure_drift_risk",
+                success_signal="任何新增设定都必须在近邻段落中桥接回主线目标。",
+            )
+            if goal_lock:
+                guidance_plan["success_criteria"].append(f"新增设定必须明确服务目标锁：{goal_lock}")
+        if "goal_lock_false_inheritance" in guidance_plan["issue_types"] or "目标锁假继承[" in joined_issues:
+            guidance_plan["fixes"].append("不要只改摘要、开头一句或宣言式台词来制造对齐。")
+            guidance_plan["fixes"].append("必须把正文关键事件、冲突选择与行动结果改写为持续推进主线目标。")
+            guidance_plan["fixes"].append("与主线无关的段落降权或后置，避免正文主体被支线闲笔冲散。")
+            self._append_rewrite_operation(
+                guidance_plan,
+                phase="body",
+                action="rewrite_body_progression",
+                target="main_plot_progression",
+                instruction="必须把正文关键事件、冲突选择与行动结果改写为持续推进主线目标。",
+                rationale="goal_lock_false_inheritance",
+                success_signal=f"摘要和正文都必须真实推进目标锁：{goal_lock}" if goal_lock else "摘要和正文都必须真实推进当前主线目标。",
+            )
+            self._append_rewrite_operation(
+                guidance_plan,
+                phase="body",
+                action="demote_side_track",
+                target="off_goal_paragraphs",
+                instruction="与主线无关的段落降权或后置，避免正文主体被支线闲笔冲散。",
+                rationale="goal_lock_false_inheritance",
+                success_signal=f"摘要和正文都必须真实推进目标锁：{goal_lock}" if goal_lock else "摘要和正文都必须真实推进当前主线目标。",
+            )
+            if goal_lock:
+                guidance_plan["fixes"].append(f"重写时围绕目标锁重组正文推进链：{goal_lock}")
+                guidance_plan["success_criteria"].append(f"摘要和正文都必须真实推进目标锁：{goal_lock}")
+                self._append_rewrite_operation(
+                    guidance_plan,
+                    phase="body",
+                    action="rebuild_goal_lock_chain",
+                    target="goal_lock_progression",
+                    instruction=f"重写时围绕目标锁重组正文推进链：{goal_lock}",
+                    rationale="goal_lock_false_inheritance",
+                    success_signal=f"摘要和正文都必须真实推进目标锁：{goal_lock}",
+                )
+
+        guidance_plan["fixes"] = [item for item in guidance_plan["fixes"] if item]
+        guidance_plan["success_criteria"] = [item for item in guidance_plan["success_criteria"] if item]
+        return guidance_plan
+
+    def _format_rewrite_guidance(self, rewrite_plan: dict[str, Any]) -> str:
+        """Format structured rewrite instructions into the legacy string field."""
+        sections: list[str] = []
+        for label, key in (
+            ("保留要求", "must_keep"),
+            ("本次修复", "fixes"),
+            ("验收条件", "success_criteria"),
+        ):
+            items = [str(item).strip() for item in rewrite_plan.get(key, []) if str(item).strip()]
+            if not items:
+                continue
+            numbered = " ".join(f"{index + 1}. {item}" for index, item in enumerate(items))
+            sections.append(f"【{label}】{numbered}")
+        return " ".join(sections).strip()
 
     def _extract_goal_lock(self, context: dict[str, Any] | None) -> str:
         """Extract the active goal lock from structured or freeform guidance."""
@@ -1178,6 +1425,142 @@ class NovelGeneratorAgent:
                 "- 若引入新设定，必须立即说明它如何帮助推进该目标锁。",
             ]
         )
+
+    def _summarize_outline_focus(self, outline: str) -> str:
+        """Extract a compact planned action from the outline text."""
+        for chunk in re.split(r"[\n；;]+", str(outline or "")):
+            cleaned = re.sub(r"^[\s\-*•\d.、:：【】]+", "", chunk).strip()
+            if cleaned:
+                return cleaned[:80]
+        return ""
+
+    def _build_chapter_intent_contract(
+        self,
+        *,
+        outline: str,
+        context: dict[str, Any] | None,
+        chapter_guidance: str = "",
+    ) -> dict[str, Any]:
+        """Build a stable execution contract that keeps goal_lock above one-shot guidance."""
+        goal_lock = self._extract_goal_lock(context)
+        planned_action = self._summarize_outline_focus(outline)
+        contract: dict[str, Any] = {
+            "goal_lock": goal_lock,
+            "planned_action": planned_action,
+            "chapter_guidance_scope": "additive_only" if chapter_guidance.strip() else "none",
+            "new_setting_budget": self._extract_new_setting_budget(context) if goal_lock else None,
+            "success_checks": [],
+        }
+        if goal_lock:
+            contract["success_checks"].extend(
+                [
+                    "开头前两段必须说明本章如何承接上一章局势，并迅速落回当前主线目标锁。",
+                    f"正文至少一个关键行动、冲突选择或结果必须直接推进目标锁：{goal_lock}",
+                    "摘要、关键事件和正文主体必须共享同一推进方向，不能只在摘要或宣言句里假对齐。",
+                    "若引入新设定，必须在 1-2 段内解释它为什么服务主线目标，而不是平行扩写支线。",
+                ]
+            )
+        else:
+            contract["success_checks"].append("本章开头必须尽快承接上一章状态，避免无锚点跳切。")
+        if chapter_guidance.strip():
+            contract["success_checks"].append("章节附加指令只能补充执行方式，不得覆盖或改写卷级主线目标锁。")
+        return contract
+
+    def _format_chapter_intent_contract(self, contract: dict[str, Any] | None) -> str:
+        """Render the chapter intent contract into a prompt-friendly text block."""
+        if not isinstance(contract, dict) or not contract:
+            return ""
+        lines: list[str] = []
+        planned_action = str(contract.get("planned_action", "") or "").strip()
+        if planned_action:
+            lines.append(f"- 本章计划动作: {planned_action}")
+        goal_lock = str(contract.get("goal_lock", "") or "").strip()
+        if goal_lock:
+            lines.append(f"- 不可偏离的主线目标锁: {goal_lock}")
+        scope = str(contract.get("chapter_guidance_scope", "") or "").strip()
+        if scope == "additive_only":
+            lines.append("- 本章附加指令定位: 只补充执行方式，不覆盖主线目标锁。")
+        budget = contract.get("new_setting_budget")
+        if budget is not None and goal_lock:
+            lines.append(f"- 新设定预算提醒: {budget}")
+        checks = [str(item).strip() for item in contract.get("success_checks", []) if str(item).strip()]
+        for index, item in enumerate(checks, start=1):
+            lines.append(f"{index}. {item}")
+        return "\n".join(lines).strip()
+
+    def _check_chapter_intent(
+        self,
+        *,
+        outline: str,
+        context: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Check whether the chapter plan is aligned before generation and rewrite it if needed."""
+        context = context or {}
+        goal_lock = self._extract_goal_lock(context)
+        chapter_guidance = str(context.get("chapter_guidance", "") or "").strip()
+        intent_text = "\n".join(part for part in [outline, chapter_guidance] if str(part or "").strip())
+        goal_terms = self._goal_terms(goal_lock)
+        intro_fragments = self._extract_new_setting_intros(intent_text)
+        budget = self._extract_new_setting_budget(context)
+        matched_terms = self._find_goal_lock_matches(intent_text, goal_terms)
+        has_goal_bridge = self._has_goal_bridge(intent_text, goal_lock)
+        has_goal_signal = self._has_goal_lock_signal(intent_text, goal_lock, goal_terms)
+        unbridged_fragments: list[str] = []
+        for fragment in intro_fragments:
+            window, _ = self._bridge_window(intent_text, fragment)
+            if not self._has_goal_bridge(window, goal_lock):
+                unbridged_fragments.append(fragment)
+
+        result: dict[str, Any] = {
+            "goal_lock": goal_lock,
+            "goal_terms": goal_terms,
+            "original_outline": str(outline or "").strip(),
+            "chapter_guidance": chapter_guidance,
+            "outline_matches": matched_terms,
+            "has_goal_signal": has_goal_signal,
+            "has_goal_bridge": has_goal_bridge,
+            "new_setting_budget": budget,
+            "new_setting_intro_fragments": intro_fragments[:5],
+            "unbridged_new_setting_fragments": unbridged_fragments[:5],
+            "issues": [],
+            "rewritten_outline": str(outline or "").strip(),
+            "passed": True,
+        }
+        if not str(outline or "").strip():
+            result["skipped_reason"] = "missing_outline"
+            return result
+        if not goal_lock:
+            result["skipped_reason"] = "missing_goal_lock"
+            return result
+
+        if not has_goal_signal and not has_goal_bridge:
+            result["issues"].append("goal_lock_missing_from_plan")
+        if intro_fragments and len(intro_fragments) > budget and unbridged_fragments:
+            result["issues"].append("unbridged_new_setting_in_plan")
+
+        result["passed"] = not result["issues"]
+        if result["passed"]:
+            return result
+
+        planned_action = str(
+            (context.get("chapter_intent_contract", {}) or {}).get("planned_action", "") or self._summarize_outline_focus(outline)
+        ).strip()
+        revised_lines = [
+            f"原始大纲：{str(outline or '').strip()}",
+            f"执行重写：开场先承接上一章局势，再把关键行动、冲突选择和结果对准主线目标锁：{goal_lock}",
+        ]
+        if planned_action:
+            revised_lines.append(f"保留本章计划动作，但改写为直接服务目标锁：{planned_action}")
+        if unbridged_fragments:
+            revised_lines.append(
+                "以下新设定只能保留最小必要信息，并在同段或下一段桥接回主线："
+                + " / ".join(unbridged_fragments[:2])
+            )
+        if chapter_guidance:
+            revised_lines.append(f"附加指令仅作为补充执行方式，不得覆盖主线：{chapter_guidance}")
+        revised_lines.append("正文摘要、关键事件和主体推进必须共享同一目标方向，禁止只在摘要里假对齐。")
+        result["rewritten_outline"] = "\n".join(revised_lines)
+        return result
 
     def _compose_volume_guidance(self, context: dict[str, Any] | None) -> str:
         """Merge structured volume guidance payload with chapter-specific notes."""
@@ -1280,6 +1663,24 @@ class NovelGeneratorAgent:
                 matches.append(term)
         return matches
 
+    def _has_goal_lock_signal(self, text: str, goal_lock: str, goal_terms: list[str]) -> bool:
+        """Allow lightweight shorthand matching for pre-generation intent checks."""
+        if not text or not goal_lock:
+            return False
+        if goal_lock in text or self._find_goal_lock_matches(text, goal_terms):
+            return True
+        normalized_text = self._normalize_text_for_match(text)
+        normalized_goal = self._normalize_text_for_match(goal_lock)
+        if len(normalized_goal) < 4:
+            return False
+        grams: list[str] = []
+        for index in range(len(normalized_goal) - 1):
+            gram = normalized_goal[index:index + 2]
+            if len(gram) == 2 and gram not in grams:
+                grams.append(gram)
+        overlap = sum(1 for gram in grams if gram in normalized_text)
+        return overlap >= 2
+
     def _window_negates_goal_lock(self, window: str) -> bool:
         """Detect goal mentions that explicitly do not advance the target."""
         return any(marker in window for marker in GOAL_LOCK_NEGATION_MARKERS)
@@ -1313,6 +1714,7 @@ class NovelGeneratorAgent:
             "body_matches": [],
             "checked_windows": [],
             "matched_fragments": [],
+            "unaligned_fragments": [],
         }
         if not goal_lock:
             details["alignment_skipped_reason"] = "missing_goal_lock"
@@ -1346,6 +1748,8 @@ class NovelGeneratorAgent:
             )
             if aligned:
                 details["body_alignment"] = True
+            else:
+                details["unaligned_fragments"].append(fragment)
 
         details["body_matches"] = body_matches[:5]
         details["matched_fragments"] = [item["fragment"] for item in body_matches[:3]]
@@ -1431,6 +1835,7 @@ class NovelGeneratorAgent:
                 unbridged_fragments.append(fragment)
         details["bridge_results"] = bridge_results
         details["bridge_window_fallback_used"] = fallback_used
+        details["unbridged_fragments"] = unbridged_fragments[:5]
 
         budget = int(details["budget"])
         if len(intro_fragments) <= budget or not unbridged_fragments:
@@ -1447,6 +1852,90 @@ class NovelGeneratorAgent:
             ),
         }
         return [issue], details
+
+    def _build_semantic_warning_review(
+        self,
+        *,
+        chapter: GeneratedChapter,
+        context: dict[str, Any] | None,
+        anti_drift_details: dict[str, Any],
+        goal_lock_alignment_issues: list[dict[str, Any]],
+        structure_drift_issues: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Build warning-only semantic review signals without affecting blocking gates."""
+        del chapter
+        context = context or {}
+        warning_issues: list[dict[str, Any]] = []
+        chapter_intent_check = dict(context.get("chapter_intent_check", {}) or {})
+        goal_lock = str(anti_drift_details.get("goal_lock", "") or "").strip()
+
+        if chapter_intent_check and not chapter_intent_check.get("passed", True):
+            warning_issues.append(
+                {
+                    "category": "chapter_intent_rewrite_applied",
+                    "severity": "warning",
+                    "message": "生成前意图检查已重写章节大纲，本章虽继续生成，但建议观察是否出现计划层掉锚复发。",
+                    "evidence": {
+                        "issues": list(chapter_intent_check.get("issues", [])),
+                        "rewritten_outline": str(chapter_intent_check.get("rewritten_outline", "") or "").strip()[:220],
+                    },
+                }
+            )
+
+        body_matches = list(anti_drift_details.get("body_matches", []) or [])
+        unaligned_fragments = list(anti_drift_details.get("unaligned_fragments", []) or [])
+        if (
+            goal_lock
+            and not goal_lock_alignment_issues
+            and anti_drift_details.get("summary_alignment")
+            and anti_drift_details.get("body_alignment")
+            and len(body_matches) == 1
+            and unaligned_fragments
+        ):
+            warning_issues.append(
+                {
+                    "category": "goal_lock_semantic_risk",
+                    "severity": "warning",
+                    "message": f"目标锁当前未触发硬阻断，但正文只有少量片段显式推进 `{goal_lock}`，仍有语义层掉锚风险。",
+                    "evidence": {
+                        "body_match_count": len(body_matches),
+                        "matched_fragment": str(body_matches[0].get("fragment", "") or "").strip(),
+                        "unaligned_fragments": unaligned_fragments[:2],
+                    },
+                }
+            )
+
+        intro_count = int(anti_drift_details.get("intro_count", 0) or 0)
+        budget = int(anti_drift_details.get("budget", 0) or 0)
+        unbridged_fragments = list(anti_drift_details.get("unbridged_fragments", []) or [])
+        bridge_results = list(anti_drift_details.get("bridge_results", []) or [])
+        if (
+            goal_lock
+            and not structure_drift_issues
+            and intro_count > 0
+            and bridge_results
+        ):
+            warning_issues.append(
+                {
+                    "category": "structure_drift_watch",
+                    "severity": "warning",
+                    "message": "本章引入了新设定，虽然尚未触发结构漂移阻断，但建议继续观察后续章节是否持续桥接主线。",
+                    "evidence": {
+                        "intro_count": intro_count,
+                        "budget": budget,
+                        "unbridged_fragments": unbridged_fragments[:2],
+                        "bridge_results": bridge_results[:2],
+                    },
+                }
+            )
+
+        return {
+            "enabled": True,
+            "warning_only": True,
+            "issue_count": len(warning_issues),
+            "issues": warning_issues,
+            "summary": "；".join(issue["message"] for issue in warning_issues[:2]),
+        }
 
     def _check_consistency(
         self,
@@ -1650,15 +2139,28 @@ class NovelGeneratorAgent:
         if continuity_messages:
             recommendations.extend(continuity_messages)
 
+        semantic_review = self._build_semantic_warning_review(
+            chapter=chapter,
+            context=context,
+            anti_drift_details=anti_drift_details,
+            goal_lock_alignment_issues=goal_lock_alignment_issues,
+            structure_drift_issues=structure_drift_issues,
+        )
+        warning_issues = [str(item.get("message", "") or "").strip() for item in semantic_review.get("issues", [])]
+        recommendations.extend(f"语义复核告警: {item}" for item in warning_issues if item)
+
         rewrite_guidance = ""
+        rewrite_plan: dict[str, Any] = {}
         if blocking_issues:
-            rewrite_guidance = self._build_rewrite_guidance(
-                {
-                    "blocking_issues": blocking_issues,
-                    "missing_events": missing_events,
-                    "anti_drift_details": anti_drift_details,
-                }
-            )
+            rewrite_source = {
+                "blocking_issues": blocking_issues,
+                "missing_events": missing_events,
+                "smoothness_details": smoothness_details,
+                "anti_drift_details": anti_drift_details,
+                "issue_types": issue_types,
+            }
+            rewrite_plan = self._build_rewrite_plan(rewrite_source)
+            rewrite_guidance = self._format_rewrite_guidance(rewrite_plan)
             recommendations.append(f"重写建议: {rewrite_guidance}")
 
         return {
@@ -1675,6 +2177,11 @@ class NovelGeneratorAgent:
             "recommendations": recommendations,
             "smoothness_details": smoothness_details,
             "anti_drift_details": anti_drift_details,
+            "warning_issues": warning_issues,
+            "semantic_review": semantic_review,
+            "chapter_intent_contract": dict((context or {}).get("chapter_intent_contract", {}) or {}),
+            "chapter_intent_check": dict((context or {}).get("chapter_intent_check", {}) or {}),
+            "rewrite_plan": rewrite_plan,
             "rewrite_guidance": rewrite_guidance,
             "summary": "；".join(blocking_issues[:3]) if blocking_issues else "章节满足当前质量闸门。",
         }

@@ -51,6 +51,8 @@ Resume:
 - UI or CLI reuses the same `run_id` and `run_dir`.
 - Resume passes `--resume-state <pending.json> --submit-approval <approve|revise|reject>`.
 - On outline revise, the approved payload may update `outline`, `world_setting`, and `character_intro`.
+- Every resume submission appends one entry into `longform_state.v1.json.approval_history` with `checkpoint_type`, `action`, the raw normalized `payload`, and `submitted_at`; this history is append-only across reject/revise/approve loops.
+- Operator-facing approval summaries must be derived from that canonical history instead of ad hoc UI-only strings. The shared formatter helpers now live in `services.longform_run` (`approval_entry_detail_parts`, `approval_entry_summary`, `approval_history_summary`) so preview/control-panel surfaces reuse the same audit rendering contract.
 
 ## Pending Review Schema
 
@@ -73,11 +75,53 @@ For `checkpoint_type == "chapter_review"`, `review_payload` must remain additive
 - `issue_types`
 - `blocking_issues`
 - `anti_drift_details`
+- `warning_issues`
+- `semantic_review`
+- `chapter_intent_contract`
+- `rewrite_plan`
 - `rewrite_attempted`
 - `rewrite_succeeded`
 - `rewrite_history`
 
 When goal-lock inheritance is active, `anti_drift_details` should preserve the evidence needed for UI/operator review, such as `goal_lock`, `goal_terms`, summary/body alignment verdicts, and any matched or checked fragments/windows.
+
+`rewrite_plan` should remain the structured source for operator-facing rewrite guidance. At minimum it should preserve:
+
+- `issue_types`
+- optional `issue_categories`
+- `must_keep`
+- `fixes`
+- `success_criteria`
+
+When available, `rewrite_plan` should also expose a machine-readable patch layer so UI or future automation can reason about "what to rewrite" without reparsing the prose bullets:
+
+- `schema_version`
+- `strategy`
+- `operations[]`
+
+Each `operations[]` item should remain additive and compact. Recommended fields:
+
+- `phase`
+- `action`
+- `target`
+- `instruction`
+- `rationale`
+- `success_signal`
+
+For `chapter_review -> revise`, resume consumers should preserve `rewrite_plan` as the structured source and derive the final freeform retry text from the shared service helper instead of rebuilding it ad hoc in the UI. The canonical compiler now lives in `services.longform_run.compile_chapter_rewrite_guidance`, which combines `must_keep`, `operations[]` / `fixes`, `success_criteria`, and optional operator notes into the submitted `chapter_rewrite_guidance`.
+
+For `checkpoint_type == "volume_review"`, `review_payload` should additionally expose:
+
+- `cross_volume_registry`
+- `cross_volume_registry_summary`
+
+`cross_volume_registry` currently uses three additive buckets:
+
+- `unresolved_goals`
+- `open_promises`
+- `dangling_settings`
+
+Resume consumers must preserve explicit empty-list updates for those buckets so operators can clear resolved items instead of carrying stale registry state into the next volume.
 
 ## Guidance Inheritance And Chapter Gate
 
