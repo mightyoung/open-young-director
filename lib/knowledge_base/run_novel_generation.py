@@ -72,15 +72,19 @@ from services.longform_run import (  # noqa: E402
     approval_payload_from_input,
     build_volume_risk_report,
     clear_pause,
+    compile_chapter_rewrite_guidance,
+    format_longform_registry,
     format_volume_guidance,
     initial_longform_state,
     load_json_file,
     load_longform_state,
+    merge_longform_registry,
     next_volume,
+    normalize_longform_registry,
     normalize_volume_guidance_payload,
     record_pause,
-    review_payload_for_outline,
     review_payload_for_chapter,
+    review_payload_for_outline,
     review_payload_for_risk,
     review_payload_for_volume,
     save_longform_state,
@@ -127,9 +131,9 @@ class GenerationError(Exception):
 
 
 # 反馈循环自动触发阈值
-FEEDBACK_LIGHT_INTERVAL = 5   # 每5章
+FEEDBACK_LIGHT_INTERVAL = 5  # 每5章
 FEEDBACK_DEEP_INTERVAL = 20  # 每20章
-FEEDBACK_VOLUME_SIZE = 20     # 一卷20章
+FEEDBACK_VOLUME_SIZE = 20  # 一卷20章
 
 STAGE_INIT = "init"
 STAGE_CONTEXT_BUILD = "context.build"
@@ -140,7 +144,9 @@ STAGE_FEEDBACK_AUTO = "feedback.auto"
 STAGE_FINALIZE = "finalize"
 
 
-def _run_auto_feedback(project_id: str, generated_chapters: list, total_current: int, llm_client=None) -> None:
+def _run_auto_feedback(
+    project_id: str, generated_chapters: list, total_current: int, llm_client=None
+) -> None:
     """根据生成结果自动运行反馈循环
 
     策略：
@@ -168,7 +174,9 @@ def _run_auto_feedback(project_id: str, generated_chapters: list, total_current:
     feedback = get_feedback_loop(project_id, llm_client=llm_client)
 
     # 1. 检查 LIGHT 触发 (每5章)
-    should_light = (total_current % FEEDBACK_LIGHT_INTERVAL == 0) or (end_ch % FEEDBACK_LIGHT_INTERVAL == 0)
+    should_light = (total_current % FEEDBACK_LIGHT_INTERVAL == 0) or (
+        end_ch % FEEDBACK_LIGHT_INTERVAL == 0
+    )
     if should_light:
         print(f"\n📊 [AUTO] 触发 LIGHT 反馈 (每{FEEDBACK_LIGHT_INTERVAL}章)")
         strategy = FeedbackStrategy(
@@ -178,11 +186,13 @@ def _run_auto_feedback(project_id: str, generated_chapters: list, total_current:
             auto_fix=True,
         )
         result = feedback.run_with_strategy(strategy)
-        status = result.get('status', 'unknown')
+        status = result.get("status", "unknown")
         print(f"   结果: {status}")
 
     # 2. 检查 DEEP 触发 (每20章)
-    should_deep = (total_current % FEEDBACK_DEEP_INTERVAL == 0) or (end_ch % FEEDBACK_DEEP_INTERVAL == 0)
+    should_deep = (total_current % FEEDBACK_DEEP_INTERVAL == 0) or (
+        end_ch % FEEDBACK_DEEP_INTERVAL == 0
+    )
     if should_deep:
         print(f"\n📊 [AUTO] 触发 DEEP 反馈 (每{FEEDBACK_DEEP_INTERVAL}章)")
         strategy = FeedbackStrategy(
@@ -192,11 +202,13 @@ def _run_auto_feedback(project_id: str, generated_chapters: list, total_current:
             auto_fix=True,
         )
         result = feedback.run_with_strategy(strategy)
-        status = result.get('status', 'unknown')
+        status = result.get("status", "unknown")
         print(f"   结果: {status}")
 
     # 3. 检查 VOLUME_COMPLETE 触发 (每20章=一卷)
-    should_volume = (total_current % FEEDBACK_VOLUME_SIZE == 0) or (end_ch % FEEDBACK_VOLUME_SIZE == 0)
+    should_volume = (total_current % FEEDBACK_VOLUME_SIZE == 0) or (
+        end_ch % FEEDBACK_VOLUME_SIZE == 0
+    )
     if should_volume:
         volume_num = total_current // FEEDBACK_VOLUME_SIZE
         print(f"\n📊 [AUTO] 触发 VOLUME_COMPLETE 反馈 (第{volume_num}卷完成)")
@@ -207,7 +219,7 @@ def _run_auto_feedback(project_id: str, generated_chapters: list, total_current:
             auto_fix=True,
         )
         result = feedback.run_with_strategy(strategy)
-        status = result.get('status', 'unknown')
+        status = result.get("status", "unknown")
         print(f"   结果: {status}")
 
 
@@ -346,8 +358,10 @@ def _sync_status_longform_fields(run_dir: Path | None, state: dict[str, Any]) ->
         longform_state_path=state.get("longform_state_path"),
         pending_state_path=state.get("pending_state_path"),
         risk_report_path=state.get("risk_report_path"),
-        queued_volume_guidance=str(state.get("next_volume_guidance", "") or "").strip() or None,
-        queued_volume_guidance_payload=state.get("next_volume_guidance_payload", {}) or None,
+        queued_volume_guidance=str(state.get("next_volume_guidance", "") or "").strip()
+        or None,
+        queued_volume_guidance_payload=state.get("next_volume_guidance_payload", {})
+        or None,
     )
 
 
@@ -399,6 +413,73 @@ def _pause_for_invalid_chapter(
     return 0
 
 
+def _load_chapter_consistency_report(
+    project_dir: Path, chapter_number: int
+) -> dict[str, Any] | None:
+    path = (
+        project_dir / "consistency_reports" / f"ch{chapter_number:03d}_consistency.json"
+    )
+    if not path.exists():
+        return None
+    payload = load_json_file(path)
+    if not payload:
+        return None
+    report = payload.get("report", payload)
+    return report if isinstance(report, dict) else None
+
+
+def _pause_for_revision_validation_failure(
+    *,
+    run_dir: Path,
+    state: dict[str, Any],
+    project_id: str,
+    command: list[str],
+    run_started_at: datetime,
+    chapter_number: int,
+    issue_types: list[str],
+    reason: str,
+) -> int:
+    review_payload = {
+        "chapter_number": chapter_number,
+        "title": f"第{chapter_number}章",
+        "summary": reason,
+        "issue_types": issue_types,
+        "blocking_issues": [reason],
+        "missing_events": [],
+        "continuity_issues": [],
+        "world_fact_issues": [],
+    }
+    paused_state = record_pause(
+        run_dir=run_dir,
+        longform_state=state,
+        checkpoint_type=CHECKPOINT_CHAPTER,
+        current_stage=STAGE_CHAPTER_REVIEW,
+        review_payload=review_payload,
+    )
+    _update_run_progress(
+        run_dir,
+        project_id=project_id,
+        command=command,
+        status="paused",
+        current_stage=STAGE_CHAPTER_REVIEW,
+        current_step=f"第 {chapter_number} 章修订验证未通过，等待决策",
+        chapters_total=paused_state.get("total_chapters", 0),
+        chapters_completed=paused_state.get("chapters_completed", 0),
+        run_started_at=run_started_at,
+        failed_stage=STAGE_CHAPTER_GENERATE,
+        error_message=reason,
+    )
+    update_status(
+        run_dir,
+        pending_state_path=paused_state.get("pending_state_path"),
+        longform_state_path=paused_state.get("longform_state_path"),
+        pause_reason=CHECKPOINT_CHAPTER,
+        risk_report_path=None,
+    )
+    _sync_status_longform_fields(run_dir, paused_state)
+    return 0
+
+
 def cmd_new_project(args):
     """创建新项目."""
     config_mgr = get_config_manager()
@@ -424,7 +505,6 @@ def cmd_new_project(args):
     print(f"   题材: {project.genre}")
     print(f"   计划章节: {project.total_chapters}")
     print(f"\n目录: {_project_dir(config_mgr)}")
-
 
 
 def _create_orchestrator(config_mgr, project_id: str) -> NovelOrchestrator:
@@ -478,7 +558,9 @@ def cmd_generate(args):
 
     llm_client, doubao_client = _build_llm_clients(config_mgr)
     if llm_client is None:
-        logger.warning("No configured text LLM client available, generation will rely on fallbacks")
+        logger.warning(
+            "No configured text LLM client available, generation will rely on fallbacks"
+        )
 
     project = config_mgr.current_project
     project_id = project.id
@@ -492,6 +574,10 @@ def cmd_generate(args):
         run_id=generation_run_id,
         project_id=project_id,
         command=command,
+    )
+    status_payload = read_status(run_dir) if run_dir else {}
+    queued_volume_guidance_payload = normalize_volume_guidance_payload(
+        status_payload.get("queued_volume_guidance_payload")
     )
 
     # 使用标题目录而非ID目录
@@ -509,10 +595,10 @@ def cmd_generate(args):
     )
 
     # 处理 --continue-from 断点续传
-    continue_from = getattr(args, 'continue_from', None)
+    continue_from = getattr(args, "continue_from", None)
     start = args.start or config_mgr.current_project.current_chapter + 1
     count = args.count
-    dry_run = getattr(args, 'dry_run', False)
+    dry_run = getattr(args, "dry_run", False)
     mode = "incremental" if continue_from is not None else "full"
     active_writing_options = _resolve_active_writing_options(config_mgr, args)
 
@@ -525,11 +611,11 @@ def cmd_generate(args):
         with open(results_file) as f:
             existing_results = json.load(f)
         chapters_to_skip = {
-            r['chapter_number']
-            for r in existing_results.get('chapter_results', [])
-            if r.get('status') == 'success'
+            r["chapter_number"]
+            for r in existing_results.get("chapter_results", [])
+            if r.get("status") == "success"
         }
-        checkpoints = existing_results.get('checkpoints', [])
+        checkpoints = existing_results.get("checkpoints", [])
 
     if continue_from is not None:
         start = continue_from
@@ -634,6 +720,10 @@ def cmd_generate(args):
 
             # 构建上下文
             context = chapter_mgr.build_context(chapter_num)
+            context["chapter_number"] = chapter_num
+            context["total_chapters"] = int(getattr(project, "total_chapters", 0) or 0)
+            if any(queued_volume_guidance_payload.values()):
+                context["volume_guidance_payload"] = queued_volume_guidance_payload
             volume_guidance = str(getattr(args, "volume_guidance", "") or "").strip()
             if volume_guidance:
                 context["volume_guidance"] = volume_guidance
@@ -644,7 +734,7 @@ def cmd_generate(args):
                 and chapter_guidance_target is not None
                 and int(chapter_guidance_target) == chapter_num
             ):
-                context["volume_guidance"] = chapter_guidance
+                context["chapter_guidance"] = chapter_guidance
 
             # 生成章节
             current_stage = STAGE_CHAPTER_GENERATE
@@ -672,7 +762,9 @@ def cmd_generate(args):
                     rewrite_history=chapter.metadata.get("rewrite_history", []),
                 )
             if getattr(chapter, "consistency_report", {}).get("invalid"):
-                quality_summary = chapter.consistency_report.get("summary", "章节未通过质量闸门")
+                quality_summary = chapter.consistency_report.get(
+                    "summary", "章节未通过质量闸门"
+                )
                 status_payload = read_status(run_dir) if run_dir else {}
                 longform_state_path = status_payload.get("longform_state_path")
                 if run_dir and longform_state_path:
@@ -691,13 +783,13 @@ def cmd_generate(args):
 
             # 计算内容校验和
             content_checksum = hashlib.sha256(
-                chapter.content.encode('utf-8')
+                chapter.content.encode("utf-8")
             ).hexdigest()[:16]
 
             # 获取实际摘要（优先使用生成后的情节摘要，而非生成前的大纲）
             actual_summary = ""
-            if hasattr(chapter, 'plot_summary') and chapter.plot_summary:
-                actual_summary = chapter.plot_summary.get('l2_brief_summary', '')
+            if hasattr(chapter, "plot_summary") and chapter.plot_summary:
+                actual_summary = chapter.plot_summary.get("l2_brief_summary", "")
             if not actual_summary:
                 actual_summary = chapter.metadata.get("outline_summary", "")
 
@@ -726,13 +818,13 @@ def cmd_generate(args):
             )
 
             # 保存情节概述（三级结构）
-            if hasattr(chapter, 'plot_summary') and chapter.plot_summary:
+            if hasattr(chapter, "plot_summary") and chapter.plot_summary:
                 plot_summary_data = chapter.plot_summary
                 plot_summary = ChapterPlotSummary(
                     chapter_number=chapter.number,
-                    one_line_summary=plot_summary_data.get('l1_one_line_summary', ''),
-                    brief_summary=plot_summary_data.get('l2_brief_summary', ''),
-                    key_plot_points=plot_summary_data.get('l3_key_plot_points', []),
+                    one_line_summary=plot_summary_data.get("l1_one_line_summary", ""),
+                    brief_summary=plot_summary_data.get("l2_brief_summary", ""),
+                    key_plot_points=plot_summary_data.get("l3_key_plot_points", []),
                     character_states={},
                     plot_threads=[],
                     foreshadowing=[],
@@ -741,7 +833,7 @@ def cmd_generate(args):
                 logger.info(f"  📋 Plot summary saved for chapter {chapter.number}")
 
             # 保存 FILM_DRAMA 内容（场景、角色、情节结构等）
-            if hasattr(chapter, 'orchestrator_result') and chapter.orchestrator_result:
+            if hasattr(chapter, "orchestrator_result") and chapter.orchestrator_result:
                 try:
                     film_drama_file = chapter_mgr.save_film_drama_content(
                         chapter_number=chapter.number,
@@ -756,27 +848,31 @@ def cmd_generate(args):
 
             generated.append(chapter)
             # 使用生成后的情节摘要作为下一章的上下文，而非生成前的大纲
-            if hasattr(chapter, 'plot_summary') and chapter.plot_summary:
-                previous_summary = chapter.plot_summary.get('l2_brief_summary', '') or chapter.metadata.get("outline_summary", "")
+            if hasattr(chapter, "plot_summary") and chapter.plot_summary:
+                previous_summary = chapter.plot_summary.get(
+                    "l2_brief_summary", ""
+                ) or chapter.metadata.get("outline_summary", "")
             else:
                 previous_summary = chapter.metadata.get("outline_summary", "")
 
             # 记录成功
-            generation_results['successful'] += 1
-            generation_results['total_words_generated'] += chapter.word_count
-            generation_results['total_time_seconds'] += elapsed
-            generation_results['chapter_results'].append({
-                "chapter_number": chapter_num,
-                "status": "success",
-                "title": chapter.title,
-                "word_count": chapter.word_count,
-                "time_seconds": elapsed,
-                "timestamp": datetime.now().isoformat(),
-                "checksum": content_checksum,
-            })
+            generation_results["successful"] += 1
+            generation_results["total_words_generated"] += chapter.word_count
+            generation_results["total_time_seconds"] += elapsed
+            generation_results["chapter_results"].append(
+                {
+                    "chapter_number": chapter_num,
+                    "status": "success",
+                    "title": chapter.title,
+                    "word_count": chapter.word_count,
+                    "time_seconds": elapsed,
+                    "timestamp": datetime.now().isoformat(),
+                    "checksum": content_checksum,
+                }
+            )
 
             # 保存 checkpoint（每成功一章就保存）
-            generation_results['checkpoints'].append(chapter_num)
+            generation_results["checkpoints"].append(chapter_num)
             _save_checkpoint(results_file, generation_results)
             print(f"   💾 Checkpoint 已保存 (第 {chapter_num} 章)")
             _update_run_progress(
@@ -795,19 +891,23 @@ def cmd_generate(args):
             logger.error(f"Chapter {chapter_num} generation failed: {e}")
             print(f"   ❌ 生成失败: {e}")
             failed_chapters.append(chapter_num)
-            generation_results['failed'] += 1
-            generation_results['failed_chapters'].append({
-                'chapter_number': chapter_num,
-                'error': str(e),
-                'timestamp': datetime.now().isoformat(),
-            })
-            generation_results['chapter_results'].append({
-                "chapter_number": chapter_num,
-                "status": "failed",
-                "error": str(e),
-                "time_seconds": (datetime.now() - start_time).total_seconds(),
-                "timestamp": datetime.now().isoformat(),
-            })
+            generation_results["failed"] += 1
+            generation_results["failed_chapters"].append(
+                {
+                    "chapter_number": chapter_num,
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
+            generation_results["chapter_results"].append(
+                {
+                    "chapter_number": chapter_num,
+                    "status": "failed",
+                    "error": str(e),
+                    "time_seconds": (datetime.now() - start_time).total_seconds(),
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
             _update_run_progress(
                 run_dir,
                 project_id=project_id,
@@ -829,19 +929,23 @@ def cmd_generate(args):
             logger.error(f"Chapter {chapter_num} generation failed (unexpected): {e}")
             print(f"   ❌ 生成失败: {e}")
             failed_chapters.append(chapter_num)
-            generation_results['failed'] += 1
-            generation_results['failed_chapters'].append({
-                'chapter_number': chapter_num,
-                'error': str(e),
-                'timestamp': datetime.now().isoformat(),
-            })
-            generation_results['chapter_results'].append({
-                "chapter_number": chapter_num,
-                "status": "failed",
-                "error": str(e),
-                "time_seconds": (datetime.now() - start_time).total_seconds(),
-                "timestamp": datetime.now().isoformat(),
-            })
+            generation_results["failed"] += 1
+            generation_results["failed_chapters"].append(
+                {
+                    "chapter_number": chapter_num,
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
+            generation_results["chapter_results"].append(
+                {
+                    "chapter_number": chapter_num,
+                    "status": "failed",
+                    "error": str(e),
+                    "time_seconds": (datetime.now() - start_time).total_seconds(),
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
             _update_run_progress(
                 run_dir,
                 project_id=project_id,
@@ -870,9 +974,9 @@ def cmd_generate(args):
         chapters_completed=skipped_existing + len(generated),
         run_started_at=run_started_at,
     )
-    generation_results['completed_at'] = datetime.now().isoformat()
+    generation_results["completed_at"] = datetime.now().isoformat()
     results_file.parent.mkdir(parents=True, exist_ok=True)
-    with open(results_file, 'w', encoding='utf-8') as f:
+    with open(results_file, "w", encoding="utf-8") as f:
         json.dump(generation_results, f, ensure_ascii=False, indent=2)
 
     print("\n" + "=" * 50)
@@ -905,18 +1009,24 @@ def cmd_generate(args):
             chapter_range = f"{generated[0].number}-{generated[-1].number}"
             sync_results = derivative_gen.sync_derivatives(chapter_range)
             print("   ✅ 衍生内容同步完成:")
-            print(f"      - 视频Prompt: {len(sync_results.get('video_prompts', []))} 个")
-            print(f"      - 角色描述: {len(sync_results.get('character_descriptions', []))} 个")
-            print(f"      - 场景描述: {len(sync_results.get('scene_descriptions', []))} 个")
+            print(
+                f"      - 视频Prompt: {len(sync_results.get('video_prompts', []))} 个"
+            )
+            print(
+                f"      - 角色描述: {len(sync_results.get('character_descriptions', []))} 个"
+            )
+            print(
+                f"      - 场景描述: {len(sync_results.get('scene_descriptions', []))} 个"
+            )
             print(f"      - 播客脚本: {len(sync_results.get('podcasts', []))} 个")
-            if sync_results.get('errors'):
+            if sync_results.get("errors"):
                 print(f"      - 错误: {len(sync_results['errors'])} 个")
         except Exception as e:
             logger.warning(f"Failed to sync derivatives: {e}")
             print(f"   ⚠️ 衍生内容同步失败: {e}")
 
     # 自动反馈循环（根据策略触发）
-    no_auto_feedback = getattr(args, 'no_auto_feedback', False)
+    no_auto_feedback = getattr(args, "no_auto_feedback", False)
     if generated and not no_auto_feedback:
         # 获取当前项目总章节数
         current_total = config_mgr.current_project.current_chapter
@@ -970,26 +1080,28 @@ def _save_checkpoint(results_file: Path, results: dict) -> None:
     """保存 checkpoint 到文件."""
     checkpoint_file = results_file.parent / "generation_checkpoint.json"
     checkpoint_file.parent.mkdir(parents=True, exist_ok=True)
-    with open(checkpoint_file, 'w', encoding='utf-8') as f:
+    with open(checkpoint_file, "w", encoding="utf-8") as f:
         json.dump(results, f, ensure_ascii=False, indent=2)
 
 
-def _print_statistics(results: dict, failed_chapters: list, results_file: Path, project_title: str) -> None:
+def _print_statistics(
+    results: dict, failed_chapters: list, results_file: Path, project_title: str
+) -> None:
     """打印生成统计信息."""
-    total_words = results.get('total_words_generated', 0)
-    total_time = results.get('total_time_seconds', 0.0)
+    total_words = results.get("total_words_generated", 0)
+    total_time = results.get("total_time_seconds", 0.0)
     speed = total_words / total_time if total_time > 0 else 0
     chapters_dir = results_file.parent / "chapters"
     checkpoint_file = results_file.parent / "generation_checkpoint.json"
 
     print(f"""
 📊 生成统计:
-   成功: {results.get('successful', 0)} 章
-   失败: {results.get('failed', 0)} 章
+   成功: {results.get("successful", 0)} 章
+   失败: {results.get("failed", 0)} 章
    总字数: {total_words:,} 字
    总耗时: {total_time:.1f} 秒
    平均速度: {speed:.0f} 字/秒
-   检查点: {len(results.get('checkpoints', []))} 个
+   检查点: {len(results.get("checkpoints", []))} 个
 """)
 
     if failed_chapters:
@@ -1021,10 +1133,16 @@ def cmd_status(args):
     print(f"   标题: {summary.get('title')}")
     print(f"   作者: {summary.get('author')}")
     print(f"   题材: {summary.get('genre')}")
-    print(f"   进度: {summary.get('current_chapter')}/{summary.get('total_chapters')} 章")
+    print(
+        f"   进度: {summary.get('current_chapter')}/{summary.get('total_chapters')} 章"
+    )
     print(f"   完成度: {summary.get('progress_percent')}%")
-    writing_options = normalize_writing_options(summary.get("metadata", {}).get("writing_options", {}))
-    print(f"   写作参数: {', '.join(f'{k}={v}' for k, v in writing_options.items() if v)}")
+    writing_options = normalize_writing_options(
+        summary.get("metadata", {}).get("writing_options", {})
+    )
+    print(
+        f"   写作参数: {', '.join(f'{k}={v}' for k, v in writing_options.items() if v)}"
+    )
 
     if summary.get("fanqie_enabled"):
         print(f"   番茄发布: ✅ 已配置 (书号: {summary.get('fanqie_book_id')})")
@@ -1043,9 +1161,11 @@ def cmd_list_chapters(args):
         return 1
 
     # 使用标题目录而非ID目录
-    output_dir = getattr(config_mgr.generation, 'output_dir', None)
+    output_dir = getattr(config_mgr.generation, "output_dir", None)
     base_dir_override = str(Path(output_dir).resolve()) if output_dir else None
-    chapter_mgr = get_chapter_manager(config_mgr.current_project.id, base_dir_override=base_dir_override)
+    chapter_mgr = get_chapter_manager(
+        config_mgr.current_project.id, base_dir_override=base_dir_override
+    )
     chapters = chapter_mgr.get_chapter_list()
 
     if not chapters:
@@ -1057,7 +1177,9 @@ def cmd_list_chapters(args):
     print("-" * 70)
 
     for ch in chapters:
-        print(f"   {ch.number:03d}. {ch.title:<20} | {ch.word_count:>5} 字 | {ch.created_at.strftime('%m-%d %H:%M')}")
+        print(
+            f"   {ch.number:03d}. {ch.title:<20} | {ch.word_count:>5} 字 | {ch.created_at.strftime('%m-%d %H:%M')}"
+        )
 
     return 0
 
@@ -1071,16 +1193,20 @@ def cmd_export(args):
         return 1
 
     # 使用标题目录而非ID目录
-    output_dir = getattr(config_mgr.generation, 'output_dir', None)
+    output_dir = getattr(config_mgr.generation, "output_dir", None)
     base_dir_override = str(Path(output_dir).resolve()) if output_dir else None
-    chapter_mgr = get_chapter_manager(config_mgr.current_project.id, base_dir_override=base_dir_override)
+    chapter_mgr = get_chapter_manager(
+        config_mgr.current_project.id, base_dir_override=base_dir_override
+    )
 
     # 导出到标题目录
     if output_dir:
         base_path = Path(output_dir).resolve()
     else:
         base_path = Path(f"./lib/knowledge_base/novels/{config_mgr.current_project.id}")
-    output_path = args.output or str(base_path / f"{config_mgr.current_project.title}.txt")
+    output_path = args.output or str(
+        base_path / f"{config_mgr.current_project.title}.txt"
+    )
 
     count = chapter_mgr.export_to_text(
         output_path=output_path,
@@ -1121,104 +1247,13 @@ def cmd_publish(args):
         print("❌ 未配置番茄书号. 请在 .env 中设置 FANQIE_BOOK_ID")
         return 1
 
-    # 创建番茄发布器
-    publisher = FanqiePublisher(
-        book_id=fanqie_config.book_id,
-        volume_id=fanqie_config.volume_id,
-        upload_delay=fanqie_config.upload_delay_seconds,
+    print("❌ 当前版本未提供可用的番茄发布器实现")
+    print(f"   书号配置存在: {fanqie_config.book_id}")
+    print(
+        "   原有 cmd_publish 依赖的 FanqiePublisher 实现已不存在，继续执行会误报运行期成功路径。"
     )
-
-    # 检查认证状态
-    if not publisher._authenticated:
-        print("❌ Cookie 未加载或已过期")
-        print("   请检查 cookies/fanqie_cookies.json 文件")
-        return 1
-
-    print("\n📤 开始发布到番茄小说网...")
-    print(f"   书号: {fanqie_config.book_id}")
-    print(f"   项目: {config_mgr.current_project.title}")
-    print("-" * 50)
-
-    # 获取章节列表 - 使用标题目录
-    output_dir = getattr(config_mgr.generation, 'output_dir', None)
-    base_dir_override = str(Path(output_dir).resolve()) if output_dir else None
-    chapter_mgr = get_chapter_manager(config_mgr.current_project.id, base_dir_override=base_dir_override)
-    chapters = chapter_mgr.get_chapter_list()
-
-    if not chapters:
-        print("📭 暂无章节可发布")
-        return 0
-
-    # 确定要发布的章节范围
-    if args.all:
-        # 发布所有章节
-        start_num = 1
-        end_num = len(chapters)
-        chapter_range = range(1, end_num + 1)
-        print(f"   模式: 发布所有章节 (1-{end_num})")
-    else:
-        # 发布指定范围
-        parts = args.range.split("-")
-        if len(parts) == 2:
-            start_num = int(parts[0])
-            end_num = int(parts[1])
-        else:
-            start_num = int(parts[0])
-            end_num = start_num
-
-        chapter_range = range(start_num, end_num + 1)
-        print(f"   模式: 发布章节 {start_num}-{end_num}")
-
-    print()
-
-    # 发布章节
-    success_count = 0
-    fail_count = 0
-
-    for num in chapter_range:
-        # 查找对应章节
-        chapter_data = None
-        for ch in chapters:
-            if ch.number == num:
-                # 加载章节内容
-                chapter_content = chapter_mgr.get_chapter_content(num)
-                if chapter_content:
-                    chapter_data = {
-                        "number": num,
-                        "title": ch.title,
-                        "content": chapter_content,
-                    }
-                break
-
-        if not chapter_data:
-            print(f"   ⚠️ 章节 {num} 不存在或内容为空")
-            continue
-
-        print(f"📤 发布第 {num} 章: {chapter_data['title']}...")
-
-        result = publisher.upload_chapter(
-            chapter_number=chapter_data["number"],
-            title=chapter_data["title"],
-            content=chapter_data["content"],
-        )
-
-        if result.success:
-            print(f"   ✅ 成功 (ID: {result.chapter_id})")
-            success_count += 1
-        else:
-            print(f"   ❌ 失败: {result.message}")
-            fail_count += 1
-
-        # 间隔延迟
-        if num < end_num:
-            import time
-            time.sleep(fanqie_config.upload_delay_seconds)
-
-    print()
-    print("=" * 50)
-    print(f"✅ 发布完成! 成功: {success_count}, 失败: {fail_count}")
-
-    return 0 if fail_count == 0 else 1
+    print("   请先恢复/重建番茄发布器，再重新启用 --publish / --publish-all。")
+    return 1
 
 
 def cmd_sync_derivatives(args):
@@ -1252,9 +1287,9 @@ def cmd_sync_derivatives(args):
         print(f"   场景描述: {len(results['scene_descriptions'])} 个")
         print(f"   播客脚本: {len(results['podcasts'])} 个")
 
-        if results['errors']:
+        if results["errors"]:
             print(f"\n   错误: {len(results['errors'])} 个")
-            for err in results['errors'][:5]:
+            for err in results["errors"][:5]:
                 print(f"      - {err}")
 
         print("\n✅ 同步完成!")
@@ -1375,9 +1410,11 @@ def cmd_verify(args):
     print("-" * 50)
 
     # 使用标题目录而非ID目录
-    output_dir = getattr(config_mgr.generation, 'output_dir', None)
+    output_dir = getattr(config_mgr.generation, "output_dir", None)
     base_dir_override = str(Path(output_dir).resolve()) if output_dir else None
-    chapter_mgr = get_chapter_manager(config_mgr.current_project.id, base_dir_override=base_dir_override)
+    chapter_mgr = get_chapter_manager(
+        config_mgr.current_project.id, base_dir_override=base_dir_override
+    )
 
     # 执行完整性检查
     declared_latest = config_mgr.current_project.current_chapter
@@ -1387,7 +1424,7 @@ def cmd_verify(args):
     print("\n📊 完整性检查结果:")
     print(f"   状态: {'✅ 通过' if result['valid'] else '❌ 存在问题'}")
 
-    stats = result.get('stats', {})
+    stats = result.get("stats", {})
     print("\n📈 统计信息:")
     print(f"   章节总数: {stats.get('total_chapters', 0)}")
     print(f"   实际最新: 第{stats.get('actual_latest', 0)}章")
@@ -1396,33 +1433,37 @@ def cmd_verify(args):
     print(f"   索引条目: {stats.get('indexed_chapters', 0)}")
 
     # 打印问题
-    if result.get('issues'):
+    if result.get("issues"):
         print(f"\n❌ 问题列表 ({len(result['issues'])} 个):")
-        for issue in result['issues']:
+        for issue in result["issues"]:
             print(f"   - [{issue['type']}] {issue['message']}")
 
     # 打印警告
-    if result.get('warnings'):
+    if result.get("warnings"):
         print(f"\n⚠️  警告列表 ({len(result['warnings'])} 个):")
-        for warning in result['warnings']:
+        for warning in result["warnings"]:
             print(f"   - {warning}")
 
     # 执行章节连续性检查
     seq_result = chapter_mgr.validate_chapter_sequence()
     print("\n📚 章节序列检查:")
     print(f"   状态: {'✅ 连续' if seq_result['valid'] else '❌ 不连续'}")
-    seq_stats = seq_result.get('stats', {})
-    print(f"   范围内章节: {seq_stats.get('existing_count', 0)}/{seq_stats.get('total_in_range', 0)}")
+    seq_stats = seq_result.get("stats", {})
+    print(
+        f"   范围内章节: {seq_stats.get('existing_count', 0)}/{seq_stats.get('total_in_range', 0)}"
+    )
     print(f"   缺失章节: {seq_stats.get('missing_count', 0)}")
     print(f"   跳跃次数: {seq_stats.get('gap_count', 0)}")
 
-    if seq_result.get('gaps'):
+    if seq_result.get("gaps"):
         print("\n   跳跃详情:")
-        for gap in seq_result['gaps']:
-            print(f"     - 第{gap['from_chapter']}章 → 第{gap['to_chapter']}章 (缺失 {gap['gap_size']} 章)")
+        for gap in seq_result["gaps"]:
+            print(
+                f"     - 第{gap['from_chapter']}章 → 第{gap['to_chapter']}章 (缺失 {gap['gap_size']} 章)"
+            )
 
     # 返回状态
-    if result['valid'] and seq_result['valid']:
+    if result["valid"] and seq_result["valid"]:
         print("\n✅ 项目验证通过!")
         return 0
     print("\n⚠️ 项目验证发现问题，请检查上述信息")
@@ -1530,7 +1571,7 @@ def cmd_feedback_loop(args):
 
         print("\n📊 反馈循环报告:")
         # 根据不同模式处理不同的结果结构
-        if 'final_status' in result:
+        if "final_status" in result:
             # FULL模式 (run_full_cycle结构)
             print("   模式: full")
             print(f"   状态: {result['final_status']}")
@@ -1539,47 +1580,53 @@ def cmd_feedback_loop(args):
             print(f"   结束时间: {result.get('end_time', 'N/A')}")
 
             # 显示每次迭代的结果摘要
-            for i, iteration in enumerate(result.get('iterations', [])):
-                phase = iteration.get('phase', 'unknown')
-                phase_result = iteration.get('result', {})
-                if phase == 'discovery':
-                    issues_count = phase_result.get('issues_found', 0)
-                    needs_fix = phase_result.get('needs_fix', False)
-                    print(f"\n   迭代 {i+1} - {phase.upper()}:")
+            for i, iteration in enumerate(result.get("iterations", [])):
+                phase = iteration.get("phase", "unknown")
+                phase_result = iteration.get("result", {})
+                if phase == "discovery":
+                    issues_count = phase_result.get("issues_found", 0)
+                    needs_fix = phase_result.get("needs_fix", False)
+                    print(f"\n   迭代 {i + 1} - {phase.upper()}:")
                     print(f"      发现问题: {issues_count} 个")
                     print(f"      需要修复: {'是' if needs_fix else '否'}")
-                elif phase == 'fix':
-                    summary = phase_result.get('summary', {})
-                    print(f"\n   迭代 {i+1} - {phase.upper()}:")
+                elif phase == "fix":
+                    summary = phase_result.get("summary", {})
+                    print(f"\n   迭代 {i + 1} - {phase.upper()}:")
                     print(f"      总计: {summary.get('total', 0)}")
                     print(f"      成功: {summary.get('success', 0)}")
                     print(f"      失败: {summary.get('failed', 0)}")
-                elif phase == 'verification':
-                    print(f"\n   迭代 {i+1} - {phase.upper()}:")
-                    print(f"      验证通过: {'是' if phase_result.get('verification_passed') else '否'}")
-                    checks = phase_result.get('checks', {})
+                elif phase == "verification":
+                    print(f"\n   迭代 {i + 1} - {phase.upper()}:")
+                    print(
+                        f"      验证通过: {'是' if phase_result.get('verification_passed') else '否'}"
+                    )
+                    checks = phase_result.get("checks", {})
                     for check_name, check_result in checks.items():
                         print(f"      - {check_name}: {'✅' if check_result else '❌'}")
-        elif 'mode' in result:
+        elif "mode" in result:
             # LIGHT/DEEP/MILESTONE 模式
-            mode_str = result.get('mode', 'unknown')
-            status_str = result.get('status', 'unknown')
+            mode_str = result.get("mode", "unknown")
+            status_str = result.get("status", "unknown")
             print(f"   模式: {mode_str}")
             print(f"   状态: {status_str}")
 
-            if mode_str == 'light' and status_str == 'passed':
+            if mode_str == "light" and status_str == "passed":
                 print(f"   消息: {result.get('message', 'No critical issues found')}")
             else:
                 # 显示子阶段结果
-                for sub_key in ['discovery', 'analysis', 'fix']:
+                for sub_key in ["discovery", "analysis", "fix"]:
                     if sub_key in result:
                         sub_result = result[sub_key]
-                        if sub_key == 'discovery':
+                        if sub_key == "discovery":
                             print(f"\n   {sub_key.upper()}:")
-                            print(f"      发现问题: {sub_result.get('issues_found', 0)} 个")
-                            print(f"      需要修复: {'是' if sub_result.get('needs_fix') else '否'}")
-                        elif sub_key == 'fix':
-                            summary = sub_result.get('summary', {})
+                            print(
+                                f"      发现问题: {sub_result.get('issues_found', 0)} 个"
+                            )
+                            print(
+                                f"      需要修复: {'是' if sub_result.get('needs_fix') else '否'}"
+                            )
+                        elif sub_key == "fix":
+                            summary = sub_result.get("summary", {})
                             print(f"\n   {sub_key.upper()}:")
                             print(f"      总计: {summary.get('total', 0)}")
                             print(f"      成功: {summary.get('success', 0)}")
@@ -1590,10 +1637,10 @@ def cmd_feedback_loop(args):
         print(f"\n📄 报告已保存: {report_path}")
 
         # 根据模式确定返回状态
-        if 'final_status' in result:
-            return 0 if result['final_status'] == 'passed' else 1
-        if 'status' in result:
-            return 0 if result['status'] == 'passed' else 1
+        if "final_status" in result:
+            return 0 if result["final_status"] == "passed" else 1
+        if "status" in result:
+            return 0 if result["status"] == "passed" else 1
         return 0
 
     if args.feedback_discover:
@@ -1612,18 +1659,22 @@ def cmd_feedback_loop(args):
         print(f"   本次迭代: {result['iteration']}")
         print(f"   发现问题数: {result['issues_found']}")
 
-        severity_summary = result.get('severity_summary', {})
+        severity_summary = result.get("severity_summary", {})
         for sev, count in severity_summary.items():
             if count > 0:
-                emoji = "🔴" if "P0" in sev else ("🟠" if "P1" in sev else ("🟡" if "P2" in sev else "⚪"))
+                emoji = (
+                    "🔴"
+                    if "P0" in sev
+                    else ("🟠" if "P1" in sev else ("🟡" if "P2" in sev else "⚪"))
+                )
                 print(f"      {emoji} {sev}: {count} 个")
 
         print(f"\n   需要修复: {'是 ❌' if result['needs_fix'] else '否 ✅'}")
 
-        if result['issues']:
+        if result["issues"]:
             print("\n📋 问题列表:")
-            for issue in result['issues'][:10]:  # 只显示前10个
-                sev = issue.get('severity', '')
+            for issue in result["issues"][:10]:  # 只显示前10个
+                sev = issue.get("severity", "")
                 sev_emoji = "🔴" if "P0" in sev else ("🟠" if "P1" in sev else "🟡")
                 print(f"   {sev_emoji} [{issue.get('id')}] {issue.get('title')}")
                 print(f"      描述: {issue.get('description', '')[:50]}...")
@@ -1647,11 +1698,11 @@ def cmd_feedback_loop(args):
         print(f"   本次迭代: {result['iteration']}")
         print(f"   分析问题数: {len(result['analyses'])}")
 
-        for issue_id, analysis in result['analyses'].items():
+        for issue_id, analysis in result["analyses"].items():
             print(f"\n   问题 {issue_id}:")
             print(f"      根本原因: {analysis.get('root_cause', '分析中...')[:100]}...")
             print(f"      影响范围: {', '.join(analysis.get('impact_scope', [])[:3])}")
-            options = analysis.get('options', [])
+            options = analysis.get("options", [])
             if options:
                 print(f"      修复选项: {len(options)} 个")
                 for opt in options[:2]:
@@ -1675,16 +1726,16 @@ def cmd_feedback_loop(args):
         print(f"   本次迭代: {result['iteration']}")
         print(f"   干运行: {'是' if result.get('dry_run') else '否'}")
 
-        summary = result.get('summary', {})
+        summary = result.get("summary", {})
         print(f"\n   总计: {summary.get('total', 0)}")
         print(f"   成功: {summary.get('success', 0)} ✅")
         print(f"   失败: {summary.get('failed', 0)} ❌")
 
-        for fix_result in result.get('fix_results', []):
-            status_emoji = "✅" if fix_result['success'] else "❌"
+        for fix_result in result.get("fix_results", []):
+            status_emoji = "✅" if fix_result["success"] else "❌"
             print(f"\n   {status_emoji} [{fix_result['issue_id']}]")
             print(f"      操作: {fix_result['fix_description'][:80]}...")
-            if fix_result.get('files_modified'):
+            if fix_result.get("files_modified"):
                 print(f"      修改文件: {', '.join(fix_result['files_modified'][:3])}")
 
         # 保存报告
@@ -1705,27 +1756,27 @@ def cmd_feedback_loop(args):
         print(f"   本次迭代: {result['iteration']}")
         print(f"   验证通过: {'是 ✅' if result['verification_passed'] else '否 ❌'}")
 
-        checks = result.get('checks', {})
+        checks = result.get("checks", {})
         for check_name, check_result in checks.items():
             status_emoji = "✅" if check_result else "❌"
             print(f"   {status_emoji} {check_name}")
 
-        summary = result.get('summary', {})
+        summary = result.get("summary", {})
         print("\n   问题统计:")
         print(f"      总计: {summary.get('total_issues', 0)}")
         print(f"      已修复: {summary.get('fixed', 0)}")
         print(f"      待处理: {summary.get('open', 0)}")
 
-        if result.get('open_issues'):
+        if result.get("open_issues"):
             print("\n   待处理问题:")
-            for issue in result['open_issues'][:5]:
+            for issue in result["open_issues"][:5]:
                 print(f"      - [{issue.get('severity')}] {issue.get('title')}")
 
         # 保存报告
         report_path = feedback.export_report()
         print(f"\n📄 报告已保存: {report_path}")
 
-        return 0 if result['verification_passed'] else 1
+        return 0 if result["verification_passed"] else 1
 
     if args.feedback_report:
         # 导出报告
@@ -1753,15 +1804,33 @@ def _collect_writing_options_from_args(args) -> dict:
         {
             "style": getattr(args, "style", DEFAULT_WRITING_OPTIONS["style"]),
             "style_preset": getattr(args, "style_preset", ""),
-            "perspective": getattr(args, "perspective", DEFAULT_WRITING_OPTIONS["perspective"]),
-            "narrative_mode": getattr(args, "narrative_mode", DEFAULT_WRITING_OPTIONS["narrative_mode"]),
+            "perspective": getattr(
+                args, "perspective", DEFAULT_WRITING_OPTIONS["perspective"]
+            ),
+            "narrative_mode": getattr(
+                args, "narrative_mode", DEFAULT_WRITING_OPTIONS["narrative_mode"]
+            ),
             "pace": getattr(args, "pace", DEFAULT_WRITING_OPTIONS["pace"]),
-            "dialogue_density": getattr(args, "dialogue_density", DEFAULT_WRITING_OPTIONS["dialogue_density"]),
-            "prose_style": getattr(args, "prose_style", DEFAULT_WRITING_OPTIONS["prose_style"]),
-            "world_building_density": getattr(args, "world_building_density", DEFAULT_WRITING_OPTIONS["world_building_density"]),
-            "emotion_intensity": getattr(args, "emotion_intensity", DEFAULT_WRITING_OPTIONS["emotion_intensity"]),
-            "combat_style": getattr(args, "combat_style", DEFAULT_WRITING_OPTIONS["combat_style"]),
-            "hook_strength": getattr(args, "hook_strength", DEFAULT_WRITING_OPTIONS["hook_strength"]),
+            "dialogue_density": getattr(
+                args, "dialogue_density", DEFAULT_WRITING_OPTIONS["dialogue_density"]
+            ),
+            "prose_style": getattr(
+                args, "prose_style", DEFAULT_WRITING_OPTIONS["prose_style"]
+            ),
+            "world_building_density": getattr(
+                args,
+                "world_building_density",
+                DEFAULT_WRITING_OPTIONS["world_building_density"],
+            ),
+            "emotion_intensity": getattr(
+                args, "emotion_intensity", DEFAULT_WRITING_OPTIONS["emotion_intensity"]
+            ),
+            "combat_style": getattr(
+                args, "combat_style", DEFAULT_WRITING_OPTIONS["combat_style"]
+            ),
+            "hook_strength": getattr(
+                args, "hook_strength", DEFAULT_WRITING_OPTIONS["hook_strength"]
+            ),
         }
     )
 
@@ -1770,7 +1839,9 @@ def _resolve_active_writing_options(config_mgr, args) -> dict:
     """Merge project defaults with current CLI args."""
     project_defaults = {}
     if config_mgr.current_project:
-        project_defaults = config_mgr.current_project.metadata.get("writing_options", {})
+        project_defaults = config_mgr.current_project.metadata.get(
+            "writing_options", {}
+        )
     cli_options = _collect_writing_options_from_args(args)
     merged = dict(normalize_writing_options(project_defaults))
     merged.update(cli_options)
@@ -1798,11 +1869,22 @@ def _print_writing_option_catalog() -> None:
             print(f"  - {key}: {desc}")
 
 
-def _ensure_run_tracking(project_dir: Path, run_id: str, project_id: str, command: list[str], run_dir: Path | None) -> Path:
+def _ensure_run_tracking(
+    project_dir: Path,
+    run_id: str,
+    project_id: str,
+    command: list[str],
+    run_dir: Path | None,
+) -> Path:
     """Create the run directory and baseline status if they do not exist yet."""
     resolved_run_dir = run_dir or ensure_run_dir(project_dir, run_id)
     if not read_status(resolved_run_dir):
-        create_run(project_dir=project_dir, run_id=run_id, project_id=project_id, command=command)
+        create_run(
+            project_dir=project_dir,
+            run_id=run_id,
+            project_id=project_id,
+            command=command,
+        )
     return resolved_run_dir
 
 
@@ -1949,7 +2031,9 @@ def _pause_for_volume_review(
     return 0
 
 
-def _continue_longform_run(args, *, state: dict[str, Any], run_dir: Path, run_started_at: datetime) -> int:
+def _continue_longform_run(
+    args, *, state: dict[str, Any], run_dir: Path, run_started_at: datetime
+) -> int:
     config_mgr = get_config_manager()
     project = config_mgr.current_project
     if not project:
@@ -1962,8 +2046,20 @@ def _continue_longform_run(args, *, state: dict[str, Any], run_dir: Path, run_st
 
     while True:
         volume_guidance = str(state.get("next_volume_guidance", "") or "").strip()
+        registry_guidance = format_longform_registry(state.get("cross_volume_registry"))
+        if registry_guidance:
+            volume_guidance = "\n".join(
+                part
+                for part in [registry_guidance, volume_guidance]
+                if str(part).strip()
+            ).strip()
         chapter_guidance = str(state.get("next_chapter_guidance", "") or "").strip()
         chapter_guidance_target = state.get("next_chapter_guidance_chapter")
+        pending_validation = (
+            state.get("pending_revision_validation")
+            if isinstance(state.get("pending_revision_validation"), dict)
+            else None
+        )
         current_volume = int(state.get("current_volume") or 0)
         start_chapter = int(state.get("current_volume_start_chapter") or 0)
         end_chapter = int(state.get("current_volume_end_chapter") or 0)
@@ -1979,6 +2075,32 @@ def _continue_longform_run(args, *, state: dict[str, Any], run_dir: Path, run_st
             )
 
         next_start = max(int(state.get("chapters_completed", 0)) + 1, start_chapter)
+        subprocess_count = end_chapter - next_start + 1
+        if pending_validation:
+            validation_target = int(pending_validation.get("chapter_number") or 0)
+            if validation_target != next_start:
+                state["status"] = "paused"
+                state["current_stage"] = STAGE_CHAPTER_REVIEW
+                save_longform_state(run_dir, state)
+                _sync_status_longform_fields(run_dir, state)
+                _update_run_progress(
+                    run_dir,
+                    project_id=project_id,
+                    command=command,
+                    status="paused",
+                    current_stage=STAGE_CHAPTER_REVIEW,
+                    current_step="修订验证目标与下一章进度不一致",
+                    chapters_total=state.get("total_chapters", 0),
+                    chapters_completed=state.get("chapters_completed", 0),
+                    run_started_at=run_started_at,
+                    failed_stage=STAGE_VOLUME_WRITE,
+                    error_message=(
+                        f"pending_revision_validation targets chapter {validation_target}, "
+                        f"but next resumable chapter is {next_start}"
+                    ),
+                )
+                return 1
+            subprocess_count = 1
         if next_start > end_chapter:
             state["last_completed_volume"] = current_volume
             if current_volume >= int(state.get("total_volumes", 0)):
@@ -2016,11 +2138,13 @@ def _continue_longform_run(args, *, state: dict[str, Any], run_dir: Path, run_st
             run_id=state["run_id"],
             run_dir=run_dir,
             start=next_start,
-            count=end_chapter - next_start + 1,
+            count=subprocess_count,
             writing_options=writing_options,
             volume_guidance=volume_guidance,
             chapter_guidance=chapter_guidance,
-            chapter_guidance_target=int(chapter_guidance_target) if chapter_guidance_target else None,
+            chapter_guidance_target=int(chapter_guidance_target)
+            if chapter_guidance_target
+            else None,
         )
         if return_code != 0:
             state["status"] = "failed"
@@ -2043,8 +2167,74 @@ def _continue_longform_run(args, *, state: dict[str, Any], run_dir: Path, run_st
             )
             return return_code
 
+        refreshed_state = load_longform_state(run_dir)
+        if refreshed_state and (
+            refreshed_state.get("status") == "paused"
+            or refreshed_state.get("pending_state_path")
+        ):
+            state = refreshed_state
+            _sync_status_longform_fields(run_dir, state)
+            return 0
+
         refreshed_project = config_mgr.load_project(project_id) or project
-        state["chapters_completed"] = max(int(getattr(refreshed_project, "current_chapter", 0)), end_chapter)
+        if pending_validation:
+            validation_target = int(pending_validation.get("chapter_number") or 0)
+            original_issue_types = [
+                str(item).strip()
+                for item in pending_validation.get("issue_types", [])
+                if str(item).strip()
+            ]
+            report = _load_chapter_consistency_report(
+                _project_dir(config_mgr),
+                validation_target,
+            )
+            if report is None:
+                return _pause_for_revision_validation_failure(
+                    run_dir=run_dir,
+                    state=state,
+                    project_id=project_id,
+                    command=command,
+                    run_started_at=run_started_at,
+                    chapter_number=validation_target,
+                    issue_types=original_issue_types,
+                    reason="修订验证失败：缺少或无法读取新的 consistency report。",
+                )
+            current_issue_types = {
+                str(item).strip()
+                for item in report.get("issue_types", [])
+                if str(item).strip()
+            }
+            remaining_issue_types = [
+                item for item in original_issue_types if item in current_issue_types
+            ]
+            if remaining_issue_types:
+                return _pause_for_revision_validation_failure(
+                    run_dir=run_dir,
+                    state=state,
+                    project_id=project_id,
+                    command=command,
+                    run_started_at=run_started_at,
+                    chapter_number=validation_target,
+                    issue_types=remaining_issue_types,
+                    reason=(
+                        "修订验证失败：原阻断问题仍存在 "
+                        + "、".join(remaining_issue_types)
+                    ),
+                )
+            state["chapters_completed"] = max(
+                int(getattr(refreshed_project, "current_chapter", 0)),
+                int(state.get("chapters_completed", 0)),
+            )
+            state["pending_revision_validation"] = None
+            state["next_chapter_guidance"] = ""
+            state["next_chapter_guidance_chapter"] = None
+            save_longform_state(run_dir, state)
+            _sync_status_longform_fields(run_dir, state)
+            continue
+
+        state["chapters_completed"] = max(
+            int(getattr(refreshed_project, "current_chapter", 0)), end_chapter
+        )
         state["next_volume_guidance"] = ""
         state["next_volume_guidance_payload"] = {}
         state["next_chapter_guidance"] = ""
@@ -2095,7 +2285,9 @@ def _continue_longform_run(args, *, state: dict[str, Any], run_dir: Path, run_st
         save_longform_state(run_dir, state)
         _sync_status_longform_fields(run_dir, state)
 
-        if should_pause_for_stage(state["approval_mode"], state["auto_approve"], "volume"):
+        if should_pause_for_stage(
+            state["approval_mode"], state["auto_approve"], "volume"
+        ):
             return _pause_for_volume_review(
                 run_dir=run_dir,
                 state=state,
@@ -2149,7 +2341,9 @@ def cmd_generate_full(args):
             return 1
 
         action = getattr(args, "submit_approval", None) or "approve"
-        approval_payload = approval_payload_from_input(getattr(args, "approval_payload", None))
+        approval_payload = approval_payload_from_input(
+            getattr(args, "approval_payload", None)
+        )
         approval_entry = {
             "checkpoint_type": pending_state.get("checkpoint_type"),
             "action": action,
@@ -2182,8 +2376,15 @@ def cmd_generate_full(args):
             state["current_stage"] = STAGE_VOLUME_PLAN
             state = clear_pause(run_dir, state)
             _sync_status_longform_fields(run_dir, state)
-            update_status(run_dir, pending_state_path=None, pause_reason=None, risk_report_path=None)
-            return _continue_longform_run(args, state=state, run_dir=run_dir, run_started_at=run_started_at)
+            update_status(
+                run_dir,
+                pending_state_path=None,
+                pause_reason=None,
+                risk_report_path=None,
+            )
+            return _continue_longform_run(
+                args, state=state, run_dir=run_dir, run_started_at=run_started_at
+            )
 
         if pending_state.get("checkpoint_type") == CHECKPOINT_VOLUME:
             current_volume = int(state.get("current_volume", 0))
@@ -2203,6 +2404,7 @@ def cmd_generate_full(args):
                 )
                 return 0
             guidance_payload = normalize_volume_guidance_payload(approval_payload)
+            registry_payload = normalize_longform_registry(approval_payload)
             freeform_guidance = str(
                 approval_payload.get("next_volume_guidance")
                 or approval_payload.get("notes")
@@ -2211,6 +2413,12 @@ def cmd_generate_full(args):
             structured_guidance = format_volume_guidance(guidance_payload)
             state["next_volume_guidance_payload"] = guidance_payload
             state["next_volume_guidance"] = structured_guidance or freeform_guidance
+            if any(key in approval_payload for key in registry_payload):
+                state["cross_volume_registry"] = merge_longform_registry(
+                    state.get("cross_volume_registry"),
+                    approval_payload,
+                )
+            state["pending_revision_validation"] = None
             state["last_completed_volume"] = current_volume
             state["current_stage"] = STAGE_VOLUME_PLAN
             state = clear_pause(run_dir, state)
@@ -2227,8 +2435,15 @@ def cmd_generate_full(args):
             state = next_volume(state)
             save_longform_state(run_dir, state)
             _sync_status_longform_fields(run_dir, state)
-            update_status(run_dir, pending_state_path=None, pause_reason=None, risk_report_path=None)
-            return _continue_longform_run(args, state=state, run_dir=run_dir, run_started_at=run_started_at)
+            update_status(
+                run_dir,
+                pending_state_path=None,
+                pause_reason=None,
+                risk_report_path=None,
+            )
+            return _continue_longform_run(
+                args, state=state, run_dir=run_dir, run_started_at=run_started_at
+            )
 
         if pending_state.get("checkpoint_type") == CHECKPOINT_RISK:
             current_volume = int(state.get("current_volume", 0))
@@ -2250,12 +2465,20 @@ def cmd_generate_full(args):
 
             state = clear_pause(run_dir, state)
             state["risk_report_path"] = None
+            state["pending_revision_validation"] = None
             state["current_stage"] = STAGE_VOLUME_REVIEW
             save_longform_state(run_dir, state)
             _sync_status_longform_fields(run_dir, state)
-            update_status(run_dir, pending_state_path=None, pause_reason=None, risk_report_path=None)
+            update_status(
+                run_dir,
+                pending_state_path=None,
+                pause_reason=None,
+                risk_report_path=None,
+            )
 
-            if should_pause_for_stage(state["approval_mode"], state["auto_approve"], "volume"):
+            if should_pause_for_stage(
+                state["approval_mode"], state["auto_approve"], "volume"
+            ):
                 return _pause_for_volume_review(
                     run_dir=run_dir,
                     state=state,
@@ -2277,11 +2500,20 @@ def cmd_generate_full(args):
             state = next_volume(state)
             save_longform_state(run_dir, state)
             _sync_status_longform_fields(run_dir, state)
-            update_status(run_dir, pending_state_path=None, pause_reason=None, risk_report_path=None)
-            return _continue_longform_run(args, state=state, run_dir=run_dir, run_started_at=run_started_at)
+            update_status(
+                run_dir,
+                pending_state_path=None,
+                pause_reason=None,
+                risk_report_path=None,
+            )
+            return _continue_longform_run(
+                args, state=state, run_dir=run_dir, run_started_at=run_started_at
+            )
 
         if pending_state.get("checkpoint_type") == CHECKPOINT_CHAPTER:
-            chapter_number = int((pending_state.get("review_payload") or {}).get("chapter_number", 0))
+            chapter_number = int(
+                (pending_state.get("review_payload") or {}).get("chapter_number", 0)
+            )
             if action == "reject":
                 save_longform_state(run_dir, state)
                 _sync_status_longform_fields(run_dir, state)
@@ -2298,19 +2530,51 @@ def cmd_generate_full(args):
                 )
                 return 0
 
-            notes = str(
-                approval_payload.get("chapter_rewrite_guidance")
-                or approval_payload.get("notes")
-                or ""
+            review_payload = dict((pending_state.get("review_payload") or {}))
+            submitted_rewrite_plan = approval_payload.get("chapter_rewrite_plan")
+            rewrite_plan = (
+                submitted_rewrite_plan
+                if isinstance(submitted_rewrite_plan, dict)
+                else review_payload.get("rewrite_plan")
+            )
+            notes = str(approval_payload.get("notes") or "").strip()
+            explicit_guidance = str(
+                approval_payload.get("chapter_rewrite_guidance") or ""
             ).strip()
-            state["next_chapter_guidance"] = notes
+            guidance = explicit_guidance or compile_chapter_rewrite_guidance(
+                rewrite_plan,
+                extra_notes=notes,
+            )
+            state["next_chapter_guidance"] = guidance
             state["next_chapter_guidance_chapter"] = chapter_number or None
+            state["pending_revision_validation"] = {
+                "chapter_number": chapter_number,
+                "issue_types": [
+                    str(item).strip()
+                    for item in review_payload.get("issue_types", [])
+                    if str(item).strip()
+                ],
+                "success_criteria": list(
+                    (rewrite_plan or {}).get("success_criteria", [])
+                    if isinstance(rewrite_plan, dict)
+                    else []
+                ),
+                "created_from_checkpoint": CHECKPOINT_CHAPTER,
+            }
             state = clear_pause(run_dir, state)
             state["current_stage"] = STAGE_VOLUME_PLAN
             save_longform_state(run_dir, state)
             _sync_status_longform_fields(run_dir, state)
-            update_status(run_dir, pending_state_path=None, pause_reason=None, risk_report_path=None, chapter_quality_report=None)
-            return _continue_longform_run(args, state=state, run_dir=run_dir, run_started_at=run_started_at)
+            update_status(
+                run_dir,
+                pending_state_path=None,
+                pause_reason=None,
+                risk_report_path=None,
+                chapter_quality_report=None,
+            )
+            return _continue_longform_run(
+                args, state=state, run_dir=run_dir, run_started_at=run_started_at
+            )
 
         print("❌ 不支持的审批检查点")
         return 1
@@ -2319,7 +2583,16 @@ def cmd_generate_full(args):
         project=project,
         run_id=run_id,
         run_dir=run_dir,
-        chapters_per_volume=max(int(getattr(args, "chapters_per_volume", config_mgr.generation.chapters_per_volume)), 1),
+        chapters_per_volume=max(
+            int(
+                getattr(
+                    args,
+                    "chapters_per_volume",
+                    config_mgr.generation.chapters_per_volume,
+                )
+            ),
+            1,
+        ),
         approval_mode=getattr(args, "approval_mode", "outline+volume"),
         auto_approve=bool(getattr(args, "auto_approve", False)),
     )
@@ -2370,7 +2643,9 @@ def cmd_generate_full(args):
     state["outline_snapshot"] = review_payload_for_outline(project)
     save_longform_state(run_dir, state)
     _sync_status_longform_fields(run_dir, state)
-    return _continue_longform_run(args, state=state, run_dir=run_dir, run_started_at=run_started_at)
+    return _continue_longform_run(
+        args, state=state, run_dir=run_dir, run_started_at=run_started_at
+    )
 
 
 def main():
@@ -2450,58 +2725,129 @@ def main():
 
     # 生成命令
     parser.add_argument("--generate", type=int, metavar="COUNT", help="生成章节数量")
-    parser.add_argument("--generate-full", action="store_true", help="按整本长篇流程生成并在大纲/分卷节点暂停审批")
+    parser.add_argument(
+        "--generate-full",
+        action="store_true",
+        help="按整本长篇流程生成并在大纲/分卷节点暂停审批",
+    )
     parser.add_argument("--start", type=int, help="起始章节号")
     parser.add_argument("--run-id", help="运行任务ID（用于写入任务状态）")
     parser.add_argument("--run-dir", help="运行任务目录（用于写入 status.json 和日志）")
-    parser.add_argument("--chapters-per-volume", type=int, default=60, help="长篇模式每卷章节数")
+    parser.add_argument(
+        "--chapters-per-volume", type=int, default=60, help="长篇模式每卷章节数"
+    )
     parser.add_argument(
         "--approval-mode",
         choices=["outline+volume", "outline", "volume", "none"],
         default="outline+volume",
         help="长篇模式的人审节点",
     )
-    parser.add_argument("--auto-approve", action="store_true", help="长篇模式自动跳过所有审批节点")
-    parser.add_argument("--resume-state", help="恢复长篇运行时使用的 pending state 文件")
+    parser.add_argument(
+        "--auto-approve", action="store_true", help="长篇模式自动跳过所有审批节点"
+    )
+    parser.add_argument(
+        "--resume-state", help="恢复长篇运行时使用的 pending state 文件"
+    )
     parser.add_argument(
         "--submit-approval",
         choices=["approve", "revise", "reject"],
         help="提交对 pending state 的审批动作",
     )
-    parser.add_argument("--approval-payload", help="审批补充 JSON，可传文件路径或 JSON 字符串")
-    parser.add_argument("--volume-guidance", default="", help="长篇模式传给当前分卷生成的额外修订指令")
-    parser.add_argument("--chapter-guidance", default="", help="仅对指定章节生效的一次性重写指令")
-    parser.add_argument("--chapter-guidance-target", type=int, default=None, help="一次性重写指令对应的章节号")
-    parser.add_argument("--continue-from", type=int,
-                        help="从指定章节号继续生成（跳过已成功的章节）")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="仅预览要生成的章节，不实际生成")
-    parser.add_argument("--no-auto-feedback", action="store_true",
-                        help="禁用自动反馈循环")
-    parser.add_argument("--show-writing-options", action="store_true",
-                        help="显示所有写作参数可选值并退出")
-    parser.add_argument("--style", choices=BASE_STYLE_CHOICES,
-                        default=DEFAULT_WRITING_OPTIONS["style"], help="基础写作风格")
-    parser.add_argument("--style-preset", choices=[""] + STYLE_PRESET_CHOICES,
-                        default="", help="知识库风格预设")
-    parser.add_argument("--perspective", choices=sorted(WRITING_OPTION_GROUPS["perspective"].keys()),
-                        default=DEFAULT_WRITING_OPTIONS["perspective"], help="叙事视角")
-    parser.add_argument("--narrative-mode", choices=sorted(WRITING_OPTION_GROUPS["narrative_mode"].keys()),
-                        default=DEFAULT_WRITING_OPTIONS["narrative_mode"], help="叙事写法")
-    parser.add_argument("--pace", choices=sorted(WRITING_OPTION_GROUPS["pace"].keys()),
-                        default=DEFAULT_WRITING_OPTIONS["pace"], help="节奏")
-    parser.add_argument("--dialogue-density", choices=sorted(WRITING_OPTION_GROUPS["dialogue_density"].keys()),
-                        default=DEFAULT_WRITING_OPTIONS["dialogue_density"], help="对白密度")
-    parser.add_argument("--prose-style", choices=sorted(WRITING_OPTION_GROUPS["prose_style"].keys()),
-                        default=DEFAULT_WRITING_OPTIONS["prose_style"], help="行文质感")
-    parser.add_argument("--world-building-density", choices=sorted(WRITING_OPTION_GROUPS["world_building_density"].keys()),
-                        default=DEFAULT_WRITING_OPTIONS["world_building_density"], help="设定密度")
-    parser.add_argument("--emotion-intensity", choices=sorted(WRITING_OPTION_GROUPS["emotion_intensity"].keys()),
-                        default=DEFAULT_WRITING_OPTIONS["emotion_intensity"], help="情绪强度")
-    parser.add_argument("--combat-style", choices=sorted(WRITING_OPTION_GROUPS["combat_style"].keys()),
-                        default=DEFAULT_WRITING_OPTIONS["combat_style"], help="战斗写法")
-    parser.add_argument("--hook-strength", choices=sorted(WRITING_OPTION_GROUPS["hook_strength"].keys()),
-                        default=DEFAULT_WRITING_OPTIONS["hook_strength"], help="开篇抓力")
+    parser.add_argument(
+        "--approval-payload", help="审批补充 JSON，可传文件路径或 JSON 字符串"
+    )
+    parser.add_argument(
+        "--volume-guidance", default="", help="长篇模式传给当前分卷生成的额外修订指令"
+    )
+    parser.add_argument(
+        "--chapter-guidance", default="", help="仅对指定章节生效的一次性重写指令"
+    )
+    parser.add_argument(
+        "--chapter-guidance-target",
+        type=int,
+        default=None,
+        help="一次性重写指令对应的章节号",
+    )
+    parser.add_argument(
+        "--continue-from", type=int, help="从指定章节号继续生成（跳过已成功的章节）"
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="仅预览要生成的章节，不实际生成"
+    )
+    parser.add_argument(
+        "--no-auto-feedback", action="store_true", help="禁用自动反馈循环"
+    )
+    parser.add_argument(
+        "--show-writing-options",
+        action="store_true",
+        help="显示所有写作参数可选值并退出",
+    )
+    parser.add_argument(
+        "--style",
+        choices=BASE_STYLE_CHOICES,
+        default=DEFAULT_WRITING_OPTIONS["style"],
+        help="基础写作风格",
+    )
+    parser.add_argument(
+        "--style-preset",
+        choices=[""] + STYLE_PRESET_CHOICES,
+        default="",
+        help="知识库风格预设",
+    )
+    parser.add_argument(
+        "--perspective",
+        choices=sorted(WRITING_OPTION_GROUPS["perspective"].keys()),
+        default=DEFAULT_WRITING_OPTIONS["perspective"],
+        help="叙事视角",
+    )
+    parser.add_argument(
+        "--narrative-mode",
+        choices=sorted(WRITING_OPTION_GROUPS["narrative_mode"].keys()),
+        default=DEFAULT_WRITING_OPTIONS["narrative_mode"],
+        help="叙事写法",
+    )
+    parser.add_argument(
+        "--pace",
+        choices=sorted(WRITING_OPTION_GROUPS["pace"].keys()),
+        default=DEFAULT_WRITING_OPTIONS["pace"],
+        help="节奏",
+    )
+    parser.add_argument(
+        "--dialogue-density",
+        choices=sorted(WRITING_OPTION_GROUPS["dialogue_density"].keys()),
+        default=DEFAULT_WRITING_OPTIONS["dialogue_density"],
+        help="对白密度",
+    )
+    parser.add_argument(
+        "--prose-style",
+        choices=sorted(WRITING_OPTION_GROUPS["prose_style"].keys()),
+        default=DEFAULT_WRITING_OPTIONS["prose_style"],
+        help="行文质感",
+    )
+    parser.add_argument(
+        "--world-building-density",
+        choices=sorted(WRITING_OPTION_GROUPS["world_building_density"].keys()),
+        default=DEFAULT_WRITING_OPTIONS["world_building_density"],
+        help="设定密度",
+    )
+    parser.add_argument(
+        "--emotion-intensity",
+        choices=sorted(WRITING_OPTION_GROUPS["emotion_intensity"].keys()),
+        default=DEFAULT_WRITING_OPTIONS["emotion_intensity"],
+        help="情绪强度",
+    )
+    parser.add_argument(
+        "--combat-style",
+        choices=sorted(WRITING_OPTION_GROUPS["combat_style"].keys()),
+        default=DEFAULT_WRITING_OPTIONS["combat_style"],
+        help="战斗写法",
+    )
+    parser.add_argument(
+        "--hook-strength",
+        choices=sorted(WRITING_OPTION_GROUPS["hook_strength"].keys()),
+        default=DEFAULT_WRITING_OPTIONS["hook_strength"],
+        help="开篇抓力",
+    )
 
     # 状态命令
     parser.add_argument("--status", action="store_true", help="查看项目状态")
@@ -2519,30 +2865,54 @@ def main():
     parser.add_argument("--fanqie-book-id", help="番茄书号 (覆盖配置)")
 
     # 衍生内容命令
-    parser.add_argument("--sync-derivatives", metavar="RANGE", help="同步衍生内容 (如: 1-10)")
-    parser.add_argument("--list-derivatives", action="store_true", help="列出所有衍生内容")
+    parser.add_argument(
+        "--sync-derivatives", metavar="RANGE", help="同步衍生内容 (如: 1-10)"
+    )
+    parser.add_argument(
+        "--list-derivatives", action="store_true", help="列出所有衍生内容"
+    )
     parser.add_argument("--podcast", metavar="RANGE", help="生成播客脚本 (如: 1-4)")
-    parser.add_argument("--video-prompt", type=int, metavar="CHAPTER", help="生成视频提示词")
+    parser.add_argument(
+        "--video-prompt", type=int, metavar="CHAPTER", help="生成视频提示词"
+    )
     parser.add_argument("--character", metavar="NAME", help="生成角色描述")
 
     # 反馈循环命令
-    parser.add_argument("--feedback-discover", action="store_true",
-                        help="发现问题：运行一致性检查，发现潜在问题")
-    parser.add_argument("--feedback-analyze", action="store_true",
-                        help="分析问题：对发现的问题进行根因分析")
-    parser.add_argument("--feedback-fix", action="store_true",
-                        help="修复错误：根据分析结果修复问题")
-    parser.add_argument("--feedback-verify", action="store_true",
-                        help="验证结果：验证修复是否有效")
-    parser.add_argument("--feedback-cycle", action="store_true",
-                        help="完整反馈循环：发现问题→分析→修复→验证")
-    parser.add_argument("--feedback-report", action="store_true",
-                        help="导出反馈报告：输出问题报告到文件")
-    parser.add_argument("--feedback-mode", choices=["light", "deep", "full", "volume_complete"],
-                        default="light",
-                        help="反馈循环模式: light=每5章快速检查, deep=完成20章后, full=完整分析, volume_complete=完成一卷后")
-    parser.add_argument("--feedback-max-iterations", type=int, default=3,
-                        help="最大迭代次数 (默认: 3)")
+    parser.add_argument(
+        "--feedback-discover",
+        action="store_true",
+        help="发现问题：运行一致性检查，发现潜在问题",
+    )
+    parser.add_argument(
+        "--feedback-analyze",
+        action="store_true",
+        help="分析问题：对发现的问题进行根因分析",
+    )
+    parser.add_argument(
+        "--feedback-fix", action="store_true", help="修复错误：根据分析结果修复问题"
+    )
+    parser.add_argument(
+        "--feedback-verify", action="store_true", help="验证结果：验证修复是否有效"
+    )
+    parser.add_argument(
+        "--feedback-cycle",
+        action="store_true",
+        help="完整反馈循环：发现问题→分析→修复→验证",
+    )
+    parser.add_argument(
+        "--feedback-report",
+        action="store_true",
+        help="导出反馈报告：输出问题报告到文件",
+    )
+    parser.add_argument(
+        "--feedback-mode",
+        choices=["light", "deep", "full", "volume_complete"],
+        default="light",
+        help="反馈循环模式: light=每5章快速检查, deep=完成20章后, full=完整分析, volume_complete=完成一卷后",
+    )
+    parser.add_argument(
+        "--feedback-max-iterations", type=int, default=3, help="最大迭代次数 (默认: 3)"
+    )
 
     # 日志
     parser.add_argument("--log-level", default="INFO", help="日志级别")
@@ -2619,7 +2989,14 @@ def main():
         return cmd_generate_character(args)
 
     # 反馈循环命令
-    if args.feedback_discover or args.feedback_analyze or args.feedback_fix or args.feedback_verify or args.feedback_cycle or args.feedback_report:
+    if (
+        args.feedback_discover
+        or args.feedback_analyze
+        or args.feedback_fix
+        or args.feedback_verify
+        or args.feedback_cycle
+        or args.feedback_report
+    ):
         return cmd_feedback_loop(args)
 
     # 默认显示状态

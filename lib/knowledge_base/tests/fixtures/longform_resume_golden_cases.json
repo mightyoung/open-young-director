@@ -1,0 +1,434 @@
+[
+  {
+    "name": "chapter_review_double_revise_replaces_with_latest_structured_guidance",
+    "type": "chapter_double_revise",
+    "chapter_number": 4,
+    "first_review_payload": {
+      "chapter_number": 4,
+      "title": "第四章",
+      "summary": "第一次复核：目标锁假继承，正文掉锚。",
+      "issue_types": [
+        "goal_lock_false_inheritance"
+      ],
+      "blocking_issues": [
+        "目标锁假继承[摘要命中但正文掉锚]: goal_lock=守住宗门祖地"
+      ],
+      "rewrite_plan": {
+        "schema_version": "rewrite_plan.v2",
+        "strategy": "targeted_patch",
+        "must_keep": [
+          "保留本章既有关键事件，不要靠删除冲突来伪造顺畅。"
+        ],
+        "success_criteria": [
+          "摘要和正文都必须真实推进目标锁：守住宗门祖地"
+        ],
+        "operations": [
+          {
+            "phase": "body",
+            "action": "rebuild_goal_lock_chain",
+            "target": "goal_lock_progression",
+            "instruction": "重写时围绕目标锁重组正文推进链：守住宗门祖地",
+            "rationale": "goal_lock_false_inheritance"
+          }
+        ]
+      }
+    },
+    "first_approval_payload": {
+      "chapter_rewrite_plan": {
+        "schema_version": "rewrite_plan.v2",
+        "strategy": "targeted_patch",
+        "must_keep": [
+          "保留本章既有关键事件，不要靠删除冲突来伪造顺畅。"
+        ],
+        "success_criteria": [
+          "摘要和正文都必须真实推进目标锁：守住宗门祖地"
+        ],
+        "operations": [
+          {
+            "phase": "body",
+            "action": "rebuild_goal_lock_chain",
+            "target": "goal_lock_progression",
+            "instruction": "重写时围绕目标锁重组正文推进链：守住宗门祖地",
+            "rationale": "goal_lock_false_inheritance"
+          }
+        ]
+      },
+      "notes": "先把祖地防线的实际行动补出来。"
+    },
+    "second_review_payload": {
+      "chapter_number": 4,
+      "title": "第四章",
+      "summary": "第二次复核：虽然补了目标锁，但开场仍未接住上一章后果。",
+      "issue_types": [
+        "scene_or_timeline_disconnect"
+      ],
+      "blocking_issues": [
+        "上一章后果未被承接：开头没有接住祖地夜袭后的危机。"
+      ],
+      "rewrite_plan": {
+        "schema_version": "rewrite_plan.v2",
+        "strategy": "targeted_patch",
+        "must_keep": [
+          "保留已经补上的祖地防线推进，不要回退。"
+        ],
+        "success_criteria": [
+          "开头必须接住上一章的后果，不能让危机凭空消失。"
+        ],
+        "operations": [
+          {
+            "phase": "opening",
+            "action": "restore_carryover",
+            "target": "carryover_consequence",
+            "instruction": "明确回应上一章遗留的危机、伤势、追击或未完成动作。",
+            "rationale": "上一章后果未被承接"
+          }
+        ]
+      }
+    },
+    "second_approval_payload": {
+      "chapter_rewrite_plan": {
+        "schema_version": "rewrite_plan.v2",
+        "strategy": "targeted_patch",
+        "must_keep": [
+          "保留已经补上的祖地防线推进，不要回退。"
+        ],
+        "success_criteria": [
+          "开头必须接住上一章的后果，不能让危机凭空消失。"
+        ],
+        "operations": [
+          {
+            "phase": "opening",
+            "action": "restore_carryover",
+            "target": "carryover_consequence",
+            "instruction": "明确回应上一章遗留的危机、伤势、追击或未完成动作。",
+            "rationale": "上一章后果未被承接"
+          }
+        ]
+      },
+      "notes": "第二次重试先把夜袭后的伤势和追兵压迫感补到开头。"
+    },
+    "expected_first_guidance_contains": [
+      "Patch 操作：",
+      "[body / rebuild_goal_lock_chain / goal_lock_progression]",
+      "人工补充：",
+      "先把祖地防线的实际行动补出来。"
+    ],
+    "expected_second_guidance_contains": [
+      "Patch 操作：",
+      "[opening / restore_carryover / carryover_consequence]",
+      "人工补充：",
+      "第二次重试先把夜袭后的伤势和追兵压迫感补到开头。"
+    ],
+    "expected_second_guidance_excludes": [
+      "先把祖地防线的实际行动补出来。",
+      "[body / rebuild_goal_lock_chain / goal_lock_progression]"
+    ]
+  },
+  {
+    "name": "volume_review_approval_injects_registry_summary_into_next_volume_guidance",
+    "type": "volume_registry_handoff",
+    "current_volume": 1,
+    "current_volume_start_chapter": 1,
+    "current_volume_end_chapter": 60,
+    "chapters_completed": 60,
+    "existing_registry": {
+      "unresolved_goals": [
+        "守住宗门祖地"
+      ],
+      "open_promises": [
+        "回收第一卷宗门裂痕"
+      ],
+      "dangling_settings": [
+        "远古秘境现世"
+      ]
+    },
+    "volume_review_payload": {
+      "volume_index": 1
+    },
+    "approval_payload": {
+      "must_recover": "回收第一卷宗门裂痕",
+      "relationship_focus": "强化主角与师尊的决裂后果",
+      "must_avoid": "不要新增无关支线角色",
+      "tone_target": "延续高压推进",
+      "extra_notes": "下一卷开头先处理祖地防线余波。",
+      "unresolved_goals": [
+        "守住宗门祖地",
+        "追回失落阵眼"
+      ],
+      "open_promises": [
+        "回收第一卷宗门裂痕"
+      ],
+      "dangling_settings": [
+        "远古秘境现世"
+      ]
+    },
+    "expected_registry_summary_contains": [
+      "跨卷未完成目标: 守住宗门祖地；追回失落阵眼",
+      "尚未回收承诺/伏笔: 回收第一卷宗门裂痕",
+      "已引入但未桥接设定: 远古秘境现世"
+    ],
+    "expected_volume_guidance_contains": [
+      "必须回收的伏笔/问题: 回收第一卷宗门裂痕",
+      "需要强化的人物关系: 强化主角与师尊的决裂后果",
+      "明确避免的方向: 不要新增无关支线角色",
+      "目标基调: 延续高压推进",
+      "补充说明: 下一卷开头先处理祖地防线余波。"
+    ]
+  },
+  {
+    "name": "chapter_review_reject_then_revise_resumes_with_latest_structured_guidance",
+    "type": "chapter_reject_then_revise",
+    "chapter_number": 7,
+    "review_payload": {
+      "chapter_number": 7,
+      "title": "第七章",
+      "summary": "章节开头没有承接上一章战场后果。",
+      "issue_types": [
+        "scene_or_timeline_disconnect"
+      ],
+      "blocking_issues": [
+        "上一章后果未被承接：开头没有接住祖地夜袭后的危机。"
+      ],
+      "rewrite_plan": {
+        "schema_version": "rewrite_plan.v2",
+        "strategy": "targeted_patch",
+        "must_keep": [
+          "保留已经成立的祖地危机，不要把追兵威胁删除。"
+        ],
+        "success_criteria": [
+          "开头必须接住上一章的后果，不能让危机凭空消失。"
+        ],
+        "operations": [
+          {
+            "phase": "opening",
+            "action": "restore_carryover",
+            "target": "carryover_consequence",
+            "instruction": "明确回应上一章遗留的危机、伤势、追击或未完成动作。",
+            "rationale": "上一章后果未被承接"
+          }
+        ]
+      }
+    },
+    "reject_payload": {
+      "chapter_rewrite_plan": {
+        "schema_version": "rewrite_plan.v2",
+        "strategy": "targeted_patch",
+        "must_keep": [
+          "保留已经成立的祖地危机，不要把追兵威胁删除。"
+        ],
+        "success_criteria": [
+          "开头必须接住上一章的后果，不能让危机凭空消失。"
+        ],
+        "operations": [
+          {
+            "phase": "opening",
+            "action": "restore_carryover",
+            "target": "carryover_consequence",
+            "instruction": "明确回应上一章遗留的危机、伤势、追击或未完成动作。",
+            "rationale": "上一章后果未被承接"
+          }
+        ]
+      },
+      "notes": "先别继续，等人工确认祖地夜袭余波怎么接。"
+    },
+    "revise_payload": {
+      "chapter_rewrite_plan": {
+        "schema_version": "rewrite_plan.v2",
+        "strategy": "targeted_patch",
+        "must_keep": [
+          "保留已经成立的祖地危机，不要把追兵威胁删除。"
+        ],
+        "success_criteria": [
+          "开头必须接住上一章的后果，不能让危机凭空消失。"
+        ],
+        "operations": [
+          {
+            "phase": "opening",
+            "action": "restore_carryover",
+            "target": "carryover_consequence",
+            "instruction": "明确回应上一章遗留的危机、伤势、追击或未完成动作。",
+            "rationale": "上一章后果未被承接"
+          }
+        ]
+      },
+      "notes": "现在继续，先把夜袭后的伤势、缺口和追兵压迫感补到开头。"
+    },
+    "expected_reject_status": {
+      "status": "paused",
+      "current_stage": "chapter.review"
+    },
+    "expected_revise_guidance_contains": [
+      "Patch 操作：",
+      "[opening / restore_carryover / carryover_consequence]",
+      "人工补充：",
+      "现在继续，先把夜袭后的伤势、缺口和追兵压迫感补到开头。"
+    ]
+  },
+  {
+    "name": "volume_registry_second_volume_merge_clear_keeps_latest_open_threads",
+    "type": "volume_registry_second_volume_merge_clear",
+    "current_volume": 2,
+    "current_volume_start_chapter": 61,
+    "current_volume_end_chapter": 120,
+    "chapters_completed": 120,
+    "total_volumes": 3,
+    "volume_plan": [
+      {
+        "volume_index": 1,
+        "start_chapter": 1,
+        "end_chapter": 60,
+        "chapter_count": 60
+      },
+      {
+        "volume_index": 2,
+        "start_chapter": 61,
+        "end_chapter": 120,
+        "chapter_count": 60
+      },
+      {
+        "volume_index": 3,
+        "start_chapter": 121,
+        "end_chapter": 180,
+        "chapter_count": 60
+      }
+    ],
+    "existing_registry": {
+      "unresolved_goals": [
+        "守住宗门祖地",
+        "追回失落阵眼"
+      ],
+      "open_promises": [
+        "回收第一卷宗门裂痕",
+        "解释师尊背叛动机"
+      ],
+      "dangling_settings": [
+        "远古秘境现世",
+        "古族祭纹规则"
+      ]
+    },
+    "volume_review_payload": {
+      "volume_index": 2
+    },
+    "approval_payload": {
+      "open_promises": [],
+      "dangling_settings": [
+        "古族祭纹规则"
+      ]
+    },
+    "expected_registry_after_merge": {
+      "unresolved_goals": [
+        "守住宗门祖地",
+        "追回失落阵眼"
+      ],
+      "open_promises": [],
+      "dangling_settings": [
+        "古族祭纹规则"
+      ]
+    },
+    "expected_registry_summary_contains": [
+      "跨卷未完成目标: 守住宗门祖地；追回失落阵眼",
+      "已引入但未桥接设定: 古族祭纹规则"
+    ],
+    "expected_registry_summary_excludes": [
+      "回收第一卷宗门裂痕",
+      "解释师尊背叛动机",
+      "远古秘境现世"
+    ]
+  },
+  {
+    "name": "risk_review_reject_keeps_run_paused_at_risk_stage",
+    "type": "risk_reject",
+    "current_volume": 2,
+    "chapters_completed": 60,
+    "risk_report_path": "/tmp/fake-risk-report.json",
+    "review_payload": {
+      "summary": "第 2 卷风险过高，需要人工复核。"
+    },
+    "approval_payload": {
+      "notes": "先保持暂停，等待人工确认是否继续。"
+    },
+    "expected_status": {
+      "status": "paused",
+      "current_stage": "risk.pause"
+    }
+  },
+  {
+    "name": "risk_review_revise_routes_back_to_volume_review_gate",
+    "type": "risk_revise_to_volume_review",
+    "current_volume": 2,
+    "chapters_completed": 60,
+    "risk_report_path": "/tmp/fake-risk-report.json",
+    "review_payload": {
+      "summary": "第 2 卷风险过高，需要人工复核。"
+    },
+    "approval_payload": {
+      "notes": "记录风险备注后继续进入 volume review。"
+    },
+    "expected_intermediate_state": {
+      "current_stage": "volume.review",
+      "risk_report_path": null
+    },
+    "expected_pause_call": {
+      "state_current_stage": "volume.review",
+      "current_volume": 2
+    }
+  },
+  {
+    "name": "outline_review_reject_keeps_run_paused",
+    "type": "outline_reject",
+    "review_payload": {
+      "outline": "旧大纲",
+      "world_setting": "旧世界观",
+      "character_intro": "旧人物设定"
+    },
+    "approval_payload": {
+      "outline": "不应写入的大纲修订"
+    },
+    "expected_status": {
+      "status": "paused",
+      "current_stage": "outline.review"
+    }
+  },
+  {
+    "name": "outline_review_revise_updates_project_and_resumes",
+    "type": "outline_revise",
+    "review_payload": {
+      "outline": "旧大纲",
+      "world_setting": "旧世界观",
+      "character_intro": "旧人物设定"
+    },
+    "approval_payload": {
+      "outline": "新大纲：主角先守祖地，再追索失落阵眼。",
+      "world_setting": "新世界观：祖地与秘境存在明确桥接。",
+      "character_intro": "新人物设定：补强师尊与主角的对立。"
+    },
+    "expected_project_fields": {
+      "outline": "新大纲：主角先守祖地，再追索失落阵眼。",
+      "world_setting": "新世界观：祖地与秘境存在明确桥接。",
+      "character_intro": "新人物设定：补强师尊与主角的对立。"
+    },
+    "expected_state": {
+      "approved_outline": true,
+      "current_stage": "volume.plan"
+    }
+  },
+  {
+    "name": "outline_review_approve_uses_current_project_snapshot",
+    "type": "outline_approve",
+    "review_payload": {
+      "outline": "旧大纲",
+      "world_setting": "旧世界观",
+      "character_intro": "旧人物设定"
+    },
+    "approval_payload": {},
+    "expected_project_fields": {
+      "outline": "outline",
+      "world_setting": "world",
+      "character_intro": "characters"
+    },
+    "expected_state": {
+      "approved_outline": true,
+      "current_stage": "volume.plan"
+    }
+  }
+]

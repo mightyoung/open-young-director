@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import click
 
-from crewai.cli.short_drama._llm import create_llm_from_env, ensure_output_dir, save_json_output
+from crewai.cli.short_drama._llm import ensure_output_dir, save_json_output
 from crewai.content.short_drama.adapters.novel_adapter import NovelToShortDramaAdapter
 from crewai.content.short_drama.bible_builder import ShortDramaBibleBuilder
-from crewai.content.short_drama.short_drama_types import ShortDramaBible
 
 
 @click.group(name="bible")
 def bible():
     """Manage the short drama bible (ProductionBible → ShortDramaBible)."""
-    pass
 
 
 @bible.command(name="generate")
@@ -65,8 +65,6 @@ def bible_generate(
     PROJECT_NAME is the short drama project name. If --from-novel is provided,
     the bible is adapted from that novel project.
     """
-    import os
-
     # Resolve project path
     if from_novel:
         novel_path = Path(from_novel) if Path(from_novel).is_absolute() else Path.cwd() / from_novel
@@ -104,17 +102,17 @@ def bible_generate(
         # Save to file
         save_json_output(short_drama_bible.to_dict(), output_dir, "short_drama_bible.json")
 
-        click.echo(f"ShortDramaBible generated successfully!")
+        click.echo("ShortDramaBible generated successfully!")
         click.echo(f"  Episode: {episode}")
         click.echo(f"  Series: {project_name}")
         click.echo(f"  Characters: {len(short_drama_bible.relevant_characters)}")
         click.echo(f"  Visual Style: {short_drama_bible.visual_style}")
         click.echo(f"  Tone: {short_drama_bible.tone}")
-        click.echo(f"  Saved to: {output_dir / "short_drama_bible.json"}")
+        click.echo(f"  Saved to: {output_dir / 'short_drama_bible.json'}")
 
     except Exception as e:
         click.secho(f"Error generating bible: {e}", fg="red")
-        raise click.Abort()
+        raise click.Abort() from e
 
 
 @bible.command(name="inspect")
