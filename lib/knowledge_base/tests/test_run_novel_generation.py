@@ -20,6 +20,7 @@ from services.longform_run import (
 )
 from services.run_storage import create_run, read_status
 
+
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
 
@@ -39,7 +40,9 @@ def _load_longform_resume_golden_cases() -> list[dict]:
     return json.loads(fixture_path.read_text(encoding="utf-8"))
 
 
-def _assert_approval_history_entries(history: list[dict], expected_entries: list[dict]) -> None:
+def _assert_approval_history_entries(
+    history: list[dict], expected_entries: list[dict]
+) -> None:
     assert len(history) == len(expected_entries)
     for actual, expected in zip(history, expected_entries):
         assert actual["checkpoint_type"] == expected["checkpoint_type"]
@@ -114,13 +117,24 @@ def test_cmd_generate_full_resumes_from_chapter_review(temp_project_dir, monkeyp
     assert captured["state"]["current_stage"] == STAGE_VOLUME_PLAN
     assert captured["state"]["pending_state_path"] is None
     assert captured["state"]["next_volume_guidance"] == ""
-    assert captured["state"]["next_chapter_guidance"] == "开头先承接上一章战场局势，再重写人物出场。"
+    assert (
+        captured["state"]["next_chapter_guidance"]
+        == "开头先承接上一章战场局势，再重写人物出场。"
+    )
     assert captured["state"]["next_chapter_guidance_chapter"] == 4
+    assert captured["state"]["pending_revision_validation"] == {
+        "chapter_number": 4,
+        "issue_types": [],
+        "success_criteria": [],
+        "created_from_checkpoint": CHECKPOINT_CHAPTER,
+    }
     assert status["pending_state_path"] is None
     assert status["pause_reason"] is None
 
 
-def test_cmd_generate_full_rejects_chapter_review_and_stays_paused(temp_project_dir, monkeypatch):
+def test_cmd_generate_full_rejects_chapter_review_and_stays_paused(
+    temp_project_dir, monkeypatch
+):
     project = _Project()
     project_dir = temp_project_dir / "project"
     run_dir = create_run(
@@ -161,7 +175,9 @@ def test_cmd_generate_full_rejects_chapter_review_and_stays_paused(temp_project_
     def _unexpected_continue(*args, **kwargs):
         raise AssertionError("reject 分支不应继续长篇生成")
 
-    monkeypatch.setattr(run_novel_generation, "_continue_longform_run", _unexpected_continue)
+    monkeypatch.setattr(
+        run_novel_generation, "_continue_longform_run", _unexpected_continue
+    )
 
     args = argparse.Namespace(
         run_id="run-001",
@@ -183,7 +199,9 @@ def test_cmd_generate_full_rejects_chapter_review_and_stays_paused(temp_project_
     assert status["pending_state_path"] == paused["pending_state_path"]
 
 
-def test_cmd_generate_full_compiles_chapter_rewrite_plan_into_next_guidance(temp_project_dir, monkeypatch):
+def test_cmd_generate_full_compiles_chapter_rewrite_plan_into_next_guidance(
+    temp_project_dir, monkeypatch
+):
     project = _Project()
     project_dir = temp_project_dir / "project"
     run_dir = create_run(
@@ -209,7 +227,9 @@ def test_cmd_generate_full_compiles_chapter_rewrite_plan_into_next_guidance(temp
             "chapter_number": 4,
             "title": "第四章",
             "summary": "目标锁假继承，正文掉锚。",
-            "blocking_issues": ["目标锁假继承[摘要命中但正文掉锚]: goal_lock=守住宗门祖地"],
+            "blocking_issues": [
+                "目标锁假继承[摘要命中但正文掉锚]: goal_lock=守住宗门祖地"
+            ],
             "rewrite_plan": {
                 "schema_version": "rewrite_plan.v2",
                 "strategy": "targeted_patch",
@@ -255,7 +275,9 @@ def test_cmd_generate_full_compiles_chapter_rewrite_plan_into_next_guidance(temp
                     "schema_version": "rewrite_plan.v2",
                     "strategy": "targeted_patch",
                     "must_keep": ["保留本章既有关键事件，不要靠删除冲突来伪造顺畅。"],
-                    "success_criteria": ["摘要和正文都必须真实推进目标锁：守住宗门祖地"],
+                    "success_criteria": [
+                        "摘要和正文都必须真实推进目标锁：守住宗门祖地"
+                    ],
                     "operations": [
                         {
                             "phase": "body",
@@ -279,9 +301,16 @@ def test_cmd_generate_full_compiles_chapter_rewrite_plan_into_next_guidance(temp
 
     assert result == 8
     assert "Patch 操作：" in captured["state"]["next_chapter_guidance"]
-    assert "[body / rebuild_goal_lock_chain / goal_lock_progression]" in captured["state"]["next_chapter_guidance"]
+    assert (
+        "[body / rebuild_goal_lock_chain / goal_lock_progression]"
+        in captured["state"]["next_chapter_guidance"]
+    )
     assert "人工补充：" in captured["state"]["next_chapter_guidance"]
     assert captured["state"]["next_chapter_guidance_chapter"] == 4
+    assert captured["state"]["pending_revision_validation"]["issue_types"] == []
+    assert captured["state"]["pending_revision_validation"]["success_criteria"] == [
+        "摘要和正文都必须真实推进目标锁：守住宗门祖地"
+    ]
 
 
 def test_run_volume_generation_subprocess_passes_one_shot_chapter_guidance(monkeypatch):
@@ -315,7 +344,156 @@ def test_run_volume_generation_subprocess_passes_one_shot_chapter_guidance(monke
     assert "补上与上一章战场结尾的衔接。" in captured["cmd"]
 
 
-def test_cmd_generate_only_applies_chapter_guidance_to_target_chapter(temp_project_dir, monkeypatch):
+def test_continue_longform_run_validates_revised_chapter_before_volume_progress(
+    temp_project_dir, monkeypatch
+):
+    project = _Project()
+    project.total_chapters = 4
+    project.current_chapter = 3
+    project_dir = temp_project_dir / "project"
+    run_dir = create_run(
+        project_dir=project_dir,
+        run_id="run-001",
+        project_id=project.id,
+        command=["--generate-full"],
+    )
+    state = initial_longform_state(
+        project=project,
+        run_id="run-001",
+        run_dir=run_dir,
+        chapters_per_volume=4,
+        approval_mode="none",
+        auto_approve=True,
+    )
+    state["chapters_completed"] = 3
+    state["next_chapter_guidance"] = "重写第4章"
+    state["next_chapter_guidance_chapter"] = 4
+    state["pending_revision_validation"] = {
+        "chapter_number": 4,
+        "issue_types": ["goal_lock_false_inheritance"],
+        "success_criteria": ["正文必须推进目标锁"],
+        "created_from_checkpoint": CHECKPOINT_CHAPTER,
+    }
+    run_novel_generation.save_longform_state(run_dir, state)
+
+    fake_config = SimpleNamespace(
+        current_project=project,
+        generation=SimpleNamespace(output_dir=str(project_dir), chapters_per_volume=4),
+        load_project=lambda project_id: project,
+        _save_project=lambda project_obj: None,
+    )
+    monkeypatch.setattr(run_novel_generation, "get_config_manager", lambda: fake_config)
+    monkeypatch.setattr(
+        run_novel_generation, "_resolve_active_writing_options", lambda _cfg, _args: {}
+    )
+    monkeypatch.setattr(
+        run_novel_generation, "_update_run_progress", lambda *args, **kwargs: None
+    )
+
+    captured = {}
+
+    def _fake_run_subprocess(*_args, **kwargs):
+        captured["start"] = kwargs["start"]
+        captured["count"] = kwargs["count"]
+        project.current_chapter = 4
+        report_dir = project_dir / "consistency_reports"
+        report_dir.mkdir(parents=True)
+        (report_dir / "ch004_consistency.json").write_text(
+            '{"report":{"issue_types":[],"blocking_issues":[]}}',
+            encoding="utf-8",
+        )
+        return 0
+
+    def _fake_finalize(**kwargs):
+        captured["final_state"] = kwargs["state"]
+        return 77
+
+    monkeypatch.setattr(
+        run_novel_generation, "_run_volume_generation_subprocess", _fake_run_subprocess
+    )
+    monkeypatch.setattr(run_novel_generation, "_finalize_longform_run", _fake_finalize)
+
+    result = run_novel_generation._continue_longform_run(
+        argparse.Namespace(log_level="INFO"),
+        state=state,
+        run_dir=run_dir,
+        run_started_at=run_novel_generation.datetime.now(),
+    )
+
+    assert result == 77
+    assert captured["start"] == 4
+    assert captured["count"] == 1
+    assert captured["final_state"]["pending_revision_validation"] is None
+    assert captured["final_state"]["next_chapter_guidance"] == ""
+    assert captured["final_state"]["chapters_completed"] == 4
+
+
+def test_continue_longform_run_keeps_revision_validation_when_report_missing(
+    temp_project_dir, monkeypatch
+):
+    project = _Project()
+    project.total_chapters = 4
+    project.current_chapter = 3
+    project_dir = temp_project_dir / "project"
+    run_dir = create_run(
+        project_dir=project_dir,
+        run_id="run-001",
+        project_id=project.id,
+        command=["--generate-full"],
+    )
+    state = initial_longform_state(
+        project=project,
+        run_id="run-001",
+        run_dir=run_dir,
+        chapters_per_volume=4,
+        approval_mode="none",
+        auto_approve=True,
+    )
+    state["chapters_completed"] = 3
+    state["pending_revision_validation"] = {
+        "chapter_number": 4,
+        "issue_types": ["scene_or_timeline_disconnect"],
+        "success_criteria": [],
+        "created_from_checkpoint": CHECKPOINT_CHAPTER,
+    }
+    run_novel_generation.save_longform_state(run_dir, state)
+
+    fake_config = SimpleNamespace(
+        current_project=project,
+        generation=SimpleNamespace(output_dir=str(project_dir), chapters_per_volume=4),
+        load_project=lambda project_id: project,
+        _save_project=lambda project_obj: None,
+    )
+    monkeypatch.setattr(run_novel_generation, "get_config_manager", lambda: fake_config)
+    monkeypatch.setattr(
+        run_novel_generation, "_resolve_active_writing_options", lambda _cfg, _args: {}
+    )
+    monkeypatch.setattr(
+        run_novel_generation, "_update_run_progress", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(
+        run_novel_generation, "_run_volume_generation_subprocess", lambda *a, **k: 0
+    )
+
+    result = run_novel_generation._continue_longform_run(
+        argparse.Namespace(log_level="INFO"),
+        state=state,
+        run_dir=run_dir,
+        run_started_at=run_novel_generation.datetime.now(),
+    )
+
+    persisted = run_novel_generation.load_longform_state(run_dir)
+    status = read_status(run_dir)
+    assert result == 0
+    assert persisted["status"] == "paused"
+    assert persisted["current_stage"] == STAGE_CHAPTER_REVIEW
+    assert persisted["pending_revision_validation"]["chapter_number"] == 4
+    assert status["pause_reason"] == CHECKPOINT_CHAPTER
+
+
+def test_cmd_generate_only_applies_chapter_guidance_to_target_chapter(
+    temp_project_dir, monkeypatch
+):
     project_dir = temp_project_dir / "project"
     project_dir.mkdir(parents=True, exist_ok=True)
     run_dir = temp_project_dir / "runs" / "run-001"
@@ -330,7 +508,9 @@ def test_cmd_generate_only_applies_chapter_guidance_to_target_chapter(temp_proje
     )
     fake_config = SimpleNamespace(
         current_project=project,
-        generation=SimpleNamespace(output_dir=str(project_dir), scripts_dir=str(temp_project_dir / "scripts")),
+        generation=SimpleNamespace(
+            output_dir=str(project_dir), scripts_dir=str(temp_project_dir / "scripts")
+        ),
         update_project_metadata=lambda payload: project.metadata.update(payload),
     )
 
@@ -356,7 +536,9 @@ def test_cmd_generate_only_applies_chapter_guidance_to_target_chapter(temp_proje
             return None
 
     class _FakeGenerator:
-        def generate_chapter(self, chapter_number, context, previous_summary="", writing_options=None):
+        def generate_chapter(
+            self, chapter_number, context, previous_summary="", writing_options=None
+        ):
             return GeneratedChapter(
                 number=chapter_number,
                 title=f"第{chapter_number}章",
@@ -386,7 +568,9 @@ def test_cmd_generate_only_applies_chapter_guidance_to_target_chapter(temp_proje
             }
 
     monkeypatch.setattr(run_novel_generation, "get_config_manager", lambda: fake_config)
-    monkeypatch.setattr(run_novel_generation, "_build_llm_clients", lambda _cfg: (None, None))
+    monkeypatch.setattr(
+        run_novel_generation, "_build_llm_clients", lambda _cfg: (None, None)
+    )
     monkeypatch.setattr(
         run_novel_generation,
         "read_status",
@@ -397,8 +581,14 @@ def test_cmd_generate_only_applies_chapter_guidance_to_target_chapter(temp_proje
             }
         },
     )
-    monkeypatch.setattr(run_novel_generation, "_create_orchestrator", lambda _cfg, _project_id: object())
-    monkeypatch.setattr(run_novel_generation, "get_chapter_manager", lambda _project_id, base_dir_override=None: _FakeChapterManager())
+    monkeypatch.setattr(
+        run_novel_generation, "_create_orchestrator", lambda _cfg, _project_id: object()
+    )
+    monkeypatch.setattr(
+        run_novel_generation,
+        "get_chapter_manager",
+        lambda _project_id, base_dir_override=None: _FakeChapterManager(),
+    )
     monkeypatch.setattr(
         run_novel_generation,
         "get_novel_generator",
@@ -409,9 +599,17 @@ def test_cmd_generate_only_applies_chapter_guidance_to_target_chapter(temp_proje
         "_initialize_telemetry_run",
         lambda _run_dir, run_id, project_id, command: run_dir,
     )
-    monkeypatch.setattr(run_novel_generation, "_update_run_progress", lambda *args, **kwargs: None)
-    monkeypatch.setattr(run_novel_generation, "get_derivative_generator", lambda *args, **kwargs: _FakeDerivativeGenerator())
-    monkeypatch.setattr(run_novel_generation, "_print_statistics", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        run_novel_generation, "_update_run_progress", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(
+        run_novel_generation,
+        "get_derivative_generator",
+        lambda *args, **kwargs: _FakeDerivativeGenerator(),
+    )
+    monkeypatch.setattr(
+        run_novel_generation, "_print_statistics", lambda *args, **kwargs: None
+    )
 
     args = argparse.Namespace(
         count=2,
@@ -461,7 +659,9 @@ def test_cmd_generate_invalid_goal_lock_chapter_does_not_promote_raw_summary_or_
     )
     fake_config = SimpleNamespace(
         current_project=project,
-        generation=SimpleNamespace(output_dir=str(project_dir), scripts_dir=str(temp_project_dir / "scripts")),
+        generation=SimpleNamespace(
+            output_dir=str(project_dir), scripts_dir=str(temp_project_dir / "scripts")
+        ),
         update_project_metadata=lambda payload: project.metadata.update(payload),
     )
 
@@ -484,13 +684,15 @@ def test_cmd_generate_invalid_goal_lock_chapter_does_not_promote_raw_summary_or_
 
         def save_plot_summary(self, plot_summary):
             saved_plot_summaries.append(plot_summary)
-            return None
+            return
 
         def save_film_drama_content(self, **_kwargs):
             return None
 
     class _FakeGenerator:
-        def generate_chapter(self, chapter_number, context, previous_summary="", writing_options=None):
+        def generate_chapter(
+            self, chapter_number, context, previous_summary="", writing_options=None
+        ):
             return GeneratedChapter(
                 number=chapter_number,
                 title=f"第{chapter_number}章",
@@ -510,12 +712,16 @@ def test_cmd_generate_invalid_goal_lock_chapter_does_not_promote_raw_summary_or_
                     "invalid": True,
                     "summary": "目标锁假继承，正文掉锚。",
                     "issue_types": ["goal_lock_false_inheritance"],
-                    "blocking_issues": ["目标锁假继承[摘要命中但正文掉锚]: goal_lock=守住宗门祖地"],
+                    "blocking_issues": [
+                        "目标锁假继承[摘要命中但正文掉锚]: goal_lock=守住宗门祖地"
+                    ],
                 },
             )
 
     monkeypatch.setattr(run_novel_generation, "get_config_manager", lambda: fake_config)
-    monkeypatch.setattr(run_novel_generation, "_build_llm_clients", lambda _cfg: (None, None))
+    monkeypatch.setattr(
+        run_novel_generation, "_build_llm_clients", lambda _cfg: (None, None)
+    )
     monkeypatch.setattr(
         run_novel_generation,
         "read_status",
@@ -527,8 +733,14 @@ def test_cmd_generate_invalid_goal_lock_chapter_does_not_promote_raw_summary_or_
             "longform_state_path": str(run_dir / "longform_state.v1.json"),
         },
     )
-    monkeypatch.setattr(run_novel_generation, "_create_orchestrator", lambda _cfg, _project_id: object())
-    monkeypatch.setattr(run_novel_generation, "get_chapter_manager", lambda _project_id, base_dir_override=None: _FakeChapterManager())
+    monkeypatch.setattr(
+        run_novel_generation, "_create_orchestrator", lambda _cfg, _project_id: object()
+    )
+    monkeypatch.setattr(
+        run_novel_generation,
+        "get_chapter_manager",
+        lambda _project_id, base_dir_override=None: _FakeChapterManager(),
+    )
     monkeypatch.setattr(
         run_novel_generation,
         "get_novel_generator",
@@ -539,16 +751,29 @@ def test_cmd_generate_invalid_goal_lock_chapter_does_not_promote_raw_summary_or_
         "_initialize_telemetry_run",
         lambda _run_dir, run_id, project_id, command: run_dir,
     )
-    monkeypatch.setattr(run_novel_generation, "_update_run_progress", lambda *args, **kwargs: None)
-    monkeypatch.setattr(run_novel_generation, "get_derivative_generator", lambda *args, **kwargs: None)
-    monkeypatch.setattr(run_novel_generation, "_print_statistics", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        run_novel_generation, "_update_run_progress", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(
+        run_novel_generation, "get_derivative_generator", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(
+        run_novel_generation, "_print_statistics", lambda *args, **kwargs: None
+    )
 
     longform_state = {
         "run_id": "run-001",
         "current_volume": 1,
         "current_volume_start_chapter": 1,
         "current_volume_end_chapter": 60,
-        "volume_plan": [{"volume_index": 1, "start_chapter": 1, "end_chapter": 60, "chapter_count": 60}],
+        "volume_plan": [
+            {
+                "volume_index": 1,
+                "start_chapter": 1,
+                "end_chapter": 60,
+                "chapter_count": 60,
+            }
+        ],
         "chapters_completed": 0,
         "total_chapters": 120,
         "project_dir": str(project_dir),
@@ -581,10 +806,14 @@ def test_cmd_generate_invalid_goal_lock_chapter_does_not_promote_raw_summary_or_
     assert project.current_chapter == 0
     assert status.get("pending_state_path")
     assert status.get("chapter_quality_report", {}).get("invalid") is True
-    assert status.get("chapter_quality_report", {}).get("issue_types") == ["goal_lock_false_inheritance"]
+    assert status.get("chapter_quality_report", {}).get("issue_types") == [
+        "goal_lock_false_inheritance"
+    ]
 
 
-def test_continue_longform_run_clears_one_shot_chapter_guidance_after_success(temp_project_dir, monkeypatch):
+def test_continue_longform_run_clears_one_shot_chapter_guidance_after_success(
+    temp_project_dir, monkeypatch
+):
     project = _Project()
     project.current_chapter = 4
     project_dir = temp_project_dir / "project"
@@ -620,11 +849,23 @@ def test_continue_longform_run_clears_one_shot_chapter_guidance_after_success(te
         load_project=lambda project_id: project,
     )
     monkeypatch.setattr(run_novel_generation, "get_config_manager", lambda: fake_config)
-    monkeypatch.setattr(run_novel_generation, "_resolve_active_writing_options", lambda _cfg, _args: {})
-    monkeypatch.setattr(run_novel_generation, "_update_run_progress", lambda *args, **kwargs: None)
-    monkeypatch.setattr(run_novel_generation, "build_volume_risk_report", lambda **kwargs: {"risk_detected": False})
-    monkeypatch.setattr(run_novel_generation, "should_pause_for_stage", lambda *args, **kwargs: True)
-    monkeypatch.setattr(run_novel_generation, "_pause_for_volume_review", lambda **kwargs: 11)
+    monkeypatch.setattr(
+        run_novel_generation, "_resolve_active_writing_options", lambda _cfg, _args: {}
+    )
+    monkeypatch.setattr(
+        run_novel_generation, "_update_run_progress", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(
+        run_novel_generation,
+        "build_volume_risk_report",
+        lambda **kwargs: {"risk_detected": False},
+    )
+    monkeypatch.setattr(
+        run_novel_generation, "should_pause_for_stage", lambda *args, **kwargs: True
+    )
+    monkeypatch.setattr(
+        run_novel_generation, "_pause_for_volume_review", lambda **kwargs: 11
+    )
 
     captured = {}
 
@@ -648,7 +889,9 @@ def test_continue_longform_run_clears_one_shot_chapter_guidance_after_success(te
         captured["count"] = count
         return 0
 
-    monkeypatch.setattr(run_novel_generation, "_run_volume_generation_subprocess", _fake_run_subprocess)
+    monkeypatch.setattr(
+        run_novel_generation, "_run_volume_generation_subprocess", _fake_run_subprocess
+    )
 
     args = argparse.Namespace(log_level="INFO")
     result = run_novel_generation._continue_longform_run(
@@ -666,7 +909,9 @@ def test_continue_longform_run_clears_one_shot_chapter_guidance_after_success(te
     assert state["next_chapter_guidance_chapter"] is None
 
 
-def test_continue_longform_run_keeps_one_shot_chapter_guidance_after_failure(temp_project_dir, monkeypatch):
+def test_continue_longform_run_keeps_one_shot_chapter_guidance_after_failure(
+    temp_project_dir, monkeypatch
+):
     project = _Project()
     project.current_chapter = 3
     project_dir = temp_project_dir / "project"
@@ -702,8 +947,12 @@ def test_continue_longform_run_keeps_one_shot_chapter_guidance_after_failure(tem
         load_project=lambda project_id: project,
     )
     monkeypatch.setattr(run_novel_generation, "get_config_manager", lambda: fake_config)
-    monkeypatch.setattr(run_novel_generation, "_resolve_active_writing_options", lambda _cfg, _args: {})
-    monkeypatch.setattr(run_novel_generation, "_update_run_progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        run_novel_generation, "_resolve_active_writing_options", lambda _cfg, _args: {}
+    )
+    monkeypatch.setattr(
+        run_novel_generation, "_update_run_progress", lambda *args, **kwargs: None
+    )
 
     captured = {}
 
@@ -725,7 +974,9 @@ def test_continue_longform_run_keeps_one_shot_chapter_guidance_after_failure(tem
         captured["chapter_guidance_target"] = chapter_guidance_target
         return 9
 
-    monkeypatch.setattr(run_novel_generation, "_run_volume_generation_subprocess", _fake_run_subprocess)
+    monkeypatch.setattr(
+        run_novel_generation, "_run_volume_generation_subprocess", _fake_run_subprocess
+    )
 
     args = argparse.Namespace(log_level="INFO")
     result = run_novel_generation._continue_longform_run(
@@ -743,7 +994,88 @@ def test_continue_longform_run_keeps_one_shot_chapter_guidance_after_failure(tem
     assert state["next_chapter_guidance_chapter"] == 4
 
 
-def test_cmd_generate_full_volume_approval_updates_cross_volume_registry(temp_project_dir, monkeypatch):
+def test_continue_longform_run_preserves_child_process_chapter_pause(
+    temp_project_dir, monkeypatch
+):
+    project = _Project()
+    project.current_chapter = 3
+    project_dir = temp_project_dir / "project"
+    run_dir = create_run(
+        project_dir=project_dir,
+        run_id="run-001",
+        project_id=project.id,
+        command=["--generate-full"],
+    )
+    state = initial_longform_state(
+        project=project,
+        run_id="run-001",
+        run_dir=run_dir,
+        chapters_per_volume=60,
+        approval_mode="none",
+        auto_approve=True,
+    )
+    state["current_volume"] = 1
+    state["current_volume_start_chapter"] = 1
+    state["current_volume_end_chapter"] = 60
+    state["chapters_completed"] = 3
+    state["next_chapter_guidance"] = "第4章重写指令"
+    state["next_chapter_guidance_chapter"] = 4
+
+    fake_config = SimpleNamespace(
+        current_project=project,
+        generation=SimpleNamespace(output_dir=str(project_dir), chapters_per_volume=60),
+        load_project=lambda project_id: project,
+    )
+    monkeypatch.setattr(run_novel_generation, "get_config_manager", lambda: fake_config)
+    monkeypatch.setattr(
+        run_novel_generation, "_resolve_active_writing_options", lambda _cfg, _args: {}
+    )
+    monkeypatch.setattr(
+        run_novel_generation, "_update_run_progress", lambda *args, **kwargs: None
+    )
+
+    def _fake_run_subprocess(*_args, **_kwargs):
+        paused = run_novel_generation.load_longform_state(run_dir)
+        paused["status"] = "paused"
+        paused["current_stage"] = STAGE_CHAPTER_REVIEW
+        paused["current_checkpoint"] = CHECKPOINT_CHAPTER
+        paused["pending_state_path"] = str(
+            run_dir / ".novel_pipeline_demo_chapter_pending.json"
+        )
+        run_novel_generation.save_longform_state(run_dir, paused)
+        return 0
+
+    def _unexpected_finalize(**_kwargs):
+        raise AssertionError(
+            "chapter_review 暂停不应被父流程当作分卷成功后继续 finalize"
+        )
+
+    monkeypatch.setattr(
+        run_novel_generation, "_run_volume_generation_subprocess", _fake_run_subprocess
+    )
+    monkeypatch.setattr(
+        run_novel_generation, "_finalize_longform_run", _unexpected_finalize
+    )
+
+    result = run_novel_generation._continue_longform_run(
+        argparse.Namespace(log_level="INFO"),
+        state=state,
+        run_dir=run_dir,
+        run_started_at=run_novel_generation.datetime.now(),
+    )
+
+    persisted = run_novel_generation.load_longform_state(run_dir)
+    assert result == 0
+    assert persisted["status"] == "paused"
+    assert persisted["current_stage"] == STAGE_CHAPTER_REVIEW
+    assert persisted["current_checkpoint"] == CHECKPOINT_CHAPTER
+    assert persisted["chapters_completed"] == 3
+    assert persisted["next_chapter_guidance"] == "第4章重写指令"
+
+
+def test_cmd_generate_full_volume_approval_updates_cross_volume_registry(
+    temp_project_dir, monkeypatch
+):
     project = _Project()
     project_dir = temp_project_dir / "project"
     run_dir = create_run(
@@ -805,7 +1137,9 @@ def test_cmd_generate_full_volume_approval_updates_cross_volume_registry(temp_pr
     }
 
 
-def test_cmd_generate_full_volume_approval_merges_partial_cross_volume_registry_update(temp_project_dir, monkeypatch):
+def test_cmd_generate_full_volume_approval_merges_partial_cross_volume_registry_update(
+    temp_project_dir, monkeypatch
+):
     project = _Project()
     project_dir = temp_project_dir / "project"
     run_dir = create_run(
@@ -873,7 +1207,9 @@ def test_cmd_generate_full_volume_approval_merges_partial_cross_volume_registry_
     }
 
 
-def test_cmd_generate_full_volume_approval_clears_explicit_cross_volume_registry_buckets(temp_project_dir, monkeypatch):
+def test_cmd_generate_full_volume_approval_clears_explicit_cross_volume_registry_buckets(
+    temp_project_dir, monkeypatch
+):
     project = _Project()
     project_dir = temp_project_dir / "project"
     run_dir = create_run(
@@ -916,7 +1252,9 @@ def test_cmd_generate_full_volume_approval_clears_explicit_cross_volume_registry
 
     def _fake_continue(args, *, state, run_dir, run_started_at):
         captured["state"] = state
-        captured["registry_summary"] = format_longform_registry(state.get("cross_volume_registry"))
+        captured["registry_summary"] = format_longform_registry(
+            state.get("cross_volume_registry")
+        )
         return 8
 
     monkeypatch.setattr(run_novel_generation, "_continue_longform_run", _fake_continue)
@@ -984,7 +1322,9 @@ def test_longform_smoke_preserves_chapter_review_guidance_then_injects_updated_c
             "title": "第四章",
             "summary": "目标锁假继承，正文掉锚。",
             "issue_types": ["goal_lock_false_inheritance"],
-            "blocking_issues": ["目标锁假继承[摘要命中但正文掉锚]: goal_lock=守住宗门祖地"],
+            "blocking_issues": [
+                "目标锁假继承[摘要命中但正文掉锚]: goal_lock=守住宗门祖地"
+            ],
         },
     )
 
@@ -994,7 +1334,9 @@ def test_longform_smoke_preserves_chapter_review_guidance_then_injects_updated_c
         captured_after_chapter["state"] = dict(state)
         return 21
 
-    monkeypatch.setattr(run_novel_generation, "_continue_longform_run", _capture_after_chapter)
+    monkeypatch.setattr(
+        run_novel_generation, "_continue_longform_run", _capture_after_chapter
+    )
 
     chapter_args = argparse.Namespace(
         run_id="run-001",
@@ -1036,7 +1378,9 @@ def test_longform_smoke_preserves_chapter_review_guidance_then_injects_updated_c
         captured_after_volume["state"] = dict(state)
         return 22
 
-    monkeypatch.setattr(run_novel_generation, "_continue_longform_run", _capture_after_volume)
+    monkeypatch.setattr(
+        run_novel_generation, "_continue_longform_run", _capture_after_volume
+    )
 
     volume_args = argparse.Namespace(
         run_id="run-001",
@@ -1072,11 +1416,23 @@ def test_longform_smoke_preserves_chapter_review_guidance_then_injects_updated_c
     next_volume_state["next_chapter_guidance_chapter"] = None
 
     captured_subprocess = {}
-    monkeypatch.setattr(run_novel_generation, "_update_run_progress", lambda *args, **kwargs: None)
-    monkeypatch.setattr(run_novel_generation, "build_volume_risk_report", lambda **kwargs: {"risk_detected": False})
-    monkeypatch.setattr(run_novel_generation, "should_pause_for_stage", lambda *args, **kwargs: True)
-    monkeypatch.setattr(run_novel_generation, "_pause_for_volume_review", lambda **kwargs: 23)
-    monkeypatch.setattr(run_novel_generation, "_resolve_active_writing_options", lambda _cfg, _args: {})
+    monkeypatch.setattr(
+        run_novel_generation, "_update_run_progress", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(
+        run_novel_generation,
+        "build_volume_risk_report",
+        lambda **kwargs: {"risk_detected": False},
+    )
+    monkeypatch.setattr(
+        run_novel_generation, "should_pause_for_stage", lambda *args, **kwargs: True
+    )
+    monkeypatch.setattr(
+        run_novel_generation, "_pause_for_volume_review", lambda **kwargs: 23
+    )
+    monkeypatch.setattr(
+        run_novel_generation, "_resolve_active_writing_options", lambda _cfg, _args: {}
+    )
 
     def _fake_run_subprocess(
         args,
@@ -1096,7 +1452,9 @@ def test_longform_smoke_preserves_chapter_review_guidance_then_injects_updated_c
         captured_subprocess["chapter_guidance_target"] = chapter_guidance_target
         return 0
 
-    monkeypatch.setattr(run_novel_generation, "_run_volume_generation_subprocess", _fake_run_subprocess)
+    monkeypatch.setattr(
+        run_novel_generation, "_run_volume_generation_subprocess", _fake_run_subprocess
+    )
 
     continue_result = original_continue_longform_run(
         argparse.Namespace(log_level="INFO"),
@@ -1106,7 +1464,9 @@ def test_longform_smoke_preserves_chapter_review_guidance_then_injects_updated_c
     )
 
     assert continue_result == 23
-    assert captured_subprocess["volume_guidance"].startswith("- 跨卷未完成目标: 守住宗门祖地")
+    assert captured_subprocess["volume_guidance"].startswith(
+        "- 跨卷未完成目标: 守住宗门祖地"
+    )
     assert "尚未回收承诺/伏笔: 揭示魔帝线" in captured_subprocess["volume_guidance"]
     assert "已引入但未桥接设定: 远古秘境现世" in captured_subprocess["volume_guidance"]
     assert captured_subprocess["chapter_guidance"] == ""
@@ -1160,14 +1520,18 @@ def test_longform_resume_golden_cases(temp_project_dir, monkeypatch, case):
             first_capture["state"] = dict(state)
             return 31
 
-        monkeypatch.setattr(run_novel_generation, "_continue_longform_run", _capture_first)
+        monkeypatch.setattr(
+            run_novel_generation, "_continue_longform_run", _capture_first
+        )
 
         first_args = argparse.Namespace(
             run_id="run-001",
             run_dir=str(run_dir),
             resume_state=first_pause["pending_state_path"],
             submit_approval="revise",
-            approval_payload=json.dumps(case["first_approval_payload"], ensure_ascii=False),
+            approval_payload=json.dumps(
+                case["first_approval_payload"], ensure_ascii=False
+            ),
             chapters_per_volume=60,
             approval_mode="outline+volume",
             auto_approve=False,
@@ -1175,7 +1539,10 @@ def test_longform_resume_golden_cases(temp_project_dir, monkeypatch, case):
 
         first_result = run_novel_generation.cmd_generate_full(first_args)
         assert first_result == 31
-        assert first_capture["state"]["next_chapter_guidance_chapter"] == case["chapter_number"]
+        assert (
+            first_capture["state"]["next_chapter_guidance_chapter"]
+            == case["chapter_number"]
+        )
         for snippet in case["expected_first_guidance_contains"]:
             assert snippet in first_capture["state"]["next_chapter_guidance"]
         _assert_approval_history_entries(
@@ -1204,14 +1571,18 @@ def test_longform_resume_golden_cases(temp_project_dir, monkeypatch, case):
             second_capture["state"] = dict(state)
             return 32
 
-        monkeypatch.setattr(run_novel_generation, "_continue_longform_run", _capture_second)
+        monkeypatch.setattr(
+            run_novel_generation, "_continue_longform_run", _capture_second
+        )
 
         second_args = argparse.Namespace(
             run_id="run-001",
             run_dir=str(run_dir),
             resume_state=second_pause["pending_state_path"],
             submit_approval="revise",
-            approval_payload=json.dumps(case["second_approval_payload"], ensure_ascii=False),
+            approval_payload=json.dumps(
+                case["second_approval_payload"], ensure_ascii=False
+            ),
             chapters_per_volume=60,
             approval_mode="outline+volume",
             auto_approve=False,
@@ -1219,7 +1590,10 @@ def test_longform_resume_golden_cases(temp_project_dir, monkeypatch, case):
 
         second_result = run_novel_generation.cmd_generate_full(second_args)
         assert second_result == 32
-        assert second_capture["state"]["next_chapter_guidance_chapter"] == case["chapter_number"]
+        assert (
+            second_capture["state"]["next_chapter_guidance_chapter"]
+            == case["chapter_number"]
+        )
         for snippet in case["expected_second_guidance_contains"]:
             assert snippet in second_capture["state"]["next_chapter_guidance"]
         for snippet in case.get("expected_second_guidance_excludes", []):
@@ -1263,7 +1637,9 @@ def test_longform_resume_golden_cases(temp_project_dir, monkeypatch, case):
             captured_after_volume["state"] = dict(state)
             return 41
 
-        monkeypatch.setattr(run_novel_generation, "_continue_longform_run", _capture_after_volume)
+        monkeypatch.setattr(
+            run_novel_generation, "_continue_longform_run", _capture_after_volume
+        )
 
         volume_args = argparse.Namespace(
             run_id="run-001",
@@ -1288,7 +1664,9 @@ def test_longform_resume_golden_cases(temp_project_dir, monkeypatch, case):
                 }
             ],
         )
-        registry_summary = format_longform_registry(captured_after_volume["state"]["cross_volume_registry"])
+        registry_summary = format_longform_registry(
+            captured_after_volume["state"]["cross_volume_registry"]
+        )
         for snippet in case["expected_registry_summary_contains"]:
             assert snippet in registry_summary
 
@@ -1301,11 +1679,25 @@ def test_longform_resume_golden_cases(temp_project_dir, monkeypatch, case):
         next_volume_state["next_chapter_guidance_chapter"] = None
 
         captured_subprocess = {}
-        monkeypatch.setattr(run_novel_generation, "_update_run_progress", lambda *args, **kwargs: None)
-        monkeypatch.setattr(run_novel_generation, "build_volume_risk_report", lambda **kwargs: {"risk_detected": False})
-        monkeypatch.setattr(run_novel_generation, "should_pause_for_stage", lambda *args, **kwargs: True)
-        monkeypatch.setattr(run_novel_generation, "_pause_for_volume_review", lambda **kwargs: 42)
-        monkeypatch.setattr(run_novel_generation, "_resolve_active_writing_options", lambda _cfg, _args: {})
+        monkeypatch.setattr(
+            run_novel_generation, "_update_run_progress", lambda *args, **kwargs: None
+        )
+        monkeypatch.setattr(
+            run_novel_generation,
+            "build_volume_risk_report",
+            lambda **kwargs: {"risk_detected": False},
+        )
+        monkeypatch.setattr(
+            run_novel_generation, "should_pause_for_stage", lambda *args, **kwargs: True
+        )
+        monkeypatch.setattr(
+            run_novel_generation, "_pause_for_volume_review", lambda **kwargs: 42
+        )
+        monkeypatch.setattr(
+            run_novel_generation,
+            "_resolve_active_writing_options",
+            lambda _cfg, _args: {},
+        )
 
         def _fake_run_subprocess(
             args,
@@ -1325,7 +1717,11 @@ def test_longform_resume_golden_cases(temp_project_dir, monkeypatch, case):
             captured_subprocess["chapter_guidance_target"] = chapter_guidance_target
             return 0
 
-        monkeypatch.setattr(run_novel_generation, "_run_volume_generation_subprocess", _fake_run_subprocess)
+        monkeypatch.setattr(
+            run_novel_generation,
+            "_run_volume_generation_subprocess",
+            _fake_run_subprocess,
+        )
 
         continue_result = original_continue_longform_run(
             argparse.Namespace(log_level="INFO"),
@@ -1355,7 +1751,9 @@ def test_longform_resume_golden_cases(temp_project_dir, monkeypatch, case):
         def _unexpected_continue(*args, **kwargs):
             raise AssertionError("reject 分支不应继续长篇生成")
 
-        monkeypatch.setattr(run_novel_generation, "_continue_longform_run", _unexpected_continue)
+        monkeypatch.setattr(
+            run_novel_generation, "_continue_longform_run", _unexpected_continue
+        )
 
         reject_args = argparse.Namespace(
             run_id="run-001",
@@ -1372,7 +1770,10 @@ def test_longform_resume_golden_cases(temp_project_dir, monkeypatch, case):
         reject_status = read_status(run_dir)
         assert reject_result == 0
         assert reject_status["status"] == case["expected_reject_status"]["status"]
-        assert reject_status["current_stage"] == case["expected_reject_status"]["current_stage"]
+        assert (
+            reject_status["current_stage"]
+            == case["expected_reject_status"]["current_stage"]
+        )
         assert reject_status["pending_state_path"] == paused["pending_state_path"]
         rejected_state = run_novel_generation.load_longform_state(run_dir)
         _assert_approval_history_entries(
@@ -1392,7 +1793,9 @@ def test_longform_resume_golden_cases(temp_project_dir, monkeypatch, case):
             revise_capture["state"] = dict(state)
             return 51
 
-        monkeypatch.setattr(run_novel_generation, "_continue_longform_run", _capture_revise)
+        monkeypatch.setattr(
+            run_novel_generation, "_continue_longform_run", _capture_revise
+        )
 
         revise_args = argparse.Namespace(
             run_id="run-001",
@@ -1407,7 +1810,10 @@ def test_longform_resume_golden_cases(temp_project_dir, monkeypatch, case):
 
         revise_result = run_novel_generation.cmd_generate_full(revise_args)
         assert revise_result == 51
-        assert revise_capture["state"]["next_chapter_guidance_chapter"] == case["chapter_number"]
+        assert (
+            revise_capture["state"]["next_chapter_guidance_chapter"]
+            == case["chapter_number"]
+        )
         for snippet in case["expected_revise_guidance_contains"]:
             assert snippet in revise_capture["state"]["next_chapter_guidance"]
         _assert_approval_history_entries(
@@ -1451,7 +1857,9 @@ def test_longform_resume_golden_cases(temp_project_dir, monkeypatch, case):
             captured_after_volume["state"] = dict(state)
             return 61
 
-        monkeypatch.setattr(run_novel_generation, "_continue_longform_run", _capture_after_volume)
+        monkeypatch.setattr(
+            run_novel_generation, "_continue_longform_run", _capture_after_volume
+        )
 
         volume_args = argparse.Namespace(
             run_id="run-001",
@@ -1476,8 +1884,13 @@ def test_longform_resume_golden_cases(temp_project_dir, monkeypatch, case):
                 }
             ],
         )
-        assert captured_after_volume["state"]["cross_volume_registry"] == case["expected_registry_after_merge"]
-        registry_summary = format_longform_registry(captured_after_volume["state"]["cross_volume_registry"])
+        assert (
+            captured_after_volume["state"]["cross_volume_registry"]
+            == case["expected_registry_after_merge"]
+        )
+        registry_summary = format_longform_registry(
+            captured_after_volume["state"]["cross_volume_registry"]
+        )
         for snippet in case["expected_registry_summary_contains"]:
             assert snippet in registry_summary
         for snippet in case.get("expected_registry_summary_excludes", []):
@@ -1501,7 +1914,9 @@ def test_longform_resume_golden_cases(temp_project_dir, monkeypatch, case):
         def _unexpected_continue(*args, **kwargs):
             raise AssertionError("risk reject 分支不应继续长篇生成")
 
-        monkeypatch.setattr(run_novel_generation, "_continue_longform_run", _unexpected_continue)
+        monkeypatch.setattr(
+            run_novel_generation, "_continue_longform_run", _unexpected_continue
+        )
 
         reject_args = argparse.Namespace(
             run_id="run-001",
@@ -1554,8 +1969,14 @@ def test_longform_resume_golden_cases(temp_project_dir, monkeypatch, case):
             captured_pause["state"] = dict(kwargs["state"])
             return 71
 
-        monkeypatch.setattr(run_novel_generation, "should_pause_for_stage", lambda *args, **kwargs: True)
-        monkeypatch.setattr(run_novel_generation, "_pause_for_volume_review", _fake_pause_for_volume_review)
+        monkeypatch.setattr(
+            run_novel_generation, "should_pause_for_stage", lambda *args, **kwargs: True
+        )
+        monkeypatch.setattr(
+            run_novel_generation,
+            "_pause_for_volume_review",
+            _fake_pause_for_volume_review,
+        )
 
         revise_args = argparse.Namespace(
             run_id="run-001",
@@ -1571,8 +1992,14 @@ def test_longform_resume_golden_cases(temp_project_dir, monkeypatch, case):
         revise_result = run_novel_generation.cmd_generate_full(revise_args)
         assert revise_result == 71
         persisted_state = run_novel_generation.load_longform_state(run_dir)
-        assert persisted_state["current_stage"] == case["expected_intermediate_state"]["current_stage"]
-        assert persisted_state["risk_report_path"] is case["expected_intermediate_state"]["risk_report_path"]
+        assert (
+            persisted_state["current_stage"]
+            == case["expected_intermediate_state"]["current_stage"]
+        )
+        assert (
+            persisted_state["risk_report_path"]
+            is case["expected_intermediate_state"]["risk_report_path"]
+        )
         _assert_approval_history_entries(
             persisted_state["approval_history"],
             [
@@ -1583,8 +2010,14 @@ def test_longform_resume_golden_cases(temp_project_dir, monkeypatch, case):
                 }
             ],
         )
-        assert captured_pause["state"]["current_stage"] == case["expected_pause_call"]["state_current_stage"]
-        assert captured_pause["state"]["current_volume"] == case["expected_pause_call"]["current_volume"]
+        assert (
+            captured_pause["state"]["current_stage"]
+            == case["expected_pause_call"]["state_current_stage"]
+        )
+        assert (
+            captured_pause["state"]["current_volume"]
+            == case["expected_pause_call"]["current_volume"]
+        )
         return
 
     if case["type"] == "outline_reject":
@@ -1599,7 +2032,9 @@ def test_longform_resume_golden_cases(temp_project_dir, monkeypatch, case):
         def _unexpected_continue(*args, **kwargs):
             raise AssertionError("outline reject 分支不应继续长篇生成")
 
-        monkeypatch.setattr(run_novel_generation, "_continue_longform_run", _unexpected_continue)
+        monkeypatch.setattr(
+            run_novel_generation, "_continue_longform_run", _unexpected_continue
+        )
 
         reject_args = argparse.Namespace(
             run_id="run-001",
@@ -1649,7 +2084,9 @@ def test_longform_resume_golden_cases(temp_project_dir, monkeypatch, case):
             captured["state"] = dict(state)
             return 81
 
-        monkeypatch.setattr(run_novel_generation, "_continue_longform_run", _fake_continue)
+        monkeypatch.setattr(
+            run_novel_generation, "_continue_longform_run", _fake_continue
+        )
 
         revise_args = argparse.Namespace(
             run_id="run-001",
@@ -1666,9 +2103,18 @@ def test_longform_resume_golden_cases(temp_project_dir, monkeypatch, case):
         assert revise_result == 81
         for field_name, expected in case["expected_project_fields"].items():
             assert getattr(project, field_name) == expected
-        assert captured["state"]["approved_outline"] is case["expected_state"]["approved_outline"]
-        assert captured["state"]["current_stage"] == case["expected_state"]["current_stage"]
-        assert captured["state"]["outline_snapshot"]["outline"] == case["expected_project_fields"]["outline"]
+        assert (
+            captured["state"]["approved_outline"]
+            is case["expected_state"]["approved_outline"]
+        )
+        assert (
+            captured["state"]["current_stage"]
+            == case["expected_state"]["current_stage"]
+        )
+        assert (
+            captured["state"]["outline_snapshot"]["outline"]
+            == case["expected_project_fields"]["outline"]
+        )
         _assert_approval_history_entries(
             captured["state"]["approval_history"],
             [
@@ -1696,7 +2142,9 @@ def test_longform_resume_golden_cases(temp_project_dir, monkeypatch, case):
             captured["state"] = dict(state)
             return 82
 
-        monkeypatch.setattr(run_novel_generation, "_continue_longform_run", _fake_continue)
+        monkeypatch.setattr(
+            run_novel_generation, "_continue_longform_run", _fake_continue
+        )
 
         approve_args = argparse.Namespace(
             run_id="run-001",
@@ -1713,9 +2161,18 @@ def test_longform_resume_golden_cases(temp_project_dir, monkeypatch, case):
         assert approve_result == 82
         for field_name, expected in case["expected_project_fields"].items():
             assert getattr(project, field_name) == expected
-        assert captured["state"]["approved_outline"] is case["expected_state"]["approved_outline"]
-        assert captured["state"]["current_stage"] == case["expected_state"]["current_stage"]
-        assert captured["state"]["outline_snapshot"]["outline"] == case["expected_project_fields"]["outline"]
+        assert (
+            captured["state"]["approved_outline"]
+            is case["expected_state"]["approved_outline"]
+        )
+        assert (
+            captured["state"]["current_stage"]
+            == case["expected_state"]["current_stage"]
+        )
+        assert (
+            captured["state"]["outline_snapshot"]["outline"]
+            == case["expected_project_fields"]["outline"]
+        )
         _assert_approval_history_entries(
             captured["state"]["approval_history"],
             [

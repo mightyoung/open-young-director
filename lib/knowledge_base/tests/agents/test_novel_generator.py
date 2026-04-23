@@ -156,7 +156,9 @@ class TestNovelGeneratorWritingOptions:
 
     def test_generate_content_keeps_goal_lock_visible_alongside_chapter_guidance(self):
         llm_client = MagicMock()
-        llm_client.generate.return_value = "第五章\n" + ("韩林为了守住宗门祖地，在夜色中调度伏兵。 " * 80)
+        llm_client.generate.return_value = "第五章\n" + (
+            "韩林为了守住宗门祖地，在夜色中调度伏兵。 " * 80
+        )
         generator = NovelGeneratorAgent(
             config_manager=DummyConfigManager(),
             llm_client=llm_client,
@@ -189,11 +191,18 @@ class TestNovelGeneratorWritingOptions:
         assert "当前主线目标锁: 守住宗门祖地" in prompt
         assert "本章执行合同" in prompt
         assert "本章附加指令定位: 只补充执行方式，不覆盖主线目标锁。" in prompt
-        assert "正文至少一个关键行动、冲突选择或结果必须直接推进目标锁：守住宗门祖地" in prompt
+        assert (
+            "正文至少一个关键行动、冲突选择或结果必须直接推进目标锁：守住宗门祖地"
+            in prompt
+        )
 
-    def test_generate_chapter_rewrites_outline_before_generation_when_intent_drifts(self):
+    def test_generate_chapter_rewrites_outline_before_generation_when_intent_drifts(
+        self,
+    ):
         llm_client = MagicMock()
-        llm_client.generate.return_value = "第五章\n" + ("韩林为了守住宗门祖地，立刻调度伏兵并重整祖地防线。 " * 80)
+        llm_client.generate.return_value = "第五章\n" + (
+            "韩林为了守住宗门祖地，立刻调度伏兵并重整祖地防线。 " * 80
+        )
         generator = NovelGeneratorAgent(
             config_manager=DummyConfigManager(),
             llm_client=llm_client,
@@ -220,8 +229,12 @@ class TestNovelGeneratorWritingOptions:
 
         prompt = llm_client.generate.call_args.args[0][0]["content"]
         assert "原始大纲：传说中的远古秘境忽然现世" in prompt
-        assert "执行重写：开场先承接上一章局势，再把关键行动、冲突选择和结果对准主线目标锁：守住宗门祖地" in prompt
+        assert (
+            "执行重写：开场先承接上一章局势，再把关键行动、冲突选择和结果对准主线目标锁：守住宗门祖地"
+            in prompt
+        )
         assert "附加指令仅作为补充执行方式，不得覆盖主线" in prompt
+
 
 class TestNovelGeneratorSmoothnessConsistency:
     def test_consistency_report_flags_location_jump_without_bridge(self):
@@ -320,18 +333,22 @@ class TestNovelGeneratorSmoothnessConsistency:
 
         assert report["invalid"] is False
         assert not any(
-            "scene_or_timeline_disconnect" == issue
-            for issue in report["issue_types"]
+            "scene_or_timeline_disconnect" == issue for issue in report["issue_types"]
         )
 
     def test_consistency_report_marks_missing_events_as_invalid(self):
-        generator = NovelGeneratorAgent(config_manager=DummyConfigManager(), llm_client=MagicMock())
+        generator = NovelGeneratorAgent(
+            config_manager=DummyConfigManager(), llm_client=MagicMock()
+        )
         chapter = MODULE.GeneratedChapter(
             number=3,
             title="第三章",
             content="韩林来到演武场，却只是短暂交谈，完全没有爆发关键冲突。",
             word_count=30,
-            metadata={"key_events": ["当众击败叶尘"], "outline_summary": "韩林反击叶尘"},
+            metadata={
+                "key_events": ["当众击败叶尘"],
+                "outline_summary": "韩林反击叶尘",
+            },
         )
 
         report = generator._check_consistency(
@@ -344,7 +361,9 @@ class TestNovelGeneratorSmoothnessConsistency:
         assert "missing_key_events" in report["issue_types"]
 
     def test_consistency_report_marks_world_fact_violation_as_invalid(self):
-        generator = NovelGeneratorAgent(config_manager=DummyConfigManager(), llm_client=MagicMock())
+        generator = NovelGeneratorAgent(
+            config_manager=DummyConfigManager(), llm_client=MagicMock()
+        )
         chapter = MODULE.GeneratedChapter(
             number=8,
             title="第八章",
@@ -362,7 +381,9 @@ class TestNovelGeneratorSmoothnessConsistency:
         assert report["invalid"] is True
         assert "world_fact_violation" in report["issue_types"]
 
-    def test_consistency_report_flags_structure_drift_when_new_settings_exceed_budget(self):
+    def test_consistency_report_flags_structure_drift_when_new_settings_exceed_budget(
+        self,
+    ):
         report = _run_consistency_check(
             previous_summary="上一章韩林立誓守住宗门祖地。",
             previous_content="""
@@ -469,7 +490,10 @@ class TestNovelGeneratorSmoothnessConsistency:
             },
         )
 
-        assert report["anti_drift_details"]["stage_gate_mode"] == "fixed_threshold_degraded"
+        assert (
+            report["anti_drift_details"]["stage_gate_mode"]
+            == "fixed_threshold_degraded"
+        )
 
     def test_consistency_report_deduplicates_repeated_new_setting_intro_fragments(self):
         report = _run_consistency_check(
@@ -526,7 +550,9 @@ class TestNovelGeneratorSmoothnessConsistency:
             (None, 1),
         ],
     )
-    def test_structure_drift_budget_parsing_is_deterministic(self, budget_value, expected_budget):
+    def test_structure_drift_budget_parsing_is_deterministic(
+        self, budget_value, expected_budget
+    ):
         payload = {"goal_lock": "守住宗门祖地"}
         if budget_value is not None:
             payload["new_setting_budget"] = budget_value
@@ -548,7 +574,9 @@ class TestNovelGeneratorSmoothnessConsistency:
 
         assert report["anti_drift_details"]["budget"] == expected_budget
 
-    def test_structure_drift_records_missing_chapter_number_as_observable_skip_reason(self):
+    def test_structure_drift_records_missing_chapter_number_as_observable_skip_reason(
+        self,
+    ):
         report = _run_consistency_check(
             previous_summary="上一章韩林决定守住宗门祖地。",
             previous_content="韩林决定守住宗门祖地。",
@@ -562,9 +590,13 @@ class TestNovelGeneratorSmoothnessConsistency:
         )
 
         assert report["invalid"] is False
-        assert report["anti_drift_details"]["skipped_reason"] == "missing_chapter_number"
+        assert (
+            report["anti_drift_details"]["skipped_reason"] == "missing_chapter_number"
+        )
 
-    def test_structure_drift_uses_body_instead_of_outline_summary_for_goal_lock_alignment(self):
+    def test_structure_drift_uses_body_instead_of_outline_summary_for_goal_lock_alignment(
+        self,
+    ):
         generator = _make_generator()
         chapter = MODULE.GeneratedChapter(
             number=40,
@@ -600,7 +632,88 @@ class TestNovelGeneratorSmoothnessConsistency:
         assert report["invalid"] is True
         assert "structure_drift_risk" in report["issue_types"]
 
-    def test_consistency_report_builds_structured_rewrite_plan_for_goal_lock_false_inheritance(self):
+    def test_structure_drift_uses_configurable_stage_gate_ratio(self):
+        report = _run_consistency_check(
+            previous_summary="上一章韩林立誓守住宗门祖地。",
+            previous_content="韩林立誓守住宗门祖地。",
+            current_content="""
+            传说中的远古秘境忽然现世。
+            又一神秘体系在废墟深处显露轮廓。
+            韩林没有说明这些新设定如何帮助守住宗门祖地。
+            """,
+            chapter_number=20,
+            context_overrides={
+                "chapter_number": 20,
+                "total_chapters": 60,
+                "volume_guidance_payload": {
+                    "goal_lock": "守住宗门祖地",
+                    "new_setting_budget": "1",
+                    "anti_drift_start_ratio": "0.3",
+                },
+            },
+        )
+
+        assert report["invalid"] is True
+        assert "structure_drift_risk" in report["issue_types"]
+        assert report["anti_drift_details"]["anti_drift_start_ratio"] == 0.3
+
+    def test_structure_drift_uses_configurable_min_chapter_when_total_missing(self):
+        report = _run_consistency_check(
+            previous_summary="上一章韩林立誓守住宗门祖地。",
+            previous_content="韩林立誓守住宗门祖地。",
+            current_content="""
+            传说中的远古秘境忽然现世。
+            又一神秘体系在废墟深处显露轮廓。
+            韩林没有说明这些新设定如何帮助守住宗门祖地。
+            """,
+            chapter_number=12,
+            context_overrides={
+                "chapter_number": 12,
+                "volume_guidance_payload": {
+                    "goal_lock": "守住宗门祖地",
+                    "new_setting_budget": "1",
+                    "anti_drift_min_chapter": "10",
+                },
+            },
+        )
+
+        assert report["invalid"] is True
+        assert (
+            report["anti_drift_details"]["stage_gate_mode"]
+            == "fixed_threshold_degraded"
+        )
+        assert report["anti_drift_details"]["anti_drift_min_chapter"] == 10
+
+    def test_goal_lock_false_inheritance_can_be_warning_only(self):
+        report = _run_consistency_check(
+            previous_summary="上一章韩林决定死守祖地并立刻调度伏兵。",
+            previous_content="韩林决定死守祖地并立刻调度伏兵。",
+            current_content="""
+            韩林转身与众人讨论宴席安排。
+            他把整章篇幅都耗在无关紧要的宴席安排里。
+            """,
+            chapter_number=40,
+            plot_summary={"l2_brief_summary": "韩林为了守住宗门祖地继续推进防线。"},
+            context_overrides={
+                "chapter_number": 40,
+                "total_chapters": 60,
+                "volume_guidance_payload": {
+                    "goal_lock": "守住宗门祖地",
+                    "goal_lock_false_inheritance_mode": "warn",
+                },
+            },
+        )
+
+        assert report["invalid"] is False
+        assert "goal_lock_false_inheritance" not in report["issue_types"]
+        assert any("目标锁假继承" in item for item in report["warning_issues"])
+        assert (
+            report["anti_drift_details"]["goal_lock_false_inheritance_mode"] == "warn"
+        )
+
+    def test_consistency_report_builds_structured_rewrite_plan_for_goal_lock_false_inheritance(
+        self,
+    ):
         generator = _make_generator()
         context = {
             "chapter_number": 40,
@@ -649,8 +762,7 @@ class TestNovelGeneratorSmoothnessConsistency:
         assert report["rewrite_plan"]["schema_version"] == "rewrite_plan.v2"
         assert report["rewrite_plan"]["strategy"] == "targeted_patch"
         assert any(
-            "重写时围绕目标锁重组正文推进链：守住宗门祖地"
-            in item
+            "重写时围绕目标锁重组正文推进链：守住宗门祖地" in item
             for item in report["rewrite_plan"]["fixes"]
         )
         assert any(
@@ -663,7 +775,9 @@ class TestNovelGeneratorSmoothnessConsistency:
         assert "【本次修复】" in report["rewrite_guidance"]
         assert "【验收条件】" in report["rewrite_guidance"]
 
-    def test_consistency_report_builds_structured_rewrite_plan_for_smoothness_failures(self):
+    def test_consistency_report_builds_structured_rewrite_plan_for_smoothness_failures(
+        self,
+    ):
         report = _run_consistency_check(
             previous_summary="上一章深夜，韩林刚在客栈拿到密信，还没来得及拆开。",
             previous_content="""
@@ -679,11 +793,16 @@ class TestNovelGeneratorSmoothnessConsistency:
         assert report["invalid"] is True
         assert report["rewrite_plan"]["issue_types"] == ["scene_or_timeline_disconnect"]
         assert report["rewrite_plan"]["issue_categories"] == ["时间跳跃无锚点"]
-        assert "交代时间跨度后的状态变化、缺失时段影响或切换原因。" in report["rewrite_plan"]["fixes"]
-        assert "若发生时间跳跃，正文必须解释时间跨度带来的状态变化。" in report["rewrite_plan"]["success_criteria"]
+        assert (
+            "交代时间跨度后的状态变化、缺失时段影响或切换原因。"
+            in report["rewrite_plan"]["fixes"]
+        )
+        assert (
+            "若发生时间跳跃，正文必须解释时间跨度带来的状态变化。"
+            in report["rewrite_plan"]["success_criteria"]
+        )
         assert any(
-            item["action"] == "anchor_time_jump"
-            and item["target"] == "time_transition"
+            item["action"] == "anchor_time_jump" and item["target"] == "time_transition"
             for item in report["rewrite_plan"]["operations"]
         )
         assert "【本次修复】" in report["rewrite_guidance"]
@@ -715,7 +834,9 @@ class TestNovelGeneratorSmoothnessConsistency:
         assert "守住宗门祖地" in result["rewritten_outline"]
         assert "传说中的远古秘境忽然现世" in result["rewritten_outline"]
 
-    def test_consistency_report_adds_warning_only_semantic_review_when_precheck_rewrites_outline(self):
+    def test_consistency_report_adds_warning_only_semantic_review_when_precheck_rewrites_outline(
+        self,
+    ):
         generator = _make_generator()
         context = {
             "chapter_number": 12,
@@ -759,7 +880,9 @@ class TestNovelGeneratorSmoothnessConsistency:
         assert "chapter_intent_rewrite_applied" in [
             item["category"] for item in report["semantic_review"]["issues"]
         ]
-        assert any("生成前意图检查已重写章节大纲" in item for item in report["warning_issues"])
+        assert any(
+            "生成前意图检查已重写章节大纲" in item for item in report["warning_issues"]
+        )
 
 
 @pytest.mark.parametrize(
@@ -782,6 +905,9 @@ def test_consistency_report_matches_anti_drift_golden_cases(case):
     assert report["issue_types"] == case["expected_issue_types"]
     expected_actions = case.get("expected_rewrite_actions", [])
     if expected_actions:
-        rewrite_actions = [item.get("action") for item in report.get("rewrite_plan", {}).get("operations", [])]
+        rewrite_actions = [
+            item.get("action")
+            for item in report.get("rewrite_plan", {}).get("operations", [])
+        ]
         for action in expected_actions:
             assert action in rewrite_actions
