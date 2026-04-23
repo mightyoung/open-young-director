@@ -7,14 +7,21 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import run_novel_generation
-from services.longform_run import CHECKPOINT_CHAPTER, STAGE_CHAPTER_REVIEW, approval_history_summary, initial_longform_state, record_pause
-from services.longform_run import CHECKPOINT_OUTLINE
-from services.run_storage import read_status
-from services.run_storage import update_status
+from services.longform_run import (
+    CHECKPOINT_CHAPTER,
+    CHECKPOINT_OUTLINE,
+    STAGE_CHAPTER_REVIEW,
+    approval_history_summary,
+    initial_longform_state,
+    record_pause,
+)
+from services.run_storage import read_status, update_status
 import streamlit_app
 
 
-def _configure_streamlit_longform_env(temp_project_dir, mock_config_manager, monkeypatch, *, current_chapter: int):
+def _configure_streamlit_longform_env(
+    temp_project_dir, mock_config_manager, monkeypatch, *, current_chapter: int
+):
     project_dir = temp_project_dir / "novels" / "demo_project"
     project_dir.mkdir(parents=True, exist_ok=True)
 
@@ -29,7 +36,9 @@ def _configure_streamlit_longform_env(temp_project_dir, mock_config_manager, mon
     )
     mock_config_manager.current_project = project
     mock_config_manager.generation.output_dir = str(project_dir)
-    monkeypatch.setattr(streamlit_app, "get_config_manager", lambda: mock_config_manager)
+    monkeypatch.setattr(
+        streamlit_app, "get_config_manager", lambda: mock_config_manager
+    )
 
     fake_config = SimpleNamespace(
         current_project=project,
@@ -41,7 +50,9 @@ def _configure_streamlit_longform_env(temp_project_dir, mock_config_manager, mon
     return project_dir, project
 
 
-def _create_longform_run_with_state(project_dir: Path, project: SimpleNamespace, *, current_chapter: int):
+def _create_longform_run_with_state(
+    project_dir: Path, project: SimpleNamespace, *, current_chapter: int
+):
     run_dir = streamlit_app.create_run(
         project_dir=project_dir,
         run_id="run-001",
@@ -60,7 +71,9 @@ def _create_longform_run_with_state(project_dir: Path, project: SimpleNamespace,
     return run_dir, state
 
 
-def _assert_approval_history_visible(run_dir: Path, status: dict, expected_latest: str, expected_entries: list[str]):
+def _assert_approval_history_visible(
+    run_dir: Path, status: dict, expected_latest: str, expected_entries: list[str]
+):
     preview = streamlit_app._recent_run_preview(run_dir.name)
     sections = dict(streamlit_app._longform_control_panel_sections(status))
 
@@ -192,7 +205,7 @@ class _StatusSummaryFakeStreamlit:
     def caption(self, message, **_kwargs):
         if self._allow_caption:
             self.captions.append(message)
-        return None
+        return
 
     def error(self, *_args, **_kwargs):
         raise AssertionError("unexpected error state")
@@ -221,8 +234,10 @@ class _RunMonitorFakeStreamlit:
         return _decorator
 
     def text_area(self, label, value, height, **kwargs):
-        self.text_area_calls.append({"label": label, "value": value, "height": height, "kwargs": kwargs})
-        return None
+        self.text_area_calls.append(
+            {"label": label, "value": value, "height": height, "kwargs": kwargs}
+        )
+        return
 
 
 def test_run_monitor_payload_handles_missing_run():
@@ -265,12 +280,16 @@ def test_run_monitor_payload_reads_status_and_logs(temp_project_dir):
     assert payload["queued_volume_guidance"] == "- 必须回收的伏笔/问题: 回收第一卷伏笔"
 
 
-def test_recent_run_rows_include_guidance_headline(temp_project_dir, mock_config_manager, monkeypatch):
+def test_recent_run_rows_include_guidance_headline(
+    temp_project_dir, mock_config_manager, monkeypatch
+):
     project_dir = temp_project_dir / "novels" / "demo_project"
     project_dir.mkdir(parents=True, exist_ok=True)
     mock_config_manager.current_project = MagicMock(id="project-123", title="demo")
     mock_config_manager.generation.output_dir = str(project_dir)
-    monkeypatch.setattr(streamlit_app, "get_config_manager", lambda: mock_config_manager)
+    monkeypatch.setattr(
+        streamlit_app, "get_config_manager", lambda: mock_config_manager
+    )
 
     first = streamlit_app.create_run(
         project_dir=project_dir,
@@ -331,12 +350,16 @@ def test_recent_run_rows_include_guidance_headline(temp_project_dir, mock_config
     assert rows[1][6] == "- 2026-04-21 11:20 分卷审批 -> 批准"
 
 
-def test_recent_run_rows_marks_active_run(temp_project_dir, mock_config_manager, monkeypatch):
+def test_recent_run_rows_marks_active_run(
+    temp_project_dir, mock_config_manager, monkeypatch
+):
     project_dir = temp_project_dir / "novels" / "demo_project"
     project_dir.mkdir(parents=True, exist_ok=True)
     mock_config_manager.current_project = MagicMock(id="project-123", title="demo")
     mock_config_manager.generation.output_dir = str(project_dir)
-    monkeypatch.setattr(streamlit_app, "get_config_manager", lambda: mock_config_manager)
+    monkeypatch.setattr(
+        streamlit_app, "get_config_manager", lambda: mock_config_manager
+    )
     monkeypatch.setattr(streamlit_app, "_active_run_id_from_state", lambda: "run-001")
 
     first = streamlit_app.create_run(
@@ -361,12 +384,16 @@ def test_recent_run_rows_marks_active_run(temp_project_dir, mock_config_manager,
     assert marked[0][1] == "run-001"
 
 
-def test_switch_active_run_action_returns_selected_run(temp_project_dir, mock_config_manager, monkeypatch):
+def test_switch_active_run_action_returns_selected_run(
+    temp_project_dir, mock_config_manager, monkeypatch
+):
     project_dir = temp_project_dir / "novels" / "demo_project"
     project_dir.mkdir(parents=True, exist_ok=True)
     mock_config_manager.current_project = MagicMock(id="project-123", title="demo")
     mock_config_manager.generation.output_dir = str(project_dir)
-    monkeypatch.setattr(streamlit_app, "get_config_manager", lambda: mock_config_manager)
+    monkeypatch.setattr(
+        streamlit_app, "get_config_manager", lambda: mock_config_manager
+    )
 
     streamlit_app.create_run(
         project_dir=project_dir,
@@ -382,12 +409,16 @@ def test_switch_active_run_action_returns_selected_run(temp_project_dir, mock_co
     assert "已切换到运行任务" in result["message"]
 
 
-def test_recent_run_preview_reads_selected_run_logs(temp_project_dir, mock_config_manager, monkeypatch):
+def test_recent_run_preview_reads_selected_run_logs(
+    temp_project_dir, mock_config_manager, monkeypatch
+):
     project_dir = temp_project_dir / "novels" / "demo_project"
     project_dir.mkdir(parents=True, exist_ok=True)
     mock_config_manager.current_project = MagicMock(id="project-123", title="demo")
     mock_config_manager.generation.output_dir = str(project_dir)
-    monkeypatch.setattr(streamlit_app, "get_config_manager", lambda: mock_config_manager)
+    monkeypatch.setattr(
+        streamlit_app, "get_config_manager", lambda: mock_config_manager
+    )
 
     run_dir = streamlit_app.create_run(
         project_dir=project_dir,
@@ -410,10 +441,12 @@ def test_recent_run_preview_reads_selected_run_logs(temp_project_dir, mock_confi
                         "action": "revise",
                         "payload": {
                             "notes": "先把祖地防线的实际行动补出来。",
-                            "chapter_rewrite_plan": {"operations": [{"action": "rebuild_goal_lock_chain"}]},
+                            "chapter_rewrite_plan": {
+                                "operations": [{"action": "rebuild_goal_lock_chain"}]
+                            },
                         },
                         "submitted_at": "2026-04-21T10:15:00",
-                    }
+                    },
                 ]
             },
             ensure_ascii=False,
@@ -444,14 +477,18 @@ def test_recent_run_preview_reads_selected_run_logs(temp_project_dir, mock_confi
     assert "章节复核 -> 修订" in preview["approval_history"]
 
 
-def test_streamlit_helpers_read_approval_history_written_by_resume_flow(temp_project_dir, mock_config_manager, monkeypatch):
+def test_streamlit_helpers_read_approval_history_written_by_resume_flow(
+    temp_project_dir, mock_config_manager, monkeypatch
+):
     project_dir, project = _configure_streamlit_longform_env(
         temp_project_dir,
         mock_config_manager,
         monkeypatch,
         current_chapter=3,
     )
-    run_dir, state = _create_longform_run_with_state(project_dir, project, current_chapter=3)
+    run_dir, state = _create_longform_run_with_state(
+        project_dir, project, current_chapter=3
+    )
     paused = record_pause(
         run_dir=run_dir,
         longform_state=state,
@@ -461,7 +498,9 @@ def test_streamlit_helpers_read_approval_history_written_by_resume_flow(temp_pro
             "chapter_number": 4,
             "title": "第四章",
             "summary": "目标锁假继承，正文掉锚。",
-            "blocking_issues": ["目标锁假继承[摘要命中但正文掉锚]: goal_lock=守住宗门祖地"],
+            "blocking_issues": [
+                "目标锁假继承[摘要命中但正文掉锚]: goal_lock=守住宗门祖地"
+            ],
             "rewrite_plan": {
                 "schema_version": "rewrite_plan.v2",
                 "strategy": "targeted_patch",
@@ -480,7 +519,9 @@ def test_streamlit_helpers_read_approval_history_written_by_resume_flow(temp_pro
     def _unexpected_continue(*_args, **_kwargs):
         raise AssertionError("reject 分支不应继续长篇生成")
 
-    monkeypatch.setattr(run_novel_generation, "_continue_longform_run", _unexpected_continue)
+    monkeypatch.setattr(
+        run_novel_generation, "_continue_longform_run", _unexpected_continue
+    )
 
     reject_args = argparse.Namespace(
         run_id="run-001",
@@ -492,7 +533,9 @@ def test_streamlit_helpers_read_approval_history_written_by_resume_flow(temp_pro
                 "chapter_rewrite_plan": {
                     "schema_version": "rewrite_plan.v2",
                     "strategy": "targeted_patch",
-                    "operations": [{"phase": "body", "action": "rebuild_goal_lock_chain"}],
+                    "operations": [
+                        {"phase": "body", "action": "rebuild_goal_lock_chain"}
+                    ],
                 },
                 "notes": "先不要继续，等人工确认祖地防线怎么接。",
             },
@@ -510,7 +553,9 @@ def test_streamlit_helpers_read_approval_history_written_by_resume_flow(temp_pro
         captured["state"] = dict(state)
         return 91
 
-    monkeypatch.setattr(run_novel_generation, "_continue_longform_run", _capture_continue)
+    monkeypatch.setattr(
+        run_novel_generation, "_continue_longform_run", _capture_continue
+    )
 
     revise_args = argparse.Namespace(
         run_id="run-001",
@@ -563,7 +608,9 @@ def test_streamlit_helpers_read_risk_review_approval_history_written_by_resume_f
         monkeypatch,
         current_chapter=60,
     )
-    run_dir, state = _create_longform_run_with_state(project_dir, project, current_chapter=60)
+    run_dir, state = _create_longform_run_with_state(
+        project_dir, project, current_chapter=60
+    )
     state["current_volume"] = 1
     state["risk_report_path"] = str(run_dir / "risk_report.json")
     run_novel_generation.save_longform_state(run_dir, state)
@@ -583,14 +630,18 @@ def test_streamlit_helpers_read_risk_review_approval_history_written_by_resume_f
     def _unexpected_continue(*_args, **_kwargs):
         raise AssertionError("risk reject 分支不应继续长篇生成")
 
-    monkeypatch.setattr(run_novel_generation, "_continue_longform_run", _unexpected_continue)
+    monkeypatch.setattr(
+        run_novel_generation, "_continue_longform_run", _unexpected_continue
+    )
 
     reject_args = argparse.Namespace(
         run_id="run-001",
         run_dir=str(run_dir),
         resume_state=paused["pending_state_path"],
         submit_approval="reject",
-        approval_payload=json.dumps({"notes": "先不要继续，风险点还没处理完。"}, ensure_ascii=False),
+        approval_payload=json.dumps(
+            {"notes": "先不要继续，风险点还没处理完。"}, ensure_ascii=False
+        ),
         chapters_per_volume=60,
         approval_mode="outline+volume",
         auto_approve=False,
@@ -599,7 +650,9 @@ def test_streamlit_helpers_read_risk_review_approval_history_written_by_resume_f
 
     status = read_status(run_dir)
     assert streamlit_app._recent_run_preview("run-001")["status"] == "已暂停"
-    _assert_approval_history_visible(run_dir, status, "风险复核 -> 拒绝", ["风险复核 -> 拒绝"])
+    _assert_approval_history_visible(
+        run_dir, status, "风险复核 -> 拒绝", ["风险复核 -> 拒绝"]
+    )
 
 
 def test_streamlit_helpers_read_volume_review_approval_history_written_by_resume_flow(
@@ -613,7 +666,9 @@ def test_streamlit_helpers_read_volume_review_approval_history_written_by_resume
         monkeypatch,
         current_chapter=60,
     )
-    run_dir, state = _create_longform_run_with_state(project_dir, project, current_chapter=60)
+    run_dir, state = _create_longform_run_with_state(
+        project_dir, project, current_chapter=60
+    )
     state["current_volume"] = 1
     state["current_volume_start_chapter"] = 1
     state["current_volume_end_chapter"] = 60
@@ -629,7 +684,10 @@ def test_streamlit_helpers_read_volume_review_approval_history_written_by_resume
         longform_state=state,
         checkpoint_type="volume_review",
         current_stage="volume.review",
-        review_payload={"volume_index": 1, "summary": "第 1 卷已完成，等待下一卷指令。"},
+        review_payload={
+            "volume_index": 1,
+            "summary": "第 1 卷已完成，等待下一卷指令。",
+        },
     )
 
     captured = {}
@@ -638,7 +696,9 @@ def test_streamlit_helpers_read_volume_review_approval_history_written_by_resume
         captured["state"] = dict(state)
         return 92
 
-    monkeypatch.setattr(run_novel_generation, "_continue_longform_run", _capture_continue)
+    monkeypatch.setattr(
+        run_novel_generation, "_continue_longform_run", _capture_continue
+    )
 
     approve_args = argparse.Namespace(
         run_id="run-001",
@@ -663,7 +723,9 @@ def test_streamlit_helpers_read_volume_review_approval_history_written_by_resume
 
     status = read_status(run_dir)
     assert captured["state"]["approval_history"][0]["action"] == "approve"
-    _assert_approval_history_visible(run_dir, status, "分卷审批 -> 批准", ["分卷审批 -> 批准"])
+    _assert_approval_history_visible(
+        run_dir, status, "分卷审批 -> 批准", ["分卷审批 -> 批准"]
+    )
 
 
 def test_streamlit_helpers_read_outline_review_approval_history_written_by_resume_flow(
@@ -677,7 +739,9 @@ def test_streamlit_helpers_read_outline_review_approval_history_written_by_resum
         monkeypatch,
         current_chapter=0,
     )
-    run_dir, state = _create_longform_run_with_state(project_dir, project, current_chapter=0)
+    run_dir, state = _create_longform_run_with_state(
+        project_dir, project, current_chapter=0
+    )
 
     paused = record_pause(
         run_dir=run_dir,
@@ -694,14 +758,18 @@ def test_streamlit_helpers_read_outline_review_approval_history_written_by_resum
     def _unexpected_continue(*_args, **_kwargs):
         raise AssertionError("outline reject 分支不应继续长篇生成")
 
-    monkeypatch.setattr(run_novel_generation, "_continue_longform_run", _unexpected_continue)
+    monkeypatch.setattr(
+        run_novel_generation, "_continue_longform_run", _unexpected_continue
+    )
 
     reject_args = argparse.Namespace(
         run_id="run-001",
         run_dir=str(run_dir),
         resume_state=paused["pending_state_path"],
         submit_approval="reject",
-        approval_payload=json.dumps({"notes": "先不要继续，等大纲修完再说。"}, ensure_ascii=False),
+        approval_payload=json.dumps(
+            {"notes": "先不要继续，等大纲修完再说。"}, ensure_ascii=False
+        ),
         chapters_per_volume=60,
         approval_mode="outline+volume",
         auto_approve=False,
@@ -714,7 +782,9 @@ def test_streamlit_helpers_read_outline_review_approval_history_written_by_resum
         captured["state"] = dict(state)
         return 93
 
-    monkeypatch.setattr(run_novel_generation, "_continue_longform_run", _capture_continue)
+    monkeypatch.setattr(
+        run_novel_generation, "_continue_longform_run", _capture_continue
+    )
 
     revise_args = argparse.Namespace(
         run_id="run-001",
@@ -769,7 +839,9 @@ def test_run_status_and_stage_label_maps_known_values():
     assert streamlit_app._run_stage_label("chapter.generate") == "章节生成"
 
 
-def test_project_root_and_runs_root_follow_config_manager(mock_config_manager, monkeypatch):
+def test_project_root_and_runs_root_follow_config_manager(
+    mock_config_manager, monkeypatch
+):
     project = mock_config_manager.create_project(
         title="demo",
         author="tester",
@@ -780,13 +852,17 @@ def test_project_root_and_runs_root_follow_config_manager(mock_config_manager, m
     project_dir.mkdir(parents=True, exist_ok=True)
     mock_config_manager.current_project = project
     mock_config_manager.generation.output_dir = str(project_dir)
-    monkeypatch.setattr(streamlit_app, "get_config_manager", lambda: mock_config_manager)
+    monkeypatch.setattr(
+        streamlit_app, "get_config_manager", lambda: mock_config_manager
+    )
 
     assert streamlit_app._project_root() == project_dir
     assert streamlit_app._runs_root() == project_dir / "runs"
 
 
-def test_run_full_novel_action_initializes_run_and_launches_cli(mock_config_manager, monkeypatch, temp_project_dir):
+def test_run_full_novel_action_initializes_run_and_launches_cli(
+    mock_config_manager, monkeypatch, temp_project_dir
+):
     project = mock_config_manager.create_project(
         title="demo",
         author="tester",
@@ -797,7 +873,9 @@ def test_run_full_novel_action_initializes_run_and_launches_cli(mock_config_mana
     project_dir.mkdir(parents=True, exist_ok=True)
     mock_config_manager.current_project = project
     mock_config_manager.generation.output_dir = str(project_dir)
-    monkeypatch.setattr(streamlit_app, "get_config_manager", lambda: mock_config_manager)
+    monkeypatch.setattr(
+        streamlit_app, "get_config_manager", lambda: mock_config_manager
+    )
 
     launched = {}
 
@@ -830,7 +908,12 @@ def test_pending_review_payload_reads_pending_file(temp_project_dir):
         '{"checkpoint_type":"outline_review","review_payload":{"outline":"demo"}}',
         encoding="utf-8",
     )
-    update_status(run_dir, status="paused", pending_state_path=str(pending_path), pause_reason="outline_review")
+    update_status(
+        run_dir,
+        status="paused",
+        pending_state_path=str(pending_path),
+        pause_reason="outline_review",
+    )
 
     payload = streamlit_app._pending_review_payload(run_dir)
 
@@ -839,7 +922,9 @@ def test_pending_review_payload_reads_pending_file(temp_project_dir):
     assert payload["pending_state_path"] == str(pending_path)
 
 
-def test_pending_review_payload_preserves_structured_chapter_review_fields(temp_project_dir):
+def test_pending_review_payload_preserves_structured_chapter_review_fields(
+    temp_project_dir,
+):
     run_dir = streamlit_app.create_run(
         project_dir=temp_project_dir / "project",
         run_id="run-001",
@@ -856,20 +941,30 @@ def test_pending_review_payload_preserves_structured_chapter_review_fields(temp_
                     "title": "第四十章",
                     "summary": "目标锁假继承，正文掉锚。",
                     "issue_types": ["goal_lock_false_inheritance"],
-                    "warning_issues": ["生成前意图检查已重写章节大纲，本章虽继续生成，但建议观察是否出现计划层掉锚复发。"],
-                    "blocking_issues": ["目标锁假继承[摘要命中但正文掉锚]: goal_lock=守住宗门祖地"],
+                    "warning_issues": [
+                        "生成前意图检查已重写章节大纲，本章虽继续生成，但建议观察是否出现计划层掉锚复发。"
+                    ],
+                    "blocking_issues": [
+                        "目标锁假继承[摘要命中但正文掉锚]: goal_lock=守住宗门祖地"
+                    ],
                     "anti_drift_details": {
                         "goal_lock": "守住宗门祖地",
                         "summary_alignment": True,
                         "body_alignment": False,
                         "goal_terms": ["宗门祖地", "守住"],
-                        "matched_fragments": ["韩林只是想起守住宗门祖地，却只是站在祖地墙头观望众人慌乱。"],
-                        "unaligned_fragments": ["他嘴上说不能退，却把整章篇幅都耗在无关紧要的闲谈里。"],
+                        "matched_fragments": [
+                            "韩林只是想起守住宗门祖地，却只是站在祖地墙头观望众人慌乱。"
+                        ],
+                        "unaligned_fragments": [
+                            "他嘴上说不能退，却把整章篇幅都耗在无关紧要的闲谈里。"
+                        ],
                     },
                     "chapter_intent_contract": {
                         "goal_lock": "守住宗门祖地",
                         "planned_action": "韩林必须调度伏兵守住祖地。",
-                        "success_checks": ["正文至少一个关键行动、冲突选择或结果必须直接推进目标锁：守住宗门祖地"],
+                        "success_checks": [
+                            "正文至少一个关键行动、冲突选择或结果必须直接推进目标锁：守住宗门祖地"
+                        ],
                     },
                     "semantic_review": {
                         "warning_only": True,
@@ -885,9 +980,13 @@ def test_pending_review_payload_preserves_structured_chapter_review_fields(temp_
                         "strategy": "targeted_patch",
                         "issue_types": ["goal_lock_false_inheritance"],
                         "issue_categories": [],
-                        "must_keep": ["保留本章既有关键事件，不要靠删除冲突来伪造顺畅。"],
+                        "must_keep": [
+                            "保留本章既有关键事件，不要靠删除冲突来伪造顺畅。"
+                        ],
                         "fixes": ["重写时围绕目标锁重组正文推进链：守住宗门祖地"],
-                        "success_criteria": ["摘要和正文都必须真实推进目标锁：守住宗门祖地"],
+                        "success_criteria": [
+                            "摘要和正文都必须真实推进目标锁：守住宗门祖地"
+                        ],
                         "operations": [
                             {
                                 "phase": "body",
@@ -904,24 +1003,37 @@ def test_pending_review_payload_preserves_structured_chapter_review_fields(temp_
         ),
         encoding="utf-8",
     )
-    update_status(run_dir, status="paused", pending_state_path=str(pending_path), pause_reason="chapter_review")
+    update_status(
+        run_dir,
+        status="paused",
+        pending_state_path=str(pending_path),
+        pause_reason="chapter_review",
+    )
 
     payload = streamlit_app._pending_review_payload(run_dir)
 
     assert payload["checkpoint_type"] == "chapter_review"
     assert payload["review_payload"]["issue_types"] == ["goal_lock_false_inheritance"]
-    assert payload["review_payload"]["anti_drift_details"]["goal_lock"] == "守住宗门祖地"
-    assert payload["review_payload"]["rewrite_plan"]["fixes"] == ["重写时围绕目标锁重组正文推进链：守住宗门祖地"]
+    assert (
+        payload["review_payload"]["anti_drift_details"]["goal_lock"] == "守住宗门祖地"
+    )
+    assert payload["review_payload"]["rewrite_plan"]["fixes"] == [
+        "重写时围绕目标锁重组正文推进链：守住宗门祖地"
+    ]
     assert payload["review_payload"]["semantic_review"]["warning_only"] is True
 
 
-def test_provider_status_lines_include_active_provider(mock_config_manager, monkeypatch):
+def test_provider_status_lines_include_active_provider(
+    mock_config_manager, monkeypatch
+):
     mock_config_manager.update_generation_config(
         active_provider="minimax",
         provider_updates={"minimax": {"model_name": "MiniMax-M2.5"}},
         persist=False,
     )
-    monkeypatch.setattr(streamlit_app, "get_config_manager", lambda: mock_config_manager)
+    monkeypatch.setattr(
+        streamlit_app, "get_config_manager", lambda: mock_config_manager
+    )
 
     lines = streamlit_app._provider_status_lines()
 
@@ -977,6 +1089,14 @@ def test_volume_review_summary_formats_highlights():
                         "key_events": ["入门", "拜师"],
                     }
                 ],
+                "chapter_evidence_excerpts": [
+                    {
+                        "chapter_number": 1,
+                        "title": "开局",
+                        "opening_excerpt": "韩林踏入宗门，暗暗记住祖地裂痕。",
+                        "closing_excerpt": "他决定守住宗门祖地。",
+                    }
+                ],
             }
         }
     )
@@ -986,24 +1106,34 @@ def test_volume_review_summary_formats_highlights():
     assert "总字数: 6800" in summary
     assert "跨卷未完成目标: 守住宗门祖地" in summary
     assert "第 1 章《开局》" in summary
+    assert "正文证据摘录" in summary
+    assert "韩林踏入宗门" in summary
 
 
 def test_chapter_review_helpers_surface_structured_evidence():
     review_payload = {
         "issue_types": ["goal_lock_false_inheritance"],
-        "warning_issues": ["生成前意图检查已重写章节大纲，本章虽继续生成，但建议观察是否出现计划层掉锚复发。"],
+        "warning_issues": [
+            "生成前意图检查已重写章节大纲，本章虽继续生成，但建议观察是否出现计划层掉锚复发。"
+        ],
         "anti_drift_details": {
             "goal_lock": "守住宗门祖地",
             "summary_alignment": True,
             "body_alignment": False,
             "goal_terms": ["宗门祖地", "守住"],
-            "matched_fragments": ["韩林只是想起守住宗门祖地，却只是站在祖地墙头观望众人慌乱。"],
-            "unaligned_fragments": ["他嘴上说不能退，却把整章篇幅都耗在无关紧要的闲谈里。"],
+            "matched_fragments": [
+                "韩林只是想起守住宗门祖地，却只是站在祖地墙头观望众人慌乱。"
+            ],
+            "unaligned_fragments": [
+                "他嘴上说不能退，却把整章篇幅都耗在无关紧要的闲谈里。"
+            ],
         },
         "chapter_intent_contract": {
             "goal_lock": "守住宗门祖地",
             "planned_action": "韩林必须调度伏兵守住祖地。",
-            "success_checks": ["正文至少一个关键行动、冲突选择或结果必须直接推进目标锁：守住宗门祖地"],
+            "success_checks": [
+                "正文至少一个关键行动、冲突选择或结果必须直接推进目标锁：守住宗门祖地"
+            ],
         },
         "semantic_review": {
             "warning_only": True,
@@ -1043,7 +1173,10 @@ def test_chapter_review_helpers_surface_structured_evidence():
     assert "本章计划动作: 韩林必须调度伏兵守住祖地。" in evidence["生成前执行合同"]
     assert "goal_lock_semantic_risk" in evidence["语义复核"]
     assert "重写时围绕目标锁重组正文推进链：守住宗门祖地" in evidence["结构化重写方案"]
-    assert "body / rebuild_goal_lock_chain / goal_lock_progression" in evidence["结构化重写方案"]
+    assert (
+        "body / rebuild_goal_lock_chain / goal_lock_progression"
+        in evidence["结构化重写方案"]
+    )
 
 
 def test_chapter_review_resume_payload_compiles_rewrite_plan_and_notes():
@@ -1070,7 +1203,10 @@ def test_chapter_review_resume_payload_compiles_rewrite_plan_and_notes():
 
     assert payload["chapter_rewrite_plan"]["strategy"] == "targeted_patch"
     assert "Patch 操作：" in payload["chapter_rewrite_guidance"]
-    assert "[body / rebuild_goal_lock_chain / goal_lock_progression]" in payload["chapter_rewrite_guidance"]
+    assert (
+        "[body / rebuild_goal_lock_chain / goal_lock_progression]"
+        in payload["chapter_rewrite_guidance"]
+    )
     assert "人工补充：" in payload["chapter_rewrite_guidance"]
     assert payload["notes"] == "补上与上一章战场结尾的衔接。"
 
@@ -1128,7 +1264,9 @@ def test_queued_guidance_summary_reads_longform_state(temp_project_dir):
         encoding="utf-8",
     )
 
-    summary = streamlit_app._queued_guidance_summary({"longform_state_path": str(longform_state_path)})
+    summary = streamlit_app._queued_guidance_summary(
+        {"longform_state_path": str(longform_state_path)}
+    )
 
     assert "回收第一卷伏笔" in summary
     assert "不要新增支线角色" in summary
@@ -1145,7 +1283,9 @@ def test_queued_guidance_summary_prefers_status_snapshot():
     assert summary == "- 必须回收的伏笔/问题: 直接读 status 快照"
 
 
-def test_longform_control_panel_sections_reads_goal_lock_registry_and_pending_review(temp_project_dir):
+def test_longform_control_panel_sections_reads_goal_lock_registry_and_pending_review(
+    temp_project_dir,
+):
     longform_state_path = temp_project_dir / "longform_state.v1.json"
     pending_path = temp_project_dir / "pending.json"
     longform_state_path.write_text(
@@ -1169,7 +1309,10 @@ def test_longform_control_panel_sections_reads_goal_lock_registry_and_pending_re
                             "notes": "先把祖地防线的实际行动补出来。",
                             "chapter_rewrite_plan": {
                                 "operations": [
-                                    {"phase": "body", "action": "rebuild_goal_lock_chain"},
+                                    {
+                                        "phase": "body",
+                                        "action": "rebuild_goal_lock_chain",
+                                    },
                                 ]
                             },
                         },
@@ -1189,7 +1332,9 @@ def test_longform_control_panel_sections_reads_goal_lock_registry_and_pending_re
                 "review_payload": {
                     "summary": "目标锁假继承，正文掉锚。",
                     "issue_types": ["goal_lock_false_inheritance"],
-                    "blocking_issues": ["目标锁假继承[摘要命中但正文掉锚]: goal_lock=守住宗门祖地"],
+                    "blocking_issues": [
+                        "目标锁假继承[摘要命中但正文掉锚]: goal_lock=守住宗门祖地"
+                    ],
                 },
             },
             ensure_ascii=False,
@@ -1258,7 +1403,10 @@ def test_render_run_status_summary_shows_chapter_review_control_panel(temp_proje
                             "notes": "先把祖地防线的实际行动补出来。",
                             "chapter_rewrite_plan": {
                                 "operations": [
-                                    {"phase": "body", "action": "rebuild_goal_lock_chain"},
+                                    {
+                                        "phase": "body",
+                                        "action": "rebuild_goal_lock_chain",
+                                    },
                                 ]
                             },
                         },
@@ -1278,7 +1426,9 @@ def test_render_run_status_summary_shows_chapter_review_control_panel(temp_proje
                 "review_payload": {
                     "summary": "目标锁假继承，正文掉锚。",
                     "issue_types": ["goal_lock_false_inheritance"],
-                    "blocking_issues": ["目标锁假继承[摘要命中但正文掉锚]: goal_lock=守住宗门祖地"],
+                    "blocking_issues": [
+                        "目标锁假继承[摘要命中但正文掉锚]: goal_lock=守住宗门祖地"
+                    ],
                 },
             },
             ensure_ascii=False,
@@ -1384,8 +1534,12 @@ def test_render_run_status_summary_shows_volume_review_control_panel(temp_projec
     assert any("待处理节点: volume_review" in item for item in fake_st.codes)
 
 
-def test_save_provider_settings_action_persists_generation_config(mock_config_manager, monkeypatch):
-    monkeypatch.setattr(streamlit_app, "get_config_manager", lambda: mock_config_manager)
+def test_save_provider_settings_action_persists_generation_config(
+    mock_config_manager, monkeypatch
+):
+    monkeypatch.setattr(
+        streamlit_app, "get_config_manager", lambda: mock_config_manager
+    )
 
     message = streamlit_app.save_provider_settings_action(
         "doubao",
@@ -1406,7 +1560,9 @@ def test_save_provider_settings_action_persists_generation_config(mock_config_ma
         },
     )
 
-    saved = (mock_config_manager.config_dir / "generation.json").read_text(encoding="utf-8")
+    saved = (mock_config_manager.config_dir / "generation.json").read_text(
+        encoding="utf-8"
+    )
     assert "doubao-text-pro" in saved
     assert "已保存 Provider 配置" in message
 
@@ -1418,7 +1574,9 @@ def test_resume_longform_action_writes_guidance_payload(temp_project_dir, monkey
     launched = {}
 
     monkeypatch.setattr(streamlit_app, "RUN_SCRIPT", Path("/tmp/fake_run.py"))
-    monkeypatch.setattr(streamlit_app, "read_status", lambda _run_dir: {"run_id": "run-001"})
+    monkeypatch.setattr(
+        streamlit_app, "read_status", lambda _run_dir: {"run_id": "run-001"}
+    )
     monkeypatch.setattr(
         streamlit_app,
         "_launch_cli_process",
@@ -1446,14 +1604,18 @@ def test_resume_longform_action_writes_guidance_payload(temp_project_dir, monkey
     assert "--approval-payload" in launched["cmd"]
 
 
-def test_resume_longform_action_writes_cross_volume_registry_payload(temp_project_dir, monkeypatch):
+def test_resume_longform_action_writes_cross_volume_registry_payload(
+    temp_project_dir, monkeypatch
+):
     run_dir = temp_project_dir / "runs" / "run-001"
     run_dir.mkdir(parents=True)
 
     launched = {}
 
     monkeypatch.setattr(streamlit_app, "RUN_SCRIPT", Path("/tmp/fake_run.py"))
-    monkeypatch.setattr(streamlit_app, "read_status", lambda _run_dir: {"run_id": "run-001"})
+    monkeypatch.setattr(
+        streamlit_app, "read_status", lambda _run_dir: {"run_id": "run-001"}
+    )
     monkeypatch.setattr(
         streamlit_app,
         "_launch_cli_process",
@@ -1496,7 +1658,9 @@ def test_render_pending_review_submits_risk_revise(temp_project_dir, monkeypatch
             "review_payload": {"summary": "存在风险"},
         },
     )
-    monkeypatch.setattr(streamlit_app, "_risk_review_summary", lambda _payload: "存在风险")
+    monkeypatch.setattr(
+        streamlit_app, "_risk_review_summary", lambda _payload: "存在风险"
+    )
     _install_pending_review_resume_capture(monkeypatch, launched)
 
     streamlit_app._render_pending_review(
@@ -1513,7 +1677,9 @@ def test_render_pending_review_submits_risk_revise(temp_project_dir, monkeypatch
     assert launched["rerun"] is True
 
 
-def test_render_pending_review_submits_volume_approve_with_cross_volume_registry(temp_project_dir, monkeypatch):
+def test_render_pending_review_submits_volume_approve_with_cross_volume_registry(
+    temp_project_dir, monkeypatch
+):
     run_dir = temp_project_dir / "runs" / "run-001"
     run_dir.mkdir(parents=True)
     launched = {}
@@ -1536,7 +1702,9 @@ def test_render_pending_review_submits_volume_approve_with_cross_volume_registry
             },
         },
     )
-    monkeypatch.setattr(streamlit_app, "_volume_review_summary", lambda _payload: "第 2 卷摘要")
+    monkeypatch.setattr(
+        streamlit_app, "_volume_review_summary", lambda _payload: "第 2 卷摘要"
+    )
     _install_pending_review_resume_capture(monkeypatch, launched)
 
     streamlit_app._render_pending_review(
@@ -1608,7 +1776,9 @@ def test_render_pending_review_submits_chapter_revise(temp_project_dir, monkeypa
     assert launched["rerun"] is True
 
 
-def test_render_pending_review_submits_chapter_revise_with_structured_rewrite_plan(temp_project_dir, monkeypatch):
+def test_render_pending_review_submits_chapter_revise_with_structured_rewrite_plan(
+    temp_project_dir, monkeypatch
+):
     run_dir = temp_project_dir / "runs" / "run-001"
     run_dir.mkdir(parents=True)
     launched = {}
@@ -1625,12 +1795,16 @@ def test_render_pending_review_submits_chapter_revise_with_structured_rewrite_pl
                 "chapter_number": 4,
                 "title": "第四章",
                 "summary": "目标锁假继承，正文掉锚。",
-                "blocking_issues": ["目标锁假继承[摘要命中但正文掉锚]: goal_lock=守住宗门祖地"],
+                "blocking_issues": [
+                    "目标锁假继承[摘要命中但正文掉锚]: goal_lock=守住宗门祖地"
+                ],
                 "rewrite_plan": {
                     "schema_version": "rewrite_plan.v2",
                     "strategy": "targeted_patch",
                     "must_keep": ["保留本章既有关键事件，不要靠删除冲突来伪造顺畅。"],
-                    "success_criteria": ["摘要和正文都必须真实推进目标锁：守住宗门祖地"],
+                    "success_criteria": [
+                        "摘要和正文都必须真实推进目标锁：守住宗门祖地"
+                    ],
                     "operations": [
                         {
                             "phase": "body",
@@ -1655,7 +1829,10 @@ def test_render_pending_review_submits_chapter_revise_with_structured_rewrite_pl
     )
 
     assert launched["call"]["action"] == "revise"
-    assert launched["call"]["payload"]["chapter_rewrite_plan"]["strategy"] == "targeted_patch"
+    assert (
+        launched["call"]["payload"]["chapter_rewrite_plan"]["strategy"]
+        == "targeted_patch"
+    )
     assert "Patch 操作：" in launched["call"]["payload"]["chapter_rewrite_guidance"]
     assert "人工补充：" in launched["call"]["payload"]["chapter_rewrite_guidance"]
     assert launched["call"]["payload"]["notes"] == "补上与上一章战场结尾的衔接。"
@@ -1739,15 +1916,28 @@ def test_render_pending_review_submits_chapter_reject(temp_project_dir, monkeypa
 def test_render_run_monitor_uses_unkeyed_text_areas(monkeypatch):
     fake_st = _RunMonitorFakeStreamlit()
 
-    monkeypatch.setattr(streamlit_app, "_resolve_active_run_dir", lambda: Path("/tmp/demo-run"))
+    monkeypatch.setattr(
+        streamlit_app, "_resolve_active_run_dir", lambda: Path("/tmp/demo-run")
+    )
     monkeypatch.setattr(
         streamlit_app,
         "_run_monitor_payload",
-        lambda _run_dir: {"status": {}, "stdout": "out", "stderr": "err", "run_dir": "/tmp/demo-run", "is_active": True},
+        lambda _run_dir: {
+            "status": {},
+            "stdout": "out",
+            "stderr": "err",
+            "run_dir": "/tmp/demo-run",
+            "is_active": True,
+        },
     )
-    monkeypatch.setattr(streamlit_app, "_render_run_status_summary", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        streamlit_app, "_render_run_status_summary", lambda *_args, **_kwargs: None
+    )
 
     streamlit_app._render_run_monitor(fake_st)
 
-    assert [item["label"] for item in fake_st.text_area_calls] == ["stdout.log", "stderr.log"]
+    assert [item["label"] for item in fake_st.text_area_calls] == [
+        "stdout.log",
+        "stderr.log",
+    ]
     assert all("key" not in item["kwargs"] for item in fake_st.text_area_calls)
