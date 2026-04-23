@@ -15,8 +15,8 @@ from services.longform_run import (
     approval_entry_detail_parts,
     approval_entry_summary,
     approval_history_summary,
-    approval_preview_text,
     approval_payload_from_input,
+    approval_preview_text,
     build_volume_risk_report,
     clear_pause,
     format_longform_registry,
@@ -132,7 +132,9 @@ def test_pause_for_invalid_chapter_writes_chapter_review_payload(temp_project_di
             "blocking_issues": ["本章开头未自然承接上章人物或局势状态，存在明显割裂。"],
             "issue_types": ["scene_or_timeline_disconnect"],
             "missing_events": [],
-            "continuity_issues": ["本章开头未自然承接上章人物或局势状态，存在明显割裂。"],
+            "continuity_issues": [
+                "本章开头未自然承接上章人物或局势状态，存在明显割裂。"
+            ],
             "world_fact_issues": [],
             "rewrite_attempted": True,
             "rewrite_succeeded": False,
@@ -160,7 +162,9 @@ def test_pause_for_invalid_chapter_writes_chapter_review_payload(temp_project_di
     assert pending["review_payload"]["issue_types"] == ["scene_or_timeline_disconnect"]
 
 
-def test_pause_for_invalid_chapter_preserves_anti_drift_review_details(temp_project_dir):
+def test_pause_for_invalid_chapter_preserves_anti_drift_review_details(
+    temp_project_dir,
+):
     project_dir = temp_project_dir / "project"
     run_dir = create_run(
         project_dir=project_dir,
@@ -184,12 +188,16 @@ def test_pause_for_invalid_chapter_preserves_anti_drift_review_details(temp_proj
         metadata={"rewrite_history": [{"attempt": 1, "mode": "rewrite"}]},
         consistency_report={
             "summary": "结构漂移风险导致章节暂停",
-            "blocking_issues": ["结构漂移风险[主线目标锁被新设定冲散]: budget=1，goal_terms=守住宗门祖地"],
+            "blocking_issues": [
+                "结构漂移风险[主线目标锁被新设定冲散]: budget=1，goal_terms=守住宗门祖地"
+            ],
             "issue_types": ["structure_drift_risk"],
             "missing_events": [],
             "continuity_issues": [],
             "world_fact_issues": [],
-            "warning_issues": ["生成前意图检查已重写章节大纲，本章虽继续生成，但建议观察是否出现计划层掉锚复发。"],
+            "warning_issues": [
+                "生成前意图检查已重写章节大纲，本章虽继续生成，但建议观察是否出现计划层掉锚复发。"
+            ],
             "semantic_review": {
                 "enabled": True,
                 "warning_only": True,
@@ -242,13 +250,28 @@ def test_pause_for_invalid_chapter_preserves_anti_drift_review_details(temp_proj
     pending = approval_payload_from_input(status["pending_state_path"])
 
     assert result == 0
-    assert pending["review_payload"]["anti_drift_details"]["goal_lock"] == "守住宗门祖地"
-    assert pending["review_payload"]["warning_issues"][0].startswith("生成前意图检查已重写章节大纲")
+    assert (
+        pending["review_payload"]["anti_drift_details"]["goal_lock"] == "守住宗门祖地"
+    )
+    assert pending["review_payload"]["warning_issues"][0].startswith(
+        "生成前意图检查已重写章节大纲"
+    )
     assert pending["review_payload"]["semantic_review"]["issue_count"] == 1
-    assert pending["review_payload"]["chapter_intent_contract"]["planned_action"] == "韩林必须先稳住祖地防线。"
-    assert pending["review_payload"]["rewrite_plan"]["issue_types"] == ["structure_drift_risk"]
-    assert pending["review_payload"]["rewrite_guidance"] == "先推进主线目标锁：守住宗门祖地。"
-    assert pending["review_payload"]["smoothness_details"][0]["category"] == "structure_drift_risk"
+    assert (
+        pending["review_payload"]["chapter_intent_contract"]["planned_action"]
+        == "韩林必须先稳住祖地防线。"
+    )
+    assert pending["review_payload"]["rewrite_plan"]["issue_types"] == [
+        "structure_drift_risk"
+    ]
+    assert (
+        pending["review_payload"]["rewrite_guidance"]
+        == "先推进主线目标锁：守住宗门祖地。"
+    )
+    assert (
+        pending["review_payload"]["smoothness_details"][0]["category"]
+        == "structure_drift_risk"
+    )
 
 
 def test_approval_payload_from_file_and_inline_json(temp_project_dir):
@@ -261,7 +284,7 @@ def test_approval_payload_from_file_and_inline_json(temp_project_dir):
 
     assert from_file["outline"] == "revised"
     assert inline["world_setting"] == "new"
-    assert fallback["note"] == "plain note"
+    assert fallback["notes"] == "plain note"
 
 
 def test_approval_history_formatter_helpers_cover_primary_checkpoints():
@@ -273,7 +296,9 @@ def test_approval_history_formatter_helpers_cover_primary_checkpoints():
             "checkpoint_type": CHECKPOINT_CHAPTER,
             "payload": {
                 "notes": "先把祖地防线的实际行动补出来，然后再处理追兵。",
-                "chapter_rewrite_plan": {"operations": [{"action": "rebuild_goal_lock_chain"}]},
+                "chapter_rewrite_plan": {
+                    "operations": [{"action": "rebuild_goal_lock_chain"}]
+                },
             },
         }
     )
@@ -294,7 +319,9 @@ def test_approval_history_formatter_helpers_cover_primary_checkpoints():
             "action": "revise",
             "payload": {
                 "chapter_rewrite_guidance": "先接住上一章后果，再重组目标锁推进链。",
-                "chapter_rewrite_plan": {"operations": [{"action": "restore_carryover"}]},
+                "chapter_rewrite_plan": {
+                    "operations": [{"action": "restore_carryover"}]
+                },
             },
             "submitted_at": "2026-04-21T10:15:00",
         }
@@ -313,7 +340,9 @@ def test_approval_history_formatter_helpers_cover_primary_checkpoints():
                     "action": "revise",
                     "payload": {
                         "notes": "补上祖地防线推进。",
-                        "chapter_rewrite_plan": {"operations": [{"action": "rebuild_goal_lock_chain"}]},
+                        "chapter_rewrite_plan": {
+                            "operations": [{"action": "rebuild_goal_lock_chain"}]
+                        },
                     },
                     "submitted_at": "2026-04-21T10:15:00",
                 },
@@ -388,6 +417,9 @@ def test_volume_guidance_helpers_normalize_and_format():
             "tone_target": "压迫感更强",
             "goal_lock": "守住宗门祖地",
             "new_setting_budget": 1,
+            "anti_drift_start_ratio": "0.4",
+            "anti_drift_min_chapter": "20",
+            "goal_lock_false_inheritance_mode": "warn",
             "anti_drift_notes": "优先回收伏笔，延后新体系扩写",
             "extra_notes": "尽快把主角推入主动局面",
         }
@@ -398,10 +430,14 @@ def test_volume_guidance_helpers_normalize_and_format():
     assert payload["must_recover"] == "回收第一卷宗门裂痕"
     assert payload["goal_lock"] == "守住宗门祖地"
     assert payload["new_setting_budget"] == "1"
+    assert payload["anti_drift_start_ratio"] == "0.4"
+    assert payload["goal_lock_false_inheritance_mode"] == "warn"
     assert "必须回收的伏笔/问题: 回收第一卷宗门裂痕" in formatted
     assert "明确避免的方向: 不要新增支线角色" in formatted
     assert "当前主线目标锁: 守住宗门祖地" in formatted
     assert "新设定预算: 1" in formatted
+    assert "anti_drift_start_ratio" not in formatted
+    assert "goal_lock_false_inheritance_mode" not in formatted
 
 
 def test_structured_volume_guidance_fields_keep_core_fields_and_allow_additions():
@@ -459,7 +495,9 @@ def test_merge_longform_registry_updates_only_provided_buckets():
 
 
 def test_normalize_volume_guidance_payload_returns_strings_for_all_declared_fields():
-    normalized = normalize_volume_guidance_payload({"must_recover": 123, "extra_notes": None})
+    normalized = normalize_volume_guidance_payload(
+        {"must_recover": 123, "extra_notes": None}
+    )
     for key in STRUCTURED_VOLUME_GUIDANCE_FIELDS:
         assert isinstance(normalized.get(key), str)
 
@@ -474,8 +512,8 @@ def test_review_payload_for_volume_includes_chapter_highlights(temp_project_dir)
         """
         {
           "chapters": [
-            {"number": 1, "title": "开局", "word_count": 3200, "summary": "主角初入宗门", "key_events": ["入门", "拜师"]},
-            {"number": 2, "title": "冲突", "word_count": 3400, "summary": "", "key_events": ["对决"]},
+            {"number": 1, "title": "开局", "word_count": 3200, "summary": "主角初入宗门", "key_events": ["入门", "拜师"], "file_path": "chapters/ch001.md"},
+            {"number": 2, "title": "冲突", "word_count": 3400, "summary": "", "key_events": ["对决"], "file_path": "chapters/ch002.md"},
             {"number": 61, "title": "第二卷开局", "word_count": 3000, "summary": "不应出现在第一卷", "key_events": []}
           ]
         }
@@ -486,6 +524,16 @@ def test_review_payload_for_volume_includes_chapter_highlights(temp_project_dir)
         '{"brief_summary":"主角与对手正面冲突，埋下新的伏笔。"}',
         encoding="utf-8",
     )
+    chapter_dir = project_dir / "chapters"
+    chapter_dir.mkdir()
+    (chapter_dir / "ch001.md").write_text(
+        "# 第一章\n\n韩林踏入宗门，暗暗记住祖地的裂痕。" * 20,
+        encoding="utf-8",
+    )
+    (chapter_dir / "ch002.md").write_text(
+        "# 第二章\n\n对手逼近演武场，韩林决定正面迎战。" * 20,
+        encoding="utf-8",
+    )
 
     payload = review_payload_for_volume(
         {
@@ -493,7 +541,14 @@ def test_review_payload_for_volume_includes_chapter_highlights(temp_project_dir)
             "current_volume_start_chapter": 1,
             "current_volume_end_chapter": 60,
             "chapters_completed": 60,
-            "volume_plan": [{"volume_index": 1, "start_chapter": 1, "end_chapter": 60, "chapter_count": 60}],
+            "volume_plan": [
+                {
+                    "volume_index": 1,
+                    "start_chapter": 1,
+                    "end_chapter": 60,
+                    "chapter_count": 60,
+                }
+            ],
             "project_dir": str(project_dir),
             "cross_volume_registry": {
                 "unresolved_goals": ["守住宗门祖地"],
@@ -508,6 +563,14 @@ def test_review_payload_for_volume_includes_chapter_highlights(temp_project_dir)
     assert payload["opening_summary"] == "主角初入宗门"
     assert payload["closing_summary"] == "主角与对手正面冲突，埋下新的伏笔。"
     assert len(payload["chapter_highlights"]) == 2
-    assert payload["chapter_highlights"][1]["summary"] == "主角与对手正面冲突，埋下新的伏笔。"
+    assert (
+        payload["chapter_highlights"][1]["summary"]
+        == "主角与对手正面冲突，埋下新的伏笔。"
+    )
     assert payload["cross_volume_registry"]["unresolved_goals"] == ["守住宗门祖地"]
     assert "跨卷未完成目标: 守住宗门祖地" in payload["cross_volume_registry_summary"]
+    assert len(payload["chapter_evidence_excerpts"]) == 2
+    assert payload["chapter_evidence_excerpts"][0]["opening_excerpt"].startswith(
+        "韩林踏入宗门"
+    )
+    assert len(payload["chapter_evidence_excerpts"][0]["opening_excerpt"]) <= 240

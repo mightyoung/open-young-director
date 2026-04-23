@@ -43,7 +43,9 @@ class HumanReviewGate:
         if self.auto_approve:
             return True
         if self.callback:
-            summary = state if isinstance(state, dict) else getattr(state, "__dict__", {})
+            summary = (
+                state if isinstance(state, dict) else getattr(state, "__dict__", {})
+            )
             return bool(self.callback(stage_name, summary))
         return False
 
@@ -72,6 +74,9 @@ STRUCTURED_VOLUME_GUIDANCE_FIELDS = (
     "tone_target",
     "goal_lock",
     "new_setting_budget",
+    "anti_drift_start_ratio",
+    "anti_drift_min_chapter",
+    "goal_lock_false_inheritance_mode",
     "anti_drift_notes",
     "extra_notes",
 )
@@ -110,9 +115,74 @@ def format_volume_guidance(payload: dict[str, Any] | None) -> str:
     lines = [
         f"- {labels[key]}: {value}"
         for key, value in normalized.items()
-        if value
+        if value and key in labels
     ]
     return "\n".join(lines)
+
+
+def _normalize_excerpt_text(text: str) -> str:
+    lines = []
+    for raw_line in str(text or "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith(("#", "第")) and ("章" in line[:12] or line.startswith("#")):
+            continue
+        if line.startswith(("标题:", "字数:", "摘要:", "##")):
+            continue
+        lines.append(line)
+    return " ".join(" ".join(lines).split())
+
+
+def _read_chapter_text(
+    project_dir: Path, entry: dict[str, Any]
+) -> tuple[Path | None, str]:
+    candidates: list[Path] = []
+    for key in ("file_path", "path", "source_path"):
+        value = str(entry.get(key, "") or "").strip()
+        if value:
+            path = Path(value)
+            candidates.append(path if path.is_absolute() else project_dir / path)
+    chapter_number = int(entry.get("number", 0) or 0)
+    if chapter_number:
+        candidates.extend(
+            [
+                project_dir / "chapters" / f"ch{chapter_number:03d}.md",
+                project_dir / "chapters" / f"chapter_{chapter_number:03d}.md",
+                project_dir / "chapters" / f"chapter_{chapter_number}.md",
+            ]
+        )
+    for path in candidates:
+        if path.exists() and path.is_file():
+            return path, _normalize_excerpt_text(path.read_text(encoding="utf-8"))
+    return None, ""
+
+
+def _chapter_evidence_excerpts(
+    *,
+    project_dir: Path | None,
+    chapter_entries: list[dict[str, Any]],
+    limit: int = 240,
+) -> list[dict[str, Any]]:
+    if not project_dir or not chapter_entries:
+        return []
+    indices = {0, len(chapter_entries) // 2, len(chapter_entries) - 1}
+    excerpts: list[dict[str, Any]] = []
+    for index in sorted(indices):
+        entry = chapter_entries[index]
+        path, text = _read_chapter_text(project_dir, entry)
+        if not text:
+            continue
+        excerpts.append(
+            {
+                "chapter_number": int(entry.get("number", 0) or 0),
+                "title": str(entry.get("title", "") or ""),
+                "source_path": str(path) if path else "",
+                "opening_excerpt": text[:limit],
+                "closing_excerpt": text[-limit:] if len(text) > limit else text[:limit],
+            }
+        )
+    return excerpts
 
 
 def normalize_longform_registry(payload: dict[str, Any] | None) -> dict[str, list[str]]:
@@ -120,7 +190,11 @@ def normalize_longform_registry(payload: dict[str, Any] | None) -> dict[str, lis
     normalized: dict[str, list[str]] = {}
     for key in LONGFORM_REGISTRY_FIELDS:
         raw_value = data.get(key, [])
-        values = raw_value if isinstance(raw_value, list) else str(raw_value or "").splitlines()
+        values = (
+            raw_value
+            if isinstance(raw_value, list)
+            else str(raw_value or "").splitlines()
+        )
         normalized[key] = [str(item).strip() for item in values if str(item).strip()]
     return normalized
 
@@ -157,7 +231,9 @@ def approval_checkpoint_label(checkpoint_type: str) -> str:
         CHECKPOINT_RISK: "风险复核",
         CHECKPOINT_CHAPTER: "章节复核",
     }
-    return labels.get(str(checkpoint_type or "").strip(), str(checkpoint_type or "").strip())
+    return labels.get(
+        str(checkpoint_type or "").strip(), str(checkpoint_type or "").strip()
+    )
 
 
 def approval_preview_text(value: Any, limit: int = 24) -> str:
@@ -194,7 +270,9 @@ def approval_entry_detail_parts(entry: dict[str, Any]) -> list[str]:
         for key in LONGFORM_REGISTRY_FIELDS:
             values = payload.get(key, []) or []
             if isinstance(values, list):
-                registry_count += len([str(item).strip() for item in values if str(item).strip()])
+                registry_count += len(
+                    [str(item).strip() for item in values if str(item).strip()]
+                )
         if registry_count:
             detail_parts.append(f"registry={registry_count}")
     elif checkpoint_type == CHECKPOINT_OUTLINE:
@@ -219,8 +297,12 @@ def approval_entry_detail_parts(entry: dict[str, Any]) -> list[str]:
 def approval_entry_summary(entry: dict[str, Any]) -> str:
     checkpoint_type = str(entry.get("checkpoint_type", "") or "").strip()
     action = str(entry.get("action", "") or "").strip()
-    submitted_at = str(entry.get("submitted_at", "") or "").strip().replace("T", " ")[:16]
-    checkpoint_label = approval_checkpoint_label(checkpoint_type) or checkpoint_type or "未知节点"
+    submitted_at = (
+        str(entry.get("submitted_at", "") or "").strip().replace("T", " ")[:16]
+    )
+    checkpoint_label = (
+        approval_checkpoint_label(checkpoint_type) or checkpoint_type or "未知节点"
+    )
     header = f"- {submitted_at or 'unknown time'} {checkpoint_label} -> {approval_action_label(action)}"
 
     detail_parts = approval_entry_detail_parts(entry)
@@ -249,7 +331,11 @@ def merge_longform_registry(
         if key not in update_data:
             continue
         raw_value = update_data.get(key, [])
-        values = raw_value if isinstance(raw_value, list) else str(raw_value or "").splitlines()
+        values = (
+            raw_value
+            if isinstance(raw_value, list)
+            else str(raw_value or "").splitlines()
+        )
         merged[key] = [str(item).strip() for item in values if str(item).strip()]
     return merged
 
@@ -265,7 +351,9 @@ def risk_report_path(run_dir: str | Path) -> Path:
 def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = path.with_suffix(f"{path.suffix}.tmp")
-    temp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    temp_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     temp_path.replace(path)
 
 
@@ -323,8 +411,12 @@ def build_volume_risk_report(
         if not isinstance(report, dict) or not report:
             continue
 
-        missing_events = [str(item) for item in report.get("missing_events", []) if str(item).strip()]
-        recommendations = [str(item) for item in report.get("recommendations", []) if str(item).strip()]
+        missing_events = [
+            str(item) for item in report.get("missing_events", []) if str(item).strip()
+        ]
+        recommendations = [
+            str(item) for item in report.get("recommendations", []) if str(item).strip()
+        ]
         overall_score = float(report.get("overall_score", 0.0) or 0.0)
         chapter_summary = {
             "chapter_number": chapter_number,
@@ -337,11 +429,18 @@ def build_volume_risk_report(
         chapters.append(chapter_summary)
         total_missing_events += len(missing_events)
 
-        if overall_score < score_threshold or len(missing_events) >= missing_events_threshold:
+        if (
+            overall_score < score_threshold
+            or len(missing_events) >= missing_events_threshold
+        ):
             at_risk_chapters.append(chapter_summary)
 
-    highest_risk = max((item["missing_events_count"] for item in at_risk_chapters), default=0)
-    low_score_count = sum(1 for item in at_risk_chapters if item["overall_score"] < score_threshold)
+    highest_risk = max(
+        (item["missing_events_count"] for item in at_risk_chapters), default=0
+    )
+    low_score_count = sum(
+        1 for item in at_risk_chapters if item["overall_score"] < score_threshold
+    )
     risk_detected = bool(
         at_risk_chapters
         and (
@@ -354,7 +453,10 @@ def build_volume_risk_report(
     if not risk_detected:
         risk_level = "low"
         summary = "本卷未检测到需要人工复核的明显失控风险。"
-    elif any(item["overall_score"] < 5.0 for item in at_risk_chapters) or highest_risk >= 3:
+    elif (
+        any(item["overall_score"] < 5.0 for item in at_risk_chapters)
+        or highest_risk >= 3
+    ):
         risk_level = "high"
         summary = f"第 {volume_index} 卷存在明显失控风险，建议先人工复核后再继续。"
     else:
@@ -434,8 +536,12 @@ def initial_longform_state(
         "current_stage": STAGE_OUTLINE_GENERATE,
         "current_checkpoint": None,
         "current_volume": current_volume["volume_index"] if current_volume else 0,
-        "current_volume_start_chapter": current_volume["start_chapter"] if current_volume else 0,
-        "current_volume_end_chapter": current_volume["end_chapter"] if current_volume else 0,
+        "current_volume_start_chapter": current_volume["start_chapter"]
+        if current_volume
+        else 0,
+        "current_volume_end_chapter": current_volume["end_chapter"]
+        if current_volume
+        else 0,
         "last_completed_volume": 0,
         "total_volumes": len(plan),
         "volume_plan": plan,
@@ -461,10 +567,14 @@ def gate_for(approval_mode: str, auto_approve: bool) -> HumanReviewGate:
         enabled_stages = {"outline"}
     elif approval_mode == "volume":
         enabled_stages = {"volume"}
-    return HumanReviewGate(enabled_stages=frozenset(enabled_stages), auto_approve=auto_approve)
+    return HumanReviewGate(
+        enabled_stages=frozenset(enabled_stages), auto_approve=auto_approve
+    )
 
 
-def should_pause_for_stage(approval_mode: str, auto_approve: bool, stage_name: str) -> bool:
+def should_pause_for_stage(
+    approval_mode: str, auto_approve: bool, stage_name: str
+) -> bool:
     gate = gate_for(approval_mode, auto_approve)
     return not gate.check(stage_name, {"current_stage": stage_name})
 
@@ -482,7 +592,9 @@ def create_pending_review(
     pending_path = Path(
         generate_pending_state_path(
             stage=checkpoint_type.replace("_review", ""),
-            topic=longform_state.get("project_title") or longform_state.get("project_id") or "unknown",
+            topic=longform_state.get("project_title")
+            or longform_state.get("project_id")
+            or "unknown",
             output_dir=str(Path(run_dir).resolve()),
         )
     )
@@ -549,7 +661,11 @@ def review_payload_for_outline(project: Any) -> dict[str, Any]:
 def review_payload_for_volume(longform_state: dict[str, Any]) -> dict[str, Any]:
     current_volume = longform_state.get("current_volume", 0)
     plan = next(
-        (item for item in longform_state.get("volume_plan", []) if item["volume_index"] == current_volume),
+        (
+            item
+            for item in longform_state.get("volume_plan", [])
+            if item["volume_index"] == current_volume
+        ),
         None,
     )
     payload = {
@@ -558,8 +674,12 @@ def review_payload_for_volume(longform_state: dict[str, Any]) -> dict[str, Any]:
         "volume_end_chapter": longform_state.get("current_volume_end_chapter", 0),
         "chapters_completed": longform_state.get("chapters_completed", 0),
         "planned_chapter_count": plan.get("chapter_count", 0) if plan else 0,
-        "cross_volume_registry": normalize_longform_registry(longform_state.get("cross_volume_registry")),
-        "cross_volume_registry_summary": format_longform_registry(longform_state.get("cross_volume_registry")),
+        "cross_volume_registry": normalize_longform_registry(
+            longform_state.get("cross_volume_registry")
+        ),
+        "cross_volume_registry_summary": format_longform_registry(
+            longform_state.get("cross_volume_registry")
+        ),
     }
     project_dir_raw = str(longform_state.get("project_dir", "")).strip()
     project_dir = Path(project_dir_raw).resolve() if project_dir_raw else None
@@ -567,7 +687,9 @@ def review_payload_for_volume(longform_state: dict[str, Any]) -> dict[str, Any]:
     chapter_entries = [
         item
         for item in metadata.get("chapters", [])
-        if payload["volume_start_chapter"] <= int(item.get("number", 0)) <= payload["volume_end_chapter"]
+        if payload["volume_start_chapter"]
+        <= int(item.get("number", 0))
+        <= payload["volume_end_chapter"]
     ]
     chapter_entries.sort(key=lambda item: int(item.get("number", 0)))
 
@@ -576,13 +698,19 @@ def review_payload_for_volume(longform_state: dict[str, Any]) -> dict[str, Any]:
     for item in chapter_entries:
         chapter_number = int(item.get("number", 0))
         plot_summary = (
-            load_json_file(project_dir / "plot_summaries" / f"ch{chapter_number:03d}_summary.json")
+            load_json_file(
+                project_dir / "plot_summaries" / f"ch{chapter_number:03d}_summary.json"
+            )
             if project_dir
             else {}
         )
         summary = str(item.get("summary", "")).strip()
         if not summary:
-            summary = str(plot_summary.get("brief_summary") or plot_summary.get("one_line_summary") or "").strip()
+            summary = str(
+                plot_summary.get("brief_summary")
+                or plot_summary.get("one_line_summary")
+                or ""
+            ).strip()
         highlight = {
             "chapter_number": chapter_number,
             "title": str(item.get("title", "")),
@@ -599,12 +727,17 @@ def review_payload_for_volume(longform_state: dict[str, Any]) -> dict[str, Any]:
         payload["chapter_highlights"] = highlights[:8]
         payload["opening_summary"] = highlights[0]["summary"]
         payload["closing_summary"] = highlights[-1]["summary"]
+        payload["chapter_evidence_excerpts"] = _chapter_evidence_excerpts(
+            project_dir=project_dir,
+            chapter_entries=chapter_entries,
+        )
     else:
         payload["generated_chapter_count"] = 0
         payload["total_word_count"] = 0
         payload["chapter_highlights"] = []
         payload["opening_summary"] = ""
         payload["closing_summary"] = ""
+        payload["chapter_evidence_excerpts"] = []
     return payload
 
 
@@ -628,7 +761,9 @@ def review_payload_for_chapter(
     report: dict[str, Any],
     rewrite_history: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    blocking_issues = [str(item) for item in report.get("blocking_issues", []) if str(item).strip()]
+    blocking_issues = [
+        str(item) for item in report.get("blocking_issues", []) if str(item).strip()
+    ]
     return {
         "chapter_number": chapter_number,
         "title": title,
@@ -642,7 +777,9 @@ def review_payload_for_chapter(
         "semantic_review": dict(report.get("semantic_review", {}) or {}),
         "smoothness_details": list(report.get("smoothness_details", [])),
         "anti_drift_details": dict(report.get("anti_drift_details", {}) or {}),
-        "chapter_intent_contract": dict(report.get("chapter_intent_contract", {}) or {}),
+        "chapter_intent_contract": dict(
+            report.get("chapter_intent_contract", {}) or {}
+        ),
         "rewrite_plan": dict(report.get("rewrite_plan", {}) or {}),
         "rewrite_guidance": str(report.get("rewrite_guidance", "") or "").strip(),
         "rewrite_attempted": bool(report.get("rewrite_attempted")),
@@ -660,12 +797,22 @@ def compile_chapter_rewrite_guidance(
     rewrite_plan = rewrite_plan or {}
     lines: list[str] = []
 
-    must_keep = [str(item).strip() for item in rewrite_plan.get("must_keep", []) if str(item).strip()]
-    operations = [item for item in rewrite_plan.get("operations", []) if isinstance(item, dict)]
-    success_criteria = [
-        str(item).strip() for item in rewrite_plan.get("success_criteria", []) if str(item).strip()
+    must_keep = [
+        str(item).strip()
+        for item in rewrite_plan.get("must_keep", [])
+        if str(item).strip()
     ]
-    fixes = [str(item).strip() for item in rewrite_plan.get("fixes", []) if str(item).strip()]
+    operations = [
+        item for item in rewrite_plan.get("operations", []) if isinstance(item, dict)
+    ]
+    success_criteria = [
+        str(item).strip()
+        for item in rewrite_plan.get("success_criteria", [])
+        if str(item).strip()
+    ]
+    fixes = [
+        str(item).strip() for item in rewrite_plan.get("fixes", []) if str(item).strip()
+    ]
 
     if must_keep:
         lines.append("保留要求：")
@@ -692,7 +839,9 @@ def compile_chapter_rewrite_guidance(
 
     if success_criteria:
         lines.append("验收条件：")
-        lines.extend(f"{index + 1}. {item}" for index, item in enumerate(success_criteria[:3]))
+        lines.extend(
+            f"{index + 1}. {item}" for index, item in enumerate(success_criteria[:3])
+        )
 
     notes = str(extra_notes or "").strip()
     if notes:
@@ -705,7 +854,11 @@ def compile_chapter_rewrite_guidance(
 def next_volume(longform_state: dict[str, Any]) -> dict[str, Any]:
     current = int(longform_state.get("current_volume", 0))
     next_entry = next(
-        (item for item in longform_state.get("volume_plan", []) if item["volume_index"] == current + 1),
+        (
+            item
+            for item in longform_state.get("volume_plan", [])
+            if item["volume_index"] == current + 1
+        ),
         None,
     )
     updated = dict(longform_state)
@@ -742,5 +895,5 @@ def approval_payload_from_input(raw_value: str | None) -> dict[str, Any]:
                 return load_json_file(candidate)
         except OSError:
             pass
-        return {"note": raw_value}
+        return {"notes": raw_value}
     return parsed if isinstance(parsed, dict) else {"value": parsed}
