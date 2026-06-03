@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """使用KIMI模型分析小说内容质量"""
 
-import os
 import sys
 from pathlib import Path
 
@@ -12,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / ".env")
 
-from llm.kimi_client import KIMIClient
+from young_writer.llm.kimi_client import KIMIClient
 
 # 初始化KIMI客户端
 client = KIMIClient()

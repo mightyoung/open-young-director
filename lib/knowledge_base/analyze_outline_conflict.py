@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """分析《太古魔帝传》大纲冲突并生成改进建议报告"""
 
-import os
 import sys
 import json
 from pathlib import Path
@@ -9,7 +8,7 @@ from pathlib import Path
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from llm.kimi_client import KIMIClient
+from young_writer.llm.kimi_client import KIMIClient
 
 # 文件路径
 OUTLINE_DIR = Path(__file__).parent / "novels" / "太古魔帝传" / "outline"

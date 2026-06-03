@@ -16,7 +16,7 @@ for _env_path in [
                 import os
                 os.environ.setdefault(k.strip(), v.strip())
 
-from llm.doubao_client import DoubaoClient
+from young_writer.llm.doubao_client import DoubaoClient
 
 client = DoubaoClient()
 

@@ -11,24 +11,33 @@ import sys
 from typing import Any
 import uuid
 
+from dotenv import load_dotenv
+
 
 ROOT_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(ROOT_DIR))
+REPO_ROOT_DIR = ROOT_DIR.parents[1]
+load_dotenv(REPO_ROOT_DIR / ".env", override=False)
+load_dotenv(ROOT_DIR / ".env", override=True)
 
-from agents.chapter_manager import ChapterManager, get_chapter_manager  # noqa: E402
-from agents.config_manager import get_config_manager  # noqa: E402
-from services.longform_run import (  # noqa: E402
+from young_writer.agents.chapter_manager import ChapterManager, get_chapter_manager  # noqa: E402
+from young_writer.agents.config_manager import get_config_manager  # noqa: E402
+from young_writer.services.cli_commands import (  # noqa: E402
+    append_writing_option_flags,
+    build_full_generate_command,
+    build_generate_command,
+)
+from young_writer.services.longform_run import (  # noqa: E402
     approval_history_summary as _approval_history_summary,
     compile_chapter_rewrite_guidance,
 )
-from services.run_storage import (  # noqa: E402
+from young_writer.services.run_storage import (  # noqa: E402
     create_run,
     format_eta,
     latest_run_dir,
     read_log_tail,
     read_status,
 )
-from writing_options import (  # noqa: E402
+from young_writer.writing_options import (  # noqa: E402
     BASE_STYLE_CHOICES,
     STYLE_PRESET_CHOICES,
     WRITING_OPTION_GROUPS,
@@ -442,22 +451,7 @@ def save_provider_settings_action(
 
 
 def _append_writing_option_flags(cmd: list[str], options: dict[str, str]) -> None:
-    cli_flag_map = {
-        "style": "--style",
-        "style_preset": "--style-preset",
-        "perspective": "--perspective",
-        "narrative_mode": "--narrative-mode",
-        "pace": "--pace",
-        "dialogue_density": "--dialogue-density",
-        "prose_style": "--prose-style",
-        "world_building_density": "--world-building-density",
-        "emotion_intensity": "--emotion-intensity",
-        "combat_style": "--combat-style",
-        "hook_strength": "--hook-strength",
-    }
-    for key, value in options.items():
-        if key in cli_flag_map and value:
-            cmd.extend([cli_flag_map[key], value])
+    append_writing_option_flags(cmd, options)
 
 
 def run_generation_action(
@@ -477,14 +471,15 @@ def run_generation_action(
     project_dir = Path(config_mgr.generation.output_dir).resolve()
     run_id = str(uuid.uuid4())
 
-    cmd = [sys.executable, str(RUN_SCRIPT), "--generate", str(int(count))]
-    if int(start) > 0:
-        cmd.extend(["--start", str(int(start))])
-    if dry_run:
-        cmd.append("--dry-run")
-    if no_auto_feedback:
-        cmd.append("--no-auto-feedback")
-    _append_writing_option_flags(cmd, normalized)
+    cmd = build_generate_command(
+        python_executable=sys.executable,
+        run_script=RUN_SCRIPT,
+        count=int(count),
+        start=int(start),
+        dry_run=dry_run,
+        no_auto_feedback=no_auto_feedback,
+        writing_options=normalized,
+    )
 
     run_dir = create_run(
         project_dir=project_dir,
@@ -525,19 +520,14 @@ def run_full_novel_action(
 
     project_dir = Path(config_mgr.generation.output_dir).resolve()
     run_id = str(uuid.uuid4())
-    cmd = [
-        sys.executable,
-        str(RUN_SCRIPT),
-        "--generate-full",
-        "--chapters-per-volume",
-        str(int(chapters_per_volume)),
-        "--approval-mode",
-        approval_mode,
-        "--run-id",
-        run_id,
-    ]
-    if auto_approve:
-        cmd.append("--auto-approve")
+    cmd = build_full_generate_command(
+        python_executable=sys.executable,
+        run_script=RUN_SCRIPT,
+        chapters_per_volume=int(chapters_per_volume),
+        approval_mode=approval_mode,
+        run_id=run_id,
+        auto_approve=auto_approve,
+    )
 
     run_dir = create_run(
         project_dir=project_dir,
@@ -1217,20 +1207,54 @@ def _chapter_review_structured_sections(
         for item in review_payload.get("warning_issues", [])
         if str(item).strip()
     ]
+    writer_rule_warnings = [
+        item
+        for item in review_payload.get("writer_rule_warnings", [])
+        if isinstance(item, dict)
+    ]
     rewrite_plan = review_payload.get("rewrite_plan", {}) or {}
     issue_categories = [
         str(item).strip()
         for item in rewrite_plan.get("issue_categories", [])
         if str(item).strip()
     ]
+    rewrite_history = [
+        item
+        for item in review_payload.get("rewrite_history", [])
+        if isinstance(item, dict)
+    ]
+    next_action = str(review_payload.get("quality_gate_next_action", "") or "").strip()
 
     sections: list[tuple[str, str]] = []
     if issue_types:
         sections.append(("问题类型", _non_empty_lines(issue_types)))
     if issue_categories:
         sections.append(("问题分类", _non_empty_lines(issue_categories)))
+    if rewrite_history or next_action:
+        lines = []
+        if rewrite_history:
+            for item in rewrite_history[-2:]:
+                attempt = item.get("attempt", "?")
+                mode = str(item.get("mode", "") or "").strip()
+                invalid = bool(item.get("invalid"))
+                item_issue_types = ", ".join(
+                    str(value) for value in item.get("issue_types", [])
+                )
+                lines.append(
+                    f"attempt={attempt}; mode={mode}; invalid={invalid}; issue_types={item_issue_types}"
+                )
+        if next_action:
+            lines.append(f"下一步: {next_action}")
+        sections.append(("重写尝试", _non_empty_lines(lines)))
     if warning_issues:
         sections.append(("语义告警", _non_empty_lines(warning_issues)))
+    if writer_rule_warnings:
+        lines = []
+        for item in writer_rule_warnings[:5]:
+            matches = "、".join(str(value) for value in item.get("matches", [])[:4])
+            category = str(item.get("category", "writer_rule") or "writer_rule")
+            lines.append(f"{category}: {matches}")
+        sections.append(("写作规则告警", _non_empty_lines(lines)))
     return sections
 
 
@@ -1238,6 +1262,11 @@ def _chapter_review_evidence(review_payload: dict[str, Any]) -> list[tuple[str, 
     anti_drift = review_payload.get("anti_drift_details", {}) or {}
     chapter_intent_contract = review_payload.get("chapter_intent_contract", {}) or {}
     semantic_review = review_payload.get("semantic_review", {}) or {}
+    writer_rule_warnings = [
+        item
+        for item in review_payload.get("writer_rule_warnings", [])
+        if isinstance(item, dict)
+    ]
     rewrite_plan = review_payload.get("rewrite_plan", {}) or {}
 
     sections: list[tuple[str, str]] = []
@@ -1323,6 +1352,20 @@ def _chapter_review_evidence(review_payload: dict[str, Any]) -> list[tuple[str, 
             if category or message:
                 lines.append(f"- {category or 'issue'}: {message}")
         sections.append(("语义复核", "\n".join(lines)))
+
+    if writer_rule_warnings:
+        lines = []
+        for item in writer_rule_warnings[:5]:
+            matches = "、".join(str(value) for value in item.get("matches", [])[:6])
+            lines.append(
+                f"- {item.get('category', 'writer_rule')}: {matches}; "
+                f"{item.get('guidance', '')}"
+            )
+            source = str(item.get("source", "") or "").strip()
+            anchor = str(item.get("anchor", "") or "").strip()
+            if source or anchor:
+                lines.append(f"  - 来源: {source}#{anchor}")
+        sections.append(("WRITER.md 规则依据", "\n".join(lines)))
 
     if rewrite_plan:
         lines = []

@@ -3,9 +3,9 @@
 from datetime import datetime
 from pathlib import Path
 
-from agents.novel_generator import GeneratedChapter
+from young_writer.agents.novel_generator import GeneratedChapter
 from run_novel_generation import _pause_for_invalid_chapter
-from services.longform_run import (
+from young_writer.services.longform_run import (
     CHECKPOINT_CHAPTER,
     CHECKPOINT_OUTLINE,
     LONGFORM_REGISTRY_FIELDS,
@@ -28,7 +28,7 @@ from services.longform_run import (
     normalize_volume_guidance_payload,
     record_pause,
 )
-from services.run_storage import create_run, read_status
+from young_writer.services.run_storage import create_run, read_status
 
 
 class _Project:
@@ -160,6 +160,11 @@ def test_pause_for_invalid_chapter_writes_chapter_review_payload(temp_project_di
     assert pending["checkpoint_type"] == CHECKPOINT_CHAPTER
     assert pending["review_payload"]["chapter_number"] == 4
     assert pending["review_payload"]["issue_types"] == ["scene_or_timeline_disconnect"]
+    assert pending["review_payload"]["rewrite_attempted"] is True
+    assert pending["review_payload"]["rewrite_succeeded"] is False
+    assert "自动整章重写后仍未通过质量门" in pending["review_payload"][
+        "quality_gate_next_action"
+    ]
 
 
 def test_pause_for_invalid_chapter_preserves_anti_drift_review_details(
@@ -210,6 +215,15 @@ def test_pause_for_invalid_chapter_preserves_anti_drift_review_details(
                     }
                 ],
             },
+            "writer_rule_warnings": [
+                {
+                    "category": "banned_wording",
+                    "matches": ["突然"],
+                    "guidance": "避免 AI 腔垫话。",
+                    "source": "WRITER.md",
+                    "anchor": "禁词表",
+                }
+            ],
             "anti_drift_details": {
                 "goal_lock": "守住宗门祖地",
                 "budget": 1,
@@ -257,6 +271,10 @@ def test_pause_for_invalid_chapter_preserves_anti_drift_review_details(
         "生成前意图检查已重写章节大纲"
     )
     assert pending["review_payload"]["semantic_review"]["issue_count"] == 1
+    assert (
+        pending["review_payload"]["writer_rule_warnings"][0]["category"]
+        == "banned_wording"
+    )
     assert (
         pending["review_payload"]["chapter_intent_contract"]["planned_action"]
         == "韩林必须先稳住祖地防线。"
@@ -503,7 +521,7 @@ def test_normalize_volume_guidance_payload_returns_strings_for_all_declared_fiel
 
 
 def test_review_payload_for_volume_includes_chapter_highlights(temp_project_dir):
-    from services.longform_run import review_payload_for_volume
+    from young_writer.services.longform_run import review_payload_for_volume
 
     project_dir = temp_project_dir / "demo-project"
     plot_dir = project_dir / "plot_summaries"

@@ -1,16 +1,13 @@
 """Tests for ChapterManager."""
 
-import json
-import os
 from datetime import datetime
+import json
 from pathlib import Path
 
-import pytest
-
-from agents.chapter_manager import (
+from young_writer.agents.chapter_manager import (
+    ChapterContent,
     ChapterManager,
     ChapterMetadata,
-    ChapterContent,
     ChapterPlotSummary,
 )
 
@@ -85,6 +82,32 @@ class TestChapterManagerInit:
         manager = ChapterManager(project_id, base_dir=str(temp_novels_dir))
 
         assert manager.film_drama_dir == temp_project_dir / "film_drama_scripts" / f"{project_title}_{project_id}"
+
+    def test_init_uses_project_local_film_drama_dir_for_runtime_project(
+        self, temp_project_dir
+    ):
+        """Test that unified runtime projects keep derivatives inside project root."""
+        project_id = "test_project_002c"
+        project_title = "太古魔帝传"
+        config_dir = temp_project_dir / "config"
+        config_dir.mkdir(parents=True, exist_ok=True)
+        project_file = config_dir / f"project_{project_id}.json"
+        project_file.write_text(
+            json.dumps({"id": project_id, "title": project_title}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        project_dir = (
+            temp_project_dir
+            / "runtime"
+            / "projects"
+            / f"{project_title}_{project_id}"
+        )
+
+        manager = ChapterManager(project_id, base_dir=str(project_dir))
+
+        assert manager.root_dir == temp_project_dir.resolve()
+        assert manager.project_title == project_title
+        assert manager.film_drama_dir == project_dir / "film_drama"
 
 
 class TestSaveChapter:
@@ -314,6 +337,44 @@ class TestBuildContext:
 
         context = manager.build_context(2)
         assert "故事已发展到第1章" in context
+
+    def test_build_context_includes_longform_memory_with_provenance(
+        self, temp_novels_dir
+    ):
+        """Test context includes additive long-range memory from injected store."""
+        project_id = "test_project_016b"
+
+        class FakeMemoryStore:
+            def retrieve(self, **kwargs):
+                assert kwargs["project_id"] == project_id
+                assert kwargs["chapter_number"] == 4
+                assert kwargs["top_k"] == 6
+                return [
+                    {
+                        "memory_type": "plot_anchor",
+                        "chapter_number": 1,
+                        "summary": "祖地封印松动",
+                        "content_excerpt": "祖地封印松动",
+                        "artifact_path": str(temp_novels_dir / "ch001.md"),
+                        "artifact_checksum": "abc123",
+                        "score": 1.0,
+                    }
+                ]
+
+        manager = ChapterManager(
+            project_id,
+            base_dir=str(temp_novels_dir),
+            longform_memory_store=FakeMemoryStore(),
+        )
+
+        context = manager.build_context(4)
+
+        assert context["longform_memory"][0]["artifact_path"] == str(
+            temp_novels_dir / "ch001.md"
+        )
+        assert context["longform_memory"][0]["artifact_checksum"] == "abc123"
+        assert "长程记忆证据" in context
+        assert "祖地封印松动" in context
 
 
 class TestExportToText:

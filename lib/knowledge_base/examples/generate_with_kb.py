@@ -9,8 +9,7 @@ This script shows how to:
 3. Format context for use by an LLM
 """
 
-import json
-from knowledge_base.novel_knowledge_base import NovelKnowledgeBase
+from young_writer.novel_knowledge_base import NovelKnowledgeBase
 
 
 def generate_novel_outline(

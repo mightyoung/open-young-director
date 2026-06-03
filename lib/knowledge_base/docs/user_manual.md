@@ -301,6 +301,7 @@ uv run python run_novel_generation.py \
 - `anti_drift_details`
 - `warning_issues`
 - `semantic_review`
+- `writer_rule_warnings`
 - `chapter_intent_contract`
 - `rewrite_plan`
 - `rewrite_attempted` / `rewrite_succeeded` / `rewrite_history`
@@ -311,6 +312,8 @@ uv run python run_novel_generation.py \
 
 - `warning_issues`：warning-only 语义告警，提醒本章虽然未必触发新的 blocking gate，但仍可能有语义掉锚风险
 - `semantic_review.issues[]`：结构化语义复核条目，便于按 category 看风险来源
+- `semantic_review.llm_advisory`：可选 LLM 语义 advisory；provider 未配置、超时或解析失败只记录 skipped/error，不会让章节变成 invalid
+- `writer_rule_warnings`：来自 `WRITER.md` curated subset 的写作规则告警，默认只作为 advisory 展示
 - `chapter_intent_contract`：生成前执行合同，帮助操作者判断“计划动作”和“目标锁”是否一致
 - `rewrite_plan.must_keep / fixes / success_criteria`：结构化重写方案，优先参考这一层，而不是只看拼接后的 `rewrite_guidance`
 - `rewrite_plan.schema_version / strategy / operations[]`：机器可消费的 patch 层，描述“在哪个阶段、针对哪个目标、执行什么修复动作”
@@ -403,6 +406,12 @@ UI 允许直接编辑这三类字段；每行一条。若某个 bucket 留空并
 - 运行状态：`runs/<run_id>/status.json`
 - 运行日志：`runs/<run_id>/stdout.log`、`stderr.log`
 - 普通章节结果：`generation_results.json`
+- 反馈报告：`feedback_report_<project_id>.json`
+- 本地长程记忆：未配置 `DATABASE_URL` 时写入项目目录下的 `longform_memory.sqlite`
+
+自动反馈会从 `consistency_reports/`、`generation_results.json`、pending review payload 和可推导问题的章节摘要中发现结构化 issue。`--feedback-fix` 在当前 P0 中只输出建议动作，不会自动修改章节正文、摘要、状态文件或报告。
+
+`WRITER.md` 仍是人工可读源头；`config/writer_rules.json` 只是 curated machine-readable subset，用于 prompt 摘录和 warning-only 规则检查。
 - 普通章节 checkpoint：`generation_checkpoint.json`
 - 长篇可恢复状态：`runs/<run_id>/longform_state.v1.json`
 

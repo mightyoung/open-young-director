@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import run_novel_generation
-from services.longform_run import (
+from young_writer.services.longform_run import (
     CHECKPOINT_CHAPTER,
     CHECKPOINT_OUTLINE,
     STAGE_CHAPTER_REVIEW,
@@ -15,7 +15,7 @@ from services.longform_run import (
     initial_longform_state,
     record_pause,
 )
-from services.run_storage import read_status, update_status
+from young_writer.services.run_storage import read_status, update_status
 import streamlit_app
 
 
@@ -1144,6 +1144,32 @@ def test_chapter_review_helpers_surface_structured_evidence():
                 }
             ],
         },
+        "writer_rule_warnings": [
+            {
+                "category": "banned_wording",
+                "matches": ["突然", "非常"],
+                "guidance": "避免 AI 腔垫话和套路化惊叹。",
+                "source": "WRITER.md",
+                "anchor": "禁词表",
+            }
+        ],
+        "rewrite_attempted": True,
+        "rewrite_succeeded": False,
+        "rewrite_history": [
+            {
+                "attempt": 0,
+                "mode": "initial",
+                "invalid": True,
+                "issue_types": ["goal_lock_false_inheritance"],
+            },
+            {
+                "attempt": 1,
+                "mode": "targeted_full_rewrite",
+                "invalid": True,
+                "issue_types": ["goal_lock_false_inheritance"],
+            },
+        ],
+        "quality_gate_next_action": "自动整章重写后仍未通过质量门，请按结构化重写方案选择重试、带备注重试或保持暂停。",
         "rewrite_plan": {
             "schema_version": "rewrite_plan.v2",
             "strategy": "targeted_patch",
@@ -1167,11 +1193,15 @@ def test_chapter_review_helpers_surface_structured_evidence():
     evidence = dict(streamlit_app._chapter_review_evidence(review_payload))
 
     assert "goal_lock_false_inheritance" in structured["问题类型"]
+    assert "attempt=1" in structured["重写尝试"]
+    assert "下一步: 自动整章重写后仍未通过质量门" in structured["重写尝试"]
     assert "生成前意图检查已重写章节大纲" in structured["语义告警"]
+    assert "banned_wording" in structured["写作规则告警"]
     assert "当前目标锁: 守住宗门祖地" in evidence["目标锁证据"]
     assert "未对齐片段" in evidence["目标锁证据"]
     assert "本章计划动作: 韩林必须调度伏兵守住祖地。" in evidence["生成前执行合同"]
     assert "goal_lock_semantic_risk" in evidence["语义复核"]
+    assert "避免 AI 腔垫话" in evidence["WRITER.md 规则依据"]
     assert "重写时围绕目标锁重组正文推进链：守住宗门祖地" in evidence["结构化重写方案"]
     assert (
         "body / rebuild_goal_lock_chain / goal_lock_progression"

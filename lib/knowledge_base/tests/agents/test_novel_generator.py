@@ -30,6 +30,7 @@ assert SPEC.loader is not None
 SPEC.loader.exec_module(MODULE)
 
 NovelGeneratorAgent = MODULE.NovelGeneratorAgent
+classify_hard_gate_issue_types = MODULE.classify_hard_gate_issue_types
 
 
 class DummyConfigManager:
@@ -94,6 +95,12 @@ def _assert_transition_issue(report: dict, phrase: str) -> None:
     assert any(phrase in issue for issue in report["blocking_issues"])
 
 
+def test_hard_gate_classifier_keeps_unknown_issue_categories_warning_only():
+    assert classify_hard_gate_issue_types(
+        ["scene_or_timeline_disconnect", "new_unreviewed_issue_type"]
+    ) == ["scene_or_timeline_disconnect"]
+
+
 class TestNovelGeneratorWritingOptions:
     """Test writing option prompt expansion in the main generation path."""
 
@@ -131,6 +138,141 @@ class TestNovelGeneratorWritingOptions:
         assert "对白密度: high" in prompt
         assert "战斗写法: epic" in prompt
         assert "逆天写法" in prompt
+        assert "WRITER.md 宪法摘录" in prompt
+        assert "banned_wording" in prompt
+
+    def test_writer_rule_warnings_are_advisory_not_invalid(self):
+        report = _run_consistency_check(
+            previous_summary="韩林仍在宗门祖地。",
+            previous_content="韩林守在祖地墙头。",
+            current_content="第二章\n韩林突然非常愤怒，竟然倒吸一口冷气。随后他仍守在宗门祖地。",
+            context_overrides={
+                "chapter_intent_contract": {"goal_lock": "守住宗门祖地"},
+            },
+            metadata_overrides={"key_events": []},
+        )
+
+        assert report["invalid"] is False
+        assert report["writer_rule_warnings"]
+        assert any(
+            warning["category"] == "banned_wording"
+            for warning in report["writer_rule_warnings"]
+        )
+
+    def test_writer_rule_blocking_flag_stays_warning_only(self, monkeypatch):
+        monkeypatch.setattr(
+            MODULE,
+            "check_writer_rules",
+            lambda _content: [
+                {
+                    "category": "banned_wording",
+                    "blocking": True,
+                    "matches": ["突然"],
+                    "guidance": "避免 AI 腔垫话。",
+                }
+            ],
+        )
+
+        report = _run_consistency_check(
+            previous_summary="韩林仍在宗门祖地。",
+            previous_content="韩林守在祖地墙头。",
+            current_content="韩林突然稳住宗门祖地防线。",
+            context_overrides={
+                "chapter_intent_contract": {"goal_lock": "守住宗门祖地"},
+            },
+            metadata_overrides={"key_events": []},
+        )
+
+        assert report["invalid"] is False
+        assert report["hard_gate_issue_types"] == []
+        assert "writer_rule_blocking" not in report["issue_types"]
+        assert report["writer_rule_warnings"][0]["blocking"] is True
+
+    def test_low_llm_semantic_advisory_does_not_invalidate_chapter(self):
+        generator = _make_generator()
+        generator.llm_client.generate.return_value = json.dumps(
+            {
+                "overall_score": 0.2,
+                "mainline_progress": 0.2,
+                "character_motivation": 0.4,
+                "causal_continuity": 0.3,
+                "style_drift": 0.7,
+                "warnings": ["主线推进偏弱"],
+            }
+        )
+        chapter = _make_chapter(
+            2,
+            "第二章",
+            "韩林守在宗门祖地，继续调度伏兵封住山门。" * 20,
+        )
+
+        report = generator._check_consistency(
+            chapter,
+            "韩林抵达宗门祖地。",
+            {
+                "known_char_names": ["韩林"],
+                "previous_chapters": [{"content": "韩林抵达宗门祖地。"}],
+                "semantic_advisory_enabled": True,
+            },
+        )
+
+        assert report["invalid"] is False
+        advisory = report["semantic_review"]["llm_advisory"]
+        assert advisory["status"] == "completed"
+        assert advisory["overall_score"] == 0.2
+        assert any(
+            item["category"] == "semantic_advisory_low_score"
+            for item in report["semantic_review"]["issues"]
+        )
+
+    def test_semantic_advisory_provider_error_is_warning_only(self):
+        generator = _make_generator()
+        generator.llm_client.generate.side_effect = RuntimeError("judge unavailable")
+        chapter = _make_chapter(
+            2,
+            "第二章",
+            "韩林守在宗门祖地，继续调度伏兵封住山门。" * 20,
+        )
+
+        report = generator._check_consistency(
+            chapter,
+            "韩林抵达宗门祖地。",
+            {
+                "known_char_names": ["韩林"],
+                "previous_chapters": [{"content": "韩林抵达宗门祖地。"}],
+                "semantic_advisory_enabled": True,
+            },
+        )
+
+        assert report["invalid"] is False
+        advisory = report["semantic_review"]["llm_advisory"]
+        assert advisory["status"] == "error"
+        assert advisory["warning_only"] is True
+
+    @pytest.mark.parametrize("raw_payload", ['[]', '{"overall_score": "low"}'])
+    def test_malformed_semantic_advisory_payload_is_warning_only(self, raw_payload):
+        generator = _make_generator()
+        generator.llm_client.generate.return_value = raw_payload
+        chapter = _make_chapter(
+            2,
+            "第二章",
+            "韩林守在宗门祖地，继续调度伏兵封住山门。" * 20,
+        )
+
+        report = generator._check_consistency(
+            chapter,
+            "韩林抵达宗门祖地。",
+            {
+                "known_char_names": ["韩林"],
+                "previous_chapters": [{"content": "韩林抵达宗门祖地。"}],
+                "semantic_advisory_enabled": True,
+            },
+        )
+
+        assert report["invalid"] is False
+        advisory = report["semantic_review"]["llm_advisory"]
+        assert advisory["status"] == "error"
+        assert advisory["warning_only"] is True
 
     def test_generation_prompt_includes_volume_guidance(self):
         generator = NovelGeneratorAgent(
@@ -195,6 +337,42 @@ class TestNovelGeneratorWritingOptions:
             "正文至少一个关键行动、冲突选择或结果必须直接推进目标锁：守住宗门祖地"
             in prompt
         )
+
+    def test_generate_content_falls_back_by_default_when_llm_fails(self):
+        llm_client = MagicMock()
+        llm_client.generate.side_effect = RuntimeError("network unavailable")
+        generator = NovelGeneratorAgent(
+            config_manager=DummyConfigManager(),
+            llm_client=llm_client,
+        )
+
+        result = generator._generate_content(
+            chapter_number=1,
+            title="第一章",
+            outline="韩林开始守住宗门祖地。",
+            previous_summary="",
+            context={},
+        )
+
+        assert "自动生成内容占位符" in result["content"]
+
+    def test_generate_content_can_require_real_llm(self):
+        llm_client = MagicMock()
+        llm_client.generate.side_effect = RuntimeError("network unavailable")
+        generator = NovelGeneratorAgent(
+            config_manager=DummyConfigManager(),
+            llm_client=llm_client,
+            allow_fallback=False,
+        )
+
+        with pytest.raises(RuntimeError, match="fallback disabled"):
+            generator._generate_content(
+                chapter_number=1,
+                title="第一章",
+                outline="韩林开始守住宗门祖地。",
+                previous_summary="",
+                context={},
+            )
 
     def test_generate_chapter_rewrites_outline_before_generation_when_intent_drifts(
         self,
@@ -903,6 +1081,15 @@ def test_consistency_report_matches_anti_drift_golden_cases(case):
 
     assert report["invalid"] is case["expected_invalid"]
     assert report["issue_types"] == case["expected_issue_types"]
+    expected_warning_categories = case.get("expected_warning_categories", [])
+    if expected_warning_categories:
+        warning_categories = [
+            item.get("category")
+            for item in report.get("semantic_review", {}).get("issues", [])
+            if isinstance(item, dict)
+        ]
+        for category in expected_warning_categories:
+            assert category in warning_categories
     expected_actions = case.get("expected_rewrite_actions", [])
     if expected_actions:
         rewrite_actions = [

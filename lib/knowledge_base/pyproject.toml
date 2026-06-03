@@ -1,5 +1,5 @@
 [project]
-name = "knowledge_base"
+name = "young_writer"
 dynamic = ["version"]
 description = "Novel knowledge base with multi-agent narrative generation"
 authors = [
@@ -20,7 +20,21 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
-path = "__init__.py"
+path = "young_writer/__init__.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["knowledge_base"]
+packages = [
+    "young_writer",
+    "knowledge_base",
+    "agents",
+    "consistency",
+    "consumers",
+    "crawlers",
+    "evaluation",
+    "llm",
+    "media",
+    "rl",
+    "scene_db",
+    "services",
+    "triggers",
+]

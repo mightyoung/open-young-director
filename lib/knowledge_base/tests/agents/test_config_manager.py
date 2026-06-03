@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from agents.config_manager import (
+from young_writer.agents.config_manager import (
     ConfigManager,
     GenerationConfig,
     LLMProviderConfig,
@@ -151,8 +151,36 @@ class TestCreateProject:
             outline="大纲",
         )
 
-        # output_dir template is set (expanded when set_current_project is called)
-        assert manager.generation.output_dir is not None
+        output_dir = manager.generation.output_dir
+        assert output_dir is not None
+        assert str(temp_config_dir.parent / "runtime" / "projects") in output_dir
+        assert (temp_config_dir.parent / "runtime" / "projects").exists()
+        assert "目录测试" in output_dir
+
+    def test_existing_legacy_project_directory_is_preserved(
+        self, temp_config_dir, mock_env_vars
+    ):
+        """Test that loaded old projects keep the legacy novels directory."""
+        manager = ConfigManager(config_dir=str(temp_config_dir))
+        legacy_project_dir = temp_config_dir.parent / "novels" / "旧项目_legacy001"
+        legacy_project_dir.mkdir(parents=True)
+
+        project = NovelProject(
+            id="legacy001",
+            title="旧项目",
+            author="作者",
+            genre="类型",
+            outline="大纲",
+        )
+
+        manager.set_current_project(project)
+
+        assert manager.generation.output_dir == str(legacy_project_dir.resolve())
+        assert manager.generation.scripts_dir == str(
+            (
+                temp_config_dir.parent / "generated_scripts" / "旧项目_legacy001"
+            ).resolve()
+        )
 
     def test_create_project_generates_id(self, temp_config_dir, mock_env_vars):
         """Test that project ID is generated correctly."""
@@ -444,8 +472,9 @@ class TestGenerationConfig:
         assert config.chapter_word_count == 3000
         assert config.volume_enabled is False
         assert len(config.volumes) == 0
-        assert set(config.providers) == {"kimi", "doubao", "minimax"}
+        assert set(config.providers) == {"kimi", "doubao", "minimax", "deepseek"}
         assert isinstance(config.providers["kimi"], LLMProviderConfig)
+        assert config.providers["deepseek"].model_name == "deepseek-v4-flash"
 
     def test_volume_templates_exist(self):
         """Test that volume templates are defined."""
@@ -495,3 +524,85 @@ class TestProviderConfig:
 
         assert client.provider_name == "doubao"
         assert client.model_name == "doubao-text-pro"
+
+
+class TestConfigDiagnostics:
+    """Test non-secret integration diagnostics."""
+
+    def test_diagnostics_reports_missing_optional_integrations_without_secrets(
+        self, temp_config_dir, mock_env_vars, monkeypatch
+    ):
+        for key in [
+            "KIMI_API_KEY",
+            "DEEPSEEK_API_KEY",
+            "FIRECRAWL_API_KEY",
+            "DATABASE_URL",
+            "REDIS_URL",
+            "REDIS_HOST",
+            "FANQIE_BOOK_ID",
+            "FANQIE_VOLUME_ID",
+        ]:
+            monkeypatch.delenv(key, raising=False)
+
+        manager = ConfigManager(config_dir=str(temp_config_dir))
+        manager.generation.providers["kimi"].use_cli = False
+        manager.generation.providers["kimi"].api_key = ""
+        diagnostics = manager.diagnose_integrations()
+        serialized = json.dumps(diagnostics, ensure_ascii=False)
+
+        assert diagnostics["kimi"] == {"configured": False, "source": "missing"}
+        assert diagnostics["deepseek"] == {"configured": False, "source": "missing"}
+        assert diagnostics["firecrawl"] == {"configured": False, "source": "missing"}
+        assert diagnostics["postgres"] == {
+            "configured": False,
+            "source": "missing",
+            "reachable": None,
+        }
+        assert diagnostics["redis"] == {
+            "configured": False,
+            "source": "missing",
+            "reachable": None,
+        }
+        assert "fake-secret-value-123" not in serialized
+
+    def test_diagnostics_reports_env_sources_without_secret_values(
+        self, temp_config_dir, mock_env_vars, monkeypatch
+    ):
+        monkeypatch.setenv("KIMI_API_KEY", "kimi-secret-token")
+        monkeypatch.setenv("DEEPSEEK_API_KEY", "deepseek-secret-token")
+        monkeypatch.setenv("FIRECRAWL_API_KEY", "firecrawl-secret-token")
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:secret@127.0.0.1:1/db")
+        monkeypatch.setenv("REDIS_HOST", "127.0.0.1")
+        monkeypatch.setenv("REDIS_PORT", "1")
+
+        manager = ConfigManager(config_dir=str(temp_config_dir))
+        diagnostics = manager.diagnose_integrations()
+        serialized = json.dumps(diagnostics, ensure_ascii=False)
+
+        assert diagnostics["kimi"] == {"configured": True, "source": "env"}
+        assert diagnostics["deepseek"] == {"configured": True, "source": "env"}
+        assert diagnostics["firecrawl"] == {"configured": True, "source": "env"}
+        assert diagnostics["postgres"]["configured"] is True
+        assert diagnostics["postgres"]["source"] == "env"
+        assert diagnostics["postgres"]["reachable"] in {True, False}
+        assert diagnostics["redis"]["configured"] is True
+        assert diagnostics["redis"]["reachable"] in {True, False}
+        assert "kimi-secret-token" not in serialized
+        assert "deepseek-secret-token" not in serialized
+        assert "firecrawl-secret-token" not in serialized
+        assert "secret@127.0.0.1" not in serialized
+
+    def test_diagnostics_handles_malformed_redis_port(
+        self, temp_config_dir, mock_env_vars, monkeypatch
+    ):
+        monkeypatch.setenv("REDIS_HOST", "127.0.0.1")
+        monkeypatch.setenv("REDIS_PORT", "not-a-port")
+
+        manager = ConfigManager(config_dir=str(temp_config_dir))
+        diagnostics = manager.diagnose_integrations()
+
+        assert diagnostics["redis"] == {
+            "configured": True,
+            "source": "env",
+            "reachable": False,
+        }

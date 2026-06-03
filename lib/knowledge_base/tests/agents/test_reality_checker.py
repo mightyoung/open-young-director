@@ -1,7 +1,7 @@
 """Tests for RealityChecker agent."""
 
 import pytest
-from agents.reality_checker import (
+from young_writer.agents.reality_checker import (
     RealityChecker,
     RealityCheckerConfig,
     ValidationResult,
@@ -296,7 +296,7 @@ class TestRealityCheckerIntegration:
 
     def test_reality_checker_integration_config(self):
         """RealityChecker should integrate with OrchestratorConfig."""
-        from agents.novel_orchestrator import OrchestratorConfig, NovelOrchestrator
+        from young_writer.agents.novel_orchestrator import OrchestratorConfig, NovelOrchestrator
 
         config = OrchestratorConfig(
             enable_reality_checker=True,
@@ -311,7 +311,7 @@ class TestRealityCheckerIntegration:
 
     def test_reality_checker_disabled(self):
         """RealityChecker can be disabled via config."""
-        from agents.novel_orchestrator import OrchestratorConfig, NovelOrchestrator
+        from young_writer.agents.novel_orchestrator import OrchestratorConfig, NovelOrchestrator
 
         config = OrchestratorConfig(enable_reality_checker=False)
         orchestrator = NovelOrchestrator(config=config)
@@ -320,7 +320,7 @@ class TestRealityCheckerIntegration:
 
     def test_quality_gate_integration(self):
         """quality_gate should work with RealityChecker."""
-        from agents.novel_orchestrator import OrchestratorConfig, NovelOrchestrator
+        from young_writer.agents.novel_orchestrator import OrchestratorConfig, NovelOrchestrator
 
         config = OrchestratorConfig(enable_reality_checker=True)
         orchestrator = NovelOrchestrator(config=config)
@@ -339,7 +339,7 @@ class TestRealityCheckerIntegration:
 
     def test_validate_chapter_integration(self):
         """validate_chapter should build criteria from context."""
-        from agents.novel_orchestrator import OrchestratorConfig, NovelOrchestrator
+        from young_writer.agents.novel_orchestrator import OrchestratorConfig, NovelOrchestrator
 
         config = OrchestratorConfig(enable_reality_checker=True)
         orchestrator = NovelOrchestrator(config=config)

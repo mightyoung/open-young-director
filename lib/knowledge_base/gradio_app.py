@@ -21,8 +21,8 @@ except ModuleNotFoundError as exc:  # pragma: no cover - local setup guard
         "Gradio 未安装。请先执行 `python3 -m pip install gradio pillow`，然后再运行 gradio_app.py。"
     ) from exc
 
-from agents.config_manager import get_config_manager
-from writing_options import (
+from young_writer.agents.config_manager import get_config_manager
+from young_writer.writing_options import (
     DEFAULT_WRITING_OPTIONS,
     STYLE_PRESET_CHOICES,
     BASE_STYLE_CHOICES,

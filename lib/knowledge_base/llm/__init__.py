@@ -1,14 +1,13 @@
-"""LLM module initialization."""
+"""Compatibility namespace for legacy llm imports."""
 
-from .doubao_client import DoubaoClient, get_doubao_client
-from .kimi_client import KimiClient, get_kimi_client
-from .minimax_client import MiniMaxClient, get_minimax_client
+from __future__ import annotations
 
-__all__ = [
-    "DoubaoClient",
-    "get_doubao_client",
-    "KimiClient",
-    "get_kimi_client",
-    "MiniMaxClient",
-    "get_minimax_client",
-]
+from young_writer._compat import (
+    compatibility_exports,
+    compatibility_namespace,
+    install_alias_prefix,
+)
+
+install_alias_prefix(__name__, "young_writer.llm")
+__path__ = compatibility_namespace("llm")
+globals().update(compatibility_exports("young_writer.llm"))

@@ -15,17 +15,16 @@ logger = logging.getLogger(__name__)
 # Add parent dir to path
 sys.path.insert(0, '/Users/muyi/Downloads/dev/young-writer/lib/knowledge_base')
 
-from agents.film_drama import (
+from young_writer.agents.film_drama import (
     DirectorAgent,
     DirectorConfig,
-    InMemoryMessageQueue,
     CharacterMemoryQueue,
     MiddlewareChain,
     MemoryQueueMiddleware,
     EmotionalStateMiddleware,
     ClarificationMiddleware,
 )
-from llm.kimi_client import KimiClient
+from young_writer.llm.kimi_client import KimiClient
 
 
 async def generate_chapter_1():
@@ -118,7 +117,7 @@ async def generate_chapter_1():
     8. 过渡：众人嘲讽，韩林默默离开
     """
 
-    logger.info(f"Planning scene for Chapter 1...")
+    logger.info("Planning scene for Chapter 1...")
     script = director.plan_scene(
         chapter_number=1,
         scene_outline=chapter_outline,
@@ -160,9 +159,9 @@ async def generate_chapter_1():
     output_path = "/Users/muyi/Downloads/dev/young-writer/lib/knowledge_base/novels/太古魔帝传/chapters/ch001_test_film_drama.md"
 
     with open(output_path, 'w', encoding='utf-8') as f:
-        f.write(f"# 第1章：废物少年（FILM_DRAMA模式测试）\n\n")
+        f.write("# 第1章：废物少年（FILM_DRAMA模式测试）\n\n")
         f.write(f"> 第1章 | 生成时间: {datetime.now().isoformat()}\n\n")
-        f.write(f"**本章概要**: 测灵大典，韩林被测为伪灵根，柳如烟当众退婚\n\n")
+        f.write("**本章概要**: 测灵大典，韩林被测为伪灵根，柳如烟当众退婚\n\n")
         f.write("---\n\n")
         f.write(output)
         f.write("\n\n*（本章完）*\n")

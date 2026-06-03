@@ -19,18 +19,16 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-# Add lib/ to path so knowledge_base/ can be found as a package
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from triggers import (
+from young_writer.agents.config_manager import get_config_manager
+from young_writer.services.paths import WorkspacePaths
+from young_writer.triggers import (
     SceneEventBus,
     NovelEvaluator,
     PodcastEvaluator,
     VideoEvaluator,
     SceneExtractor,
-    TriggerConfigLoader,
 )
-from triggers.base import MaterialPacket
+from young_writer.triggers.base import MaterialPacket
 
 
 class TriggeredGenerationManager:
@@ -94,8 +92,6 @@ class TriggeredGenerationManager:
 
     def _setup_evaluators(self) -> None:
         """Set up and subscribe all enabled evaluators."""
-        config_loader = TriggerConfigLoader()
-
         evaluator_configs = {
             "novel": {
                 "cooldown_seconds": 60,
@@ -350,7 +346,7 @@ class TriggeredGenerationManager:
             Dict with podcast generation result
         """
         try:
-            from consumers.podcast_consumer import PodcastConsumer
+            from young_writer.consumers.podcast_consumer import PodcastConsumer
 
             # Build raw_data from materials
             beats = []
@@ -405,7 +401,7 @@ class TriggeredGenerationManager:
             Dict with video generation result
         """
         try:
-            from consumers.video_consumer import VideoConsumer
+            from young_writer.consumers.video_consumer import VideoConsumer
 
             # --- Step 1: Collect character names and load profiles ---
             all_char_names = set()
@@ -443,12 +439,6 @@ class TriggeredGenerationManager:
                 "情感": "emotional",
                 "混合": "mixed",
                 "过场": "transition",
-            }
-
-            # Build a quick character name -> appearance lookup for beat descriptions
-            char_appearance_map = {
-                name: profile.get("发型", profile.get("瞳色", ""))
-                for name, profile in character_profiles.items()
             }
 
             for i, s in enumerate(scene_data_list):
@@ -576,15 +566,32 @@ class TriggeredGenerationManager:
 
         # Compute base dir (same logic as ChapterManager)
         if self.base_dir_override:
-            base_dir = Path(self.base_dir_override)
+            chars_dir = Path(self.base_dir_override) / "visual_reference" / "characters"
         else:
-            base_dir = Path("lib/knowledge_base/novels")
+            chars_dir = None
+            try:
+                config_mgr = get_config_manager()
+                project = config_mgr.current_project
+                if project and project.id == self.project_id:
+                    output_dir = getattr(config_mgr.generation, "output_dir", "")
+                    if output_dir:
+                        chars_dir = Path(output_dir).resolve() / "visual_reference" / "characters"
+                    else:
+                        project_paths = config_mgr.paths.project_paths(
+                            title=project.title,
+                            project_id=project.id,
+                        )
+                        chars_dir = project_paths.project_dir / "visual_reference" / "characters"
+            except Exception:
+                chars_dir = None
 
-        # Try to find project dir (ChapterManager stores as base_dir / project_title)
-        chars_dir = base_dir / self.project_id / "visual_reference" / "characters"
-        if not chars_dir.exists():
-            # Fallback: try novels/{project_id}/visual_reference/characters
-            chars_dir = base_dir.parent / "novels" / self.project_id / "visual_reference" / "characters"
+            if chars_dir is None:
+                workspace_paths = WorkspacePaths.from_root(Path(__file__).resolve().parent)
+                project_paths = workspace_paths.project_paths(
+                    title=self.project_id,
+                    project_id=self.project_id,
+                )
+                chars_dir = project_paths.project_dir / "visual_reference" / "characters"
 
         if not chars_dir.exists():
             self.logger.warning(f"Character dir not found: {chars_dir}")
@@ -734,7 +741,7 @@ def cmd_status(manager: TriggeredGenerationManager):
     """Print status of all evaluators."""
     status = manager.get_status()
 
-    print(f"\n📊 Trigger System Status")
+    print("\n📊 Trigger System Status")
     print("-" * 50)
     print(f"   Subscribers: {status['subscribers']}")
     print(f"   Total triggers: {status['trigger_count']}")
@@ -749,16 +756,16 @@ def cmd_status(manager: TriggeredGenerationManager):
 
 def cmd_generate(args, manager: TriggeredGenerationManager):
     """Run generation with triggered content generation."""
-    from agents.config_manager import get_config_manager
-    from agents.chapter_manager import get_chapter_manager
-    from agents.novel_generator import get_novel_generator
-    from agents.novel_orchestrator import NovelOrchestrator, OrchestratorConfig
+    from young_writer.agents.config_manager import get_config_manager
+    from young_writer.agents.chapter_manager import get_chapter_manager
+    from young_writer.agents.novel_generator import get_novel_generator
+    from young_writer.agents.novel_orchestrator import NovelOrchestrator, OrchestratorConfig
 
     config_mgr = get_config_manager()
 
     # Get KIMI client
     try:
-        from llm.kimi_client import get_kimi_client
+        from young_writer.llm.kimi_client import get_kimi_client
         kimi_client = get_kimi_client()
     except Exception as e:
         logging.warning(f"Failed to get KIMI client: {e}")
@@ -811,7 +818,7 @@ def cmd_generate(args, manager: TriggeredGenerationManager):
         )
 
         # Save chapter
-        metadata = chapter_mgr.save_chapter(
+        chapter_mgr.save_chapter(
             number=chapter.number,
             title=chapter.title,
             content=chapter.content,
@@ -881,7 +888,7 @@ Examples:
     )
 
     # Load project
-    from agents.config_manager import get_config_manager
+    from young_writer.agents.config_manager import get_config_manager
     config_mgr = get_config_manager()
 
     if not config_mgr.current_project:
@@ -893,7 +900,7 @@ Examples:
 
     # Get KIMI client
     try:
-        from llm.kimi_client import get_kimi_client
+        from young_writer.llm.kimi_client import get_kimi_client
         llm_client = get_kimi_client()
     except Exception:
         llm_client = None

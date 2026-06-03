@@ -110,6 +110,6 @@ def sample_project_data():
 @pytest.fixture
 def mock_config_manager(temp_config_dir, monkeypatch):
     """Mock ConfigManager that uses temp directory."""
-    from agents.config_manager import ConfigManager
+    from young_writer.agents.config_manager import ConfigManager
     monkeypatch.setattr(ConfigManager, "_load_env_vars", lambda self: None)
     return ConfigManager(config_dir=str(temp_config_dir))

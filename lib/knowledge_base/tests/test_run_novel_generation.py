@@ -7,9 +7,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from agents.novel_generator import GeneratedChapter
+from young_writer.agents.novel_generator import GeneratedChapter
 import run_novel_generation
-from services.longform_run import (
+from young_writer.services.longform_run import (
     CHECKPOINT_CHAPTER,
     CHECKPOINT_OUTLINE,
     STAGE_CHAPTER_REVIEW,
@@ -18,7 +18,7 @@ from services.longform_run import (
     initial_longform_state,
     record_pause,
 )
-from services.run_storage import create_run, read_status
+from young_writer.services.run_storage import create_run, read_status
 
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
@@ -527,7 +527,11 @@ def test_cmd_generate_only_applies_chapter_guidance_to_target_chapter(
 
         def save_chapter(self, **kwargs):
             project.current_chapter = kwargs["number"]
-            return
+            return SimpleNamespace(
+                metadata=SimpleNamespace(
+                    file_path=str(project_dir / f"chapter_{kwargs['number']}.md")
+                )
+            )
 
         def save_plot_summary(self, _plot_summary):
             return None
@@ -567,6 +571,9 @@ def test_cmd_generate_only_applies_chapter_guidance_to_target_chapter(
                 "errors": [],
             }
 
+    class _FakeMemoryStore:
+        pass
+
     monkeypatch.setattr(run_novel_generation, "get_config_manager", lambda: fake_config)
     monkeypatch.setattr(
         run_novel_generation, "_build_llm_clients", lambda _cfg: (None, None)
@@ -592,7 +599,7 @@ def test_cmd_generate_only_applies_chapter_guidance_to_target_chapter(
     monkeypatch.setattr(
         run_novel_generation,
         "get_novel_generator",
-        lambda config_manager, novel_orchestrator, llm_client: _FakeGenerator(),
+        lambda config_manager, novel_orchestrator, llm_client, **_kwargs: _FakeGenerator(),
     )
     monkeypatch.setattr(
         run_novel_generation,
@@ -606,6 +613,16 @@ def test_cmd_generate_only_applies_chapter_guidance_to_target_chapter(
         run_novel_generation,
         "get_derivative_generator",
         lambda *args, **kwargs: _FakeDerivativeGenerator(),
+    )
+    monkeypatch.setattr(
+        run_novel_generation,
+        "create_longform_memory_store",
+        lambda project_dir: _FakeMemoryStore(),
+    )
+    monkeypatch.setattr(
+        run_novel_generation,
+        "record_memory_after_save",
+        lambda *args, **kwargs: 3,
     )
     monkeypatch.setattr(
         run_novel_generation, "_print_statistics", lambda *args, **kwargs: None
@@ -639,6 +656,11 @@ def test_cmd_generate_only_applies_chapter_guidance_to_target_chapter(
     assert context_calls[1][1]["chapter_guidance"] == "仅重写第2章的补充指令"
     assert project.current_chapter == 2
     assert (Path(project_dir) / "generation_results.json").exists()
+    status = read_status(run_dir)
+    assert status["longform_memory_enabled"] is True
+    assert status["longform_memory_store"] == "_FakeMemoryStore"
+    assert status["longform_memory_rows_written"] == 3
+    assert status["longform_memory_error"] is None
 
 
 def test_cmd_generate_invalid_goal_lock_chapter_does_not_promote_raw_summary_or_continue(
@@ -744,7 +766,7 @@ def test_cmd_generate_invalid_goal_lock_chapter_does_not_promote_raw_summary_or_
     monkeypatch.setattr(
         run_novel_generation,
         "get_novel_generator",
-        lambda config_manager, novel_orchestrator, llm_client: _FakeGenerator(),
+        lambda config_manager, novel_orchestrator, llm_client, **_kwargs: _FakeGenerator(),
     )
     monkeypatch.setattr(
         run_novel_generation,
@@ -809,6 +831,283 @@ def test_cmd_generate_invalid_goal_lock_chapter_does_not_promote_raw_summary_or_
     assert status.get("chapter_quality_report", {}).get("issue_types") == [
         "goal_lock_false_inheritance"
     ]
+
+
+def test_cmd_generate_plain_invalid_chapter_records_structured_quality_failure(
+    temp_project_dir,
+    monkeypatch,
+):
+    project_dir = temp_project_dir / "project"
+    project_dir.mkdir(parents=True, exist_ok=True)
+    project = SimpleNamespace(
+        id="project-plain",
+        title="demo",
+        current_chapter=0,
+        total_chapters=120,
+        metadata={},
+    )
+    fake_config = SimpleNamespace(
+        current_project=project,
+        generation=SimpleNamespace(
+            output_dir=str(project_dir), scripts_dir=str(temp_project_dir / "scripts")
+        ),
+        update_project_metadata=lambda payload: project.metadata.update(payload),
+    )
+    saved_chapters = []
+
+    class _FakeChapterManager:
+        def build_context(self, chapter_number):
+            return {"chapter_number": chapter_number}
+
+        def save_consistency_report(self, **_kwargs):
+            return None
+
+        def save_chapter(self, **kwargs):
+            saved_chapters.append(kwargs)
+
+        def save_plot_summary(self, _plot_summary):
+            return None
+
+        def save_film_drama_content(self, **_kwargs):
+            return None
+
+    class _FakeGenerator:
+        def generate_chapter(
+            self, chapter_number, context, previous_summary="", writing_options=None
+        ):
+            return GeneratedChapter(
+                number=chapter_number,
+                title=f"第{chapter_number}章",
+                content="韩林没有承接上一章危机。",
+                word_count=1000,
+                metadata={
+                    "rewrite_history": [
+                        {
+                            "attempt": 0,
+                            "mode": "initial",
+                            "invalid": True,
+                            "issue_types": ["scene_or_timeline_disconnect"],
+                        },
+                        {
+                            "attempt": 1,
+                            "mode": "targeted_full_rewrite",
+                            "invalid": True,
+                            "issue_types": ["scene_or_timeline_disconnect"],
+                        },
+                    ]
+                },
+                consistency_report={
+                    "invalid": True,
+                    "summary": "章节与前文严重割裂",
+                    "issue_types": ["scene_or_timeline_disconnect"],
+                    "hard_gate_issue_types": ["scene_or_timeline_disconnect"],
+                    "blocking_issues": ["上一章后果未被承接。"],
+                    "rewrite_attempted": True,
+                    "rewrite_succeeded": False,
+                    "rewrite_history": [
+                        {
+                            "attempt": 1,
+                            "mode": "targeted_full_rewrite",
+                            "invalid": True,
+                            "issue_types": ["scene_or_timeline_disconnect"],
+                        }
+                    ],
+                },
+            )
+
+    monkeypatch.setattr(run_novel_generation, "get_config_manager", lambda: fake_config)
+    monkeypatch.setattr(
+        run_novel_generation, "_build_llm_clients", lambda _cfg: (None, None)
+    )
+    monkeypatch.setattr(
+        run_novel_generation, "_create_orchestrator", lambda _cfg, _project_id: object()
+    )
+    monkeypatch.setattr(
+        run_novel_generation,
+        "get_chapter_manager",
+        lambda _project_id, base_dir_override=None: _FakeChapterManager(),
+    )
+    monkeypatch.setattr(
+        run_novel_generation,
+        "get_novel_generator",
+        lambda config_manager, novel_orchestrator, llm_client, allow_fallback=True: _FakeGenerator(),
+    )
+    monkeypatch.setattr(
+        run_novel_generation,
+        "_initialize_telemetry_run",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        run_novel_generation, "_update_run_progress", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(
+        run_novel_generation, "get_derivative_generator", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(
+        run_novel_generation, "_print_statistics", lambda *args, **kwargs: None
+    )
+
+    args = argparse.Namespace(
+        count=1,
+        start=1,
+        run_id=None,
+        run_dir=None,
+        continue_from=None,
+        dry_run=False,
+        no_auto_feedback=True,
+        volume_guidance="",
+        chapter_guidance="",
+        chapter_guidance_target=None,
+        require_llm=False,
+        log_level="INFO",
+    )
+
+    result = run_novel_generation.cmd_generate(args)
+    results = json.loads((project_dir / "generation_results.json").read_text())
+
+    assert result == 1
+    assert saved_chapters == []
+    error = results["failed_chapters"][0]["error"]
+    assert "issue_types: scene_or_timeline_disconnect" in error
+    assert "hard_gate_issue_types: scene_or_timeline_disconnect" in error
+    assert "blocking_issues:" in error
+    assert "rewrite_history:" in error
+
+
+def test_cmd_generate_memory_write_failure_is_non_fatal(
+    temp_project_dir,
+    monkeypatch,
+):
+    project_dir = temp_project_dir / "project"
+    project_dir.mkdir(parents=True, exist_ok=True)
+    run_dir = temp_project_dir / "runs" / "run-memory"
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    project = SimpleNamespace(
+        id="project-memory",
+        title="demo",
+        current_chapter=0,
+        total_chapters=120,
+        metadata={},
+    )
+    fake_config = SimpleNamespace(
+        current_project=project,
+        generation=SimpleNamespace(
+            output_dir=str(project_dir), scripts_dir=str(temp_project_dir / "scripts")
+        ),
+        update_project_metadata=lambda payload: project.metadata.update(payload),
+    )
+    saved_chapters = []
+
+    class _FakeChapterManager:
+        def build_context(self, chapter_number):
+            return {"chapter_number": chapter_number}
+
+        def save_consistency_report(self, **_kwargs):
+            return None
+
+        def save_chapter(self, **kwargs):
+            saved_chapters.append(kwargs)
+            project.current_chapter = kwargs["number"]
+            return SimpleNamespace(
+                metadata=SimpleNamespace(file_path=str(project_dir / "chapter_1.md"))
+            )
+
+        def save_plot_summary(self, _plot_summary):
+            return None
+
+        def save_film_drama_content(self, **_kwargs):
+            return None
+
+    class _FakeGenerator:
+        def generate_chapter(
+            self, chapter_number, context, previous_summary="", writing_options=None
+        ):
+            return GeneratedChapter(
+                number=chapter_number,
+                title=f"第{chapter_number}章",
+                content="韩林守住宗门祖地。",
+                word_count=1000,
+                metadata={
+                    "outline_summary": "韩林守住宗门祖地。",
+                    "key_events": [],
+                    "character_appearances": [],
+                },
+                plot_summary={
+                    "l1_one_line_summary": "韩林守住祖地。",
+                    "l2_brief_summary": "韩林守住宗门祖地。",
+                    "l3_key_plot_points": [],
+                },
+                consistency_report={},
+            )
+
+    class _FakeMemoryStore:
+        pass
+
+    monkeypatch.setattr(run_novel_generation, "get_config_manager", lambda: fake_config)
+    monkeypatch.setattr(
+        run_novel_generation, "_build_llm_clients", lambda _cfg: (None, None)
+    )
+    monkeypatch.setattr(
+        run_novel_generation, "_create_orchestrator", lambda _cfg, _project_id: object()
+    )
+    monkeypatch.setattr(
+        run_novel_generation,
+        "get_chapter_manager",
+        lambda _project_id, base_dir_override=None: _FakeChapterManager(),
+    )
+    monkeypatch.setattr(
+        run_novel_generation,
+        "get_novel_generator",
+        lambda config_manager, novel_orchestrator, llm_client, **_kwargs: _FakeGenerator(),
+    )
+    monkeypatch.setattr(
+        run_novel_generation,
+        "_initialize_telemetry_run",
+        lambda _run_dir, run_id, project_id, command: run_dir,
+    )
+    monkeypatch.setattr(
+        run_novel_generation, "_update_run_progress", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(
+        run_novel_generation, "get_derivative_generator", lambda *args, **kwargs: None
+    )
+    monkeypatch.setattr(
+        run_novel_generation,
+        "create_longform_memory_store",
+        lambda project_dir: _FakeMemoryStore(),
+    )
+    monkeypatch.setattr(
+        run_novel_generation,
+        "record_memory_after_save",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("memory down")),
+    )
+    monkeypatch.setattr(
+        run_novel_generation, "_print_statistics", lambda *args, **kwargs: None
+    )
+
+    args = argparse.Namespace(
+        count=1,
+        start=1,
+        run_id="run-memory",
+        run_dir=str(run_dir),
+        continue_from=None,
+        dry_run=False,
+        no_auto_feedback=True,
+        volume_guidance="",
+        chapter_guidance="",
+        chapter_guidance_target=None,
+        require_llm=False,
+        log_level="INFO",
+    )
+
+    result = run_novel_generation.cmd_generate(args)
+    status = read_status(run_dir)
+
+    assert result == 0
+    assert saved_chapters
+    assert status["longform_memory_enabled"] is True
+    assert status["longform_memory_error"] == "memory down"
 
 
 def test_continue_longform_run_clears_one_shot_chapter_guidance_after_success(

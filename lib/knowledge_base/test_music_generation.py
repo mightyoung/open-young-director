@@ -10,7 +10,7 @@ import sys
 KB_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(KB_DIR))
 
-from media.minimax_executor import get_media_executor
+from young_writer.media.minimax_executor import get_media_executor
 
 OUTPUT_DIR = KB_DIR / "novels" / "太古魔帝传" / "generated_media" / "music"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -30,7 +30,7 @@ async def test_music_with_lyrics():
     print("="*60)
     print("Generating music with singing vocals...")
     print("="*60)
-    print(f"Prompt: 古风中国音乐，优雅的女声演唱，笛子伴奏")
+    print("Prompt: 古风中国音乐，优雅的女声演唱，笛子伴奏")
     print(f"Lyrics:\n{lyrics}")
     print("="*60)
 
@@ -40,7 +40,7 @@ async def test_music_with_lyrics():
         output_path=output_file,
     )
 
-    print(f"\nResult:")
+    print("\nResult:")
     print(f"  Success: {result['success']}")
     print(f"  Error: {result.get('error')}")
     print(f"  Local path: {result.get('local_path')}")

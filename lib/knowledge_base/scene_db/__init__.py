@@ -1,53 +1,13 @@
-"""
-Scene Database Module for Young-Writer
+"""Compatibility namespace for legacy scene_db imports."""
 
-PostgreSQL + pgvector based Scene persistence layer for storing and
-searching narrative scenes, plot beats, character states, and consumption records.
+from __future__ import annotations
 
-Usage:
-    from scene_db import SceneStore, get_scene_store
-
-    store = get_scene_store()
-    scene = store.create_scene({
-        "chapter": 1,
-        "title": "开场",
-        "background": "故事发生在一个未来城市",
-        "location": "市中心",
-        "time_of_day": "evening",
-    })
-
-    beat = store.add_beat(scene["id"], {
-        "beat_type": "OPENING",
-        "description": "主角登场",
-        "narration": "夜幕降临，...",
-        "embedding": [0.1, 0.2, ...],
-    })
-"""
-
-from .models import (
-    BeatType,
-    CharacterState,
-    ConsumptionRecord,
-    ConsumptionType,
-    PlotBeat,
-    Scene,
-    SceneStatus,
+from young_writer._compat import (
+    compatibility_exports,
+    compatibility_namespace,
+    install_alias_prefix,
 )
-from .schema import init_schema
-from .store import SceneStore, get_scene_store
 
-__all__ = [
-    # Core store
-    "SceneStore",
-    "get_scene_store",
-    "init_schema",
-    # Models
-    "Scene",
-    "PlotBeat",
-    "CharacterState",
-    "ConsumptionRecord",
-    # Enums
-    "SceneStatus",
-    "BeatType",
-    "ConsumptionType",
-]
+install_alias_prefix(__name__, "young_writer.scene_db")
+__path__ = compatibility_namespace("scene_db")
+globals().update(compatibility_exports("young_writer.scene_db"))

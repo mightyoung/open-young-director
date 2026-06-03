@@ -12,8 +12,7 @@ import sys
 # 添加项目路径
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from agents.multi_agent_narrative import (
-    MultiAgentNarrativeGenerator,
+from young_writer.agents.multi_agent_narrative import (
     CharacterConfig,
 )
 
@@ -69,7 +68,7 @@ def create_example_generator():
     ]
 
     # 这里需要实际的LLM客户端
-    # from llm.kimi_client import get_kimi_client
+    # from young_writer.llm.kimi_client import get_kimi_client
     # llm_client = get_kimi_client()
 
     # 暂时返回None，实际使用时需要传入真实的LLM客户端
@@ -124,11 +123,11 @@ def example_usage():
 【示例代码】
 
 ```python
-from agents.multi_agent_narrative import (
+from young_writer.agents.multi_agent_narrative import (
     MultiAgentNarrativeGenerator,
     CharacterConfig,
 )
-from llm.kimi_client import get_kimi_client
+from young_writer.llm.kimi_client import get_kimi_client
 
 # 创建角色配置
 characters = [

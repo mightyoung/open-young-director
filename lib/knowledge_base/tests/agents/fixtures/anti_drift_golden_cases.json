@@ -101,5 +101,32 @@
       "restore_carryover",
       "restore_causality"
     ]
+  },
+  {
+    "name": "bridged_time_jump_should_warn_not_block",
+    "chapter_number": 24,
+    "previous_summary": "上一章深夜，韩林刚在北城药坊安顿好昏迷的柳如烟，准备天亮前审问来客。",
+    "previous_content": "北城药坊里只剩下一盏孤灯，韩林按住伤口，把昏迷的柳如烟藏到药柜后。门外急促的敲门声刚停，他还来不及判断来客身份，整夜的紧张气氛仍悬在屋里。",
+    "current_content": "三天后，韩林回到山门广场前，先用几句话交代药坊那一夜的收束：来客被他制住，柳如烟也被秘密送入后山疗伤。正因这段余波已经处理完，他才带着审问出的线索来到山门，准备向众弟子布置下一步。",
+    "expected_invalid": false,
+    "expected_issue_types": [],
+    "expected_warning_categories": []
+  },
+  {
+    "name": "bridged_new_setting_within_budget_should_watch_not_block",
+    "chapter_number": 42,
+    "previous_summary": "上一章结束时，韩林已经确认本卷唯一优先级是守住宗门祖地。",
+    "previous_content": "祖地北侧的阵眼正在崩裂，韩林命所有弟子收缩阵线，只保留能直接支撑祖地防御的动作。",
+    "current_content": "裂口深处露出一枚远古祭纹，韩林没有追问秘境源流，只判断它可以临时稳住祖地阵眼。他当即让弟子把祭纹嵌入北侧缺口，用这唯一的新设定反过来加固宗门祖地防线。",
+    "context_overrides": {
+      "chapter_number": 42,
+      "total_chapters": 60,
+      "volume_guidance_payload": {
+        "goal_lock": "守住宗门祖地",
+        "new_setting_budget": "1"
+      }
+    },
+    "expected_invalid": false,
+    "expected_issue_types": []
   }
 ]

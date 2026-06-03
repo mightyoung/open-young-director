@@ -1,47 +1,13 @@
-"""Multi-modal trigger generation architecture.
+"""Compatibility namespace for legacy triggers imports."""
 
-This package provides the core components for a multi-modal content
-generation trigger system that can evaluate and trigger content
-generation based on various input types (novels, podcasts, videos).
+from __future__ import annotations
 
-Example:
-    >>> from triggers import SceneEventBus, NovelEvaluator
-    >>> bus = SceneEventBus()
-    >>> evaluator = NovelEvaluator({"min_chapters": 2})
-    >>> bus.subscribe(evaluator)
-    >>> bus.publish_chapter_completed({"chapter_id": 1, "content": "..."})
-"""
-
-from .event_bus import SceneEventBus
-from .base import (
-    ContentEvaluator,
-    TriggerStatus,
-    MaterialPacket,
-    EvaluationResult,
+from young_writer._compat import (
+    compatibility_exports,
+    compatibility_namespace,
+    install_alias_prefix,
 )
-from .novel_evaluator import NovelEvaluator
-from .podcast_evaluator import PodcastEvaluator
-from .video_evaluator import VideoEvaluator
-from .scene_extractor import SceneExtractor, ExtractedScene
-from .config import TriggerConfigLoader, TriggerConfig, EvaluatorConfig
 
-__all__ = [
-    # Event Bus
-    "SceneEventBus",
-    # Base Classes
-    "ContentEvaluator",
-    "TriggerStatus",
-    "MaterialPacket",
-    "EvaluationResult",
-    # Evaluators
-    "NovelEvaluator",
-    "PodcastEvaluator",
-    "VideoEvaluator",
-    # Utilities
-    "SceneExtractor",
-    "ExtractedScene",
-    # Config
-    "TriggerConfigLoader",
-    "TriggerConfig",
-    "EvaluatorConfig",
-]
+install_alias_prefix(__name__, "young_writer.triggers")
+__path__ = compatibility_namespace("triggers")
+globals().update(compatibility_exports("young_writer.triggers"))

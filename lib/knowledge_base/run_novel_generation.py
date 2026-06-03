@@ -33,29 +33,32 @@ import sys
 from typing import Any
 import uuid
 
-
-# 添加项目路径
-sys.path.insert(0, str(Path(__file__).parent))
-
 from dotenv import load_dotenv
 
 
-load_dotenv(Path(__file__).parent / ".env")
+KNOWLEDGE_BASE_DIR = Path(__file__).resolve().parent
+REPO_ROOT_DIR = KNOWLEDGE_BASE_DIR.parents[1]
+load_dotenv(REPO_ROOT_DIR / ".env", override=False)
+load_dotenv(KNOWLEDGE_BASE_DIR / ".env", override=True)
 
-from agents.chapter_manager import ChapterPlotSummary, get_chapter_manager  # noqa: E402
-from agents.config_manager import get_config_manager  # noqa: E402
-from agents.derivative_generator import get_derivative_generator  # noqa: E402
-from agents.feedback_loop import (  # noqa: E402
+from young_writer.agents.chapter_manager import ChapterPlotSummary, get_chapter_manager  # noqa: E402
+from young_writer.agents.config_manager import get_config_manager  # noqa: E402
+from young_writer.agents.derivative_generator import get_derivative_generator  # noqa: E402
+from young_writer.agents.feedback_loop import (  # noqa: E402
     FeedbackMode,
     FeedbackStrategy,
     get_feedback_loop,
 )
-from agents.novel_generator import get_novel_generator  # noqa: E402
-from agents.novel_orchestrator import (  # noqa: E402
+from young_writer.agents.longform_memory import (  # noqa: E402
+    create_longform_memory_store,
+    record_memory_after_save,
+)
+from young_writer.agents.novel_generator import get_novel_generator  # noqa: E402
+from young_writer.agents.novel_orchestrator import (  # noqa: E402
     NovelOrchestrator,
     OrchestratorConfig,
 )
-from services.longform_run import (  # noqa: E402
+from young_writer.services.longform_run import (  # noqa: E402
     CHECKPOINT_CHAPTER,
     CHECKPOINT_OUTLINE,
     CHECKPOINT_RISK,
@@ -91,14 +94,15 @@ from services.longform_run import (  # noqa: E402
     save_risk_report,
     should_pause_for_stage,
 )
-from services.run_storage import (  # noqa: E402
+from young_writer.services.paths import WorkspacePaths  # noqa: E402
+from young_writer.services.run_storage import (  # noqa: E402
     create_run,
     ensure_run_dir,
     ensure_run_initialized,
     read_status,
     update_status,
 )
-from writing_options import (  # noqa: E402
+from young_writer.writing_options import (  # noqa: E402
     DEFAULT_WRITING_OPTIONS,
     WRITING_OPTION_GROUPS,
     normalize_writing_options,
@@ -126,8 +130,66 @@ def setup_logging(level: str = "INFO"):
     )
 
 
+def cmd_diagnose_config(args) -> int:
+    """Print non-secret integration diagnostics."""
+    diagnostics = get_config_manager().diagnose_integrations()
+    if getattr(args, "diagnose_json", False):
+        print(json.dumps(diagnostics, ensure_ascii=False, sort_keys=True))
+    else:
+        for name, status in diagnostics.items():
+            reachable = status.get("reachable")
+            suffix = "" if reachable is None else f", reachable={reachable}"
+            print(
+                f"{name}: configured={status.get('configured')}, "
+                f"source={status.get('source')}{suffix}"
+            )
+    return 0
+
+
 class GenerationError(Exception):
     """章节生成失败的异常."""
+
+
+def _format_quality_gate_failure(report: dict[str, Any]) -> str:
+    """Format deterministic quality gate evidence for CLI failures."""
+    summary = str(report.get("summary", "") or "章节未通过质量闸门").strip()
+    issue_types = [
+        str(item).strip()
+        for item in report.get("issue_types", [])
+        if str(item).strip()
+    ]
+    hard_gate_issue_types = [
+        str(item).strip()
+        for item in report.get("hard_gate_issue_types", [])
+        if str(item).strip()
+    ]
+    blocking_issues = [
+        str(item).strip()
+        for item in report.get("blocking_issues", [])
+        if str(item).strip()
+    ]
+    rewrite_history = [
+        item for item in report.get("rewrite_history", []) if isinstance(item, dict)
+    ]
+    lines = [summary]
+    if issue_types:
+        lines.append(f"issue_types: {', '.join(issue_types)}")
+    if hard_gate_issue_types:
+        lines.append(f"hard_gate_issue_types: {', '.join(hard_gate_issue_types)}")
+    if blocking_issues:
+        lines.append("blocking_issues:")
+        lines.extend(f"- {item}" for item in blocking_issues[:5])
+    if rewrite_history:
+        lines.append("rewrite_history:")
+        for item in rewrite_history[-2:]:
+            attempt = item.get("attempt", "?")
+            mode = item.get("mode", "")
+            invalid = bool(item.get("invalid"))
+            item_issues = ", ".join(str(value) for value in item.get("issue_types", []))
+            lines.append(
+                f"- attempt={attempt}, mode={mode}, invalid={invalid}, issue_types={item_issues}"
+            )
+    return "\n".join(lines)
 
 
 # 反馈循环自动触发阈值
@@ -145,7 +207,11 @@ STAGE_FINALIZE = "finalize"
 
 
 def _run_auto_feedback(
-    project_id: str, generated_chapters: list, total_current: int, llm_client=None
+    project_id: str,
+    generated_chapters: list,
+    total_current: int,
+    llm_client=None,
+    project_dir: str | Path | None = None,
 ) -> None:
     """根据生成结果自动运行反馈循环
 
@@ -171,7 +237,9 @@ def _run_auto_feedback(
     print(f"   本次生成: 第{start_ch}-{end_ch}章 (共{count}章)")
     print(f"   当前项目总章节: {total_current}")
 
-    feedback = get_feedback_loop(project_id, llm_client=llm_client)
+    feedback = get_feedback_loop(
+        project_id, llm_client=llm_client, project_dir=project_dir
+    )
 
     # 1. 检查 LIGHT 触发 (每5章)
     should_light = (total_current % FEEDBACK_LIGHT_INTERVAL == 0) or (
@@ -582,7 +650,17 @@ def cmd_generate(args):
 
     # 使用标题目录而非ID目录
     base_dir_override = str(project_dir)
+    longform_memory_store = create_longform_memory_store(project_dir=project_dir)
     chapter_mgr = get_chapter_manager(project_id, base_dir_override=base_dir_override)
+    chapter_mgr.longform_memory_store = longform_memory_store
+    if run_dir:
+        update_status(
+            run_dir,
+            longform_memory_enabled=longform_memory_store is not None,
+            longform_memory_store=type(longform_memory_store).__name__
+            if longform_memory_store is not None
+            else None,
+        )
 
     # 创建 orchestrator (仅支持 FILM_DRAMA 模式)
     novel_orchestrator = _create_orchestrator(config_mgr, project_id)
@@ -592,6 +670,7 @@ def cmd_generate(args):
         config_manager=config_mgr,
         novel_orchestrator=novel_orchestrator,
         llm_client=llm_client,
+        allow_fallback=not getattr(args, "require_llm", False),
     )
 
     # 处理 --continue-from 断点续传
@@ -762,9 +841,6 @@ def cmd_generate(args):
                     rewrite_history=chapter.metadata.get("rewrite_history", []),
                 )
             if getattr(chapter, "consistency_report", {}).get("invalid"):
-                quality_summary = chapter.consistency_report.get(
-                    "summary", "章节未通过质量闸门"
-                )
                 status_payload = read_status(run_dir) if run_dir else {}
                 longform_state_path = status_payload.get("longform_state_path")
                 if run_dir and longform_state_path:
@@ -779,7 +855,9 @@ def cmd_generate(args):
                             run_started_at=run_started_at,
                             chapter=chapter,
                         )
-                raise GenerationError(quality_summary)
+                raise GenerationError(
+                    _format_quality_gate_failure(chapter.consistency_report)
+                )
 
             # 计算内容校验和
             content_checksum = hashlib.sha256(
@@ -806,7 +884,7 @@ def cmd_generate(args):
                 chapters_completed=skipped_existing + len(generated),
                 run_started_at=run_started_at,
             )
-            chapter_mgr.save_chapter(
+            chapter_save_result = chapter_mgr.save_chapter(
                 number=chapter.number,
                 title=chapter.title,
                 content=chapter.content,
@@ -815,6 +893,9 @@ def cmd_generate(args):
                 key_events=chapter.metadata.get("key_events", []),
                 character_appearances=chapter.metadata.get("character_appearances", []),
                 generation_time=chapter.generation_time,
+            )
+            chapter_artifact_path = getattr(
+                getattr(chapter_save_result, "metadata", None), "file_path", ""
             )
 
             # 保存情节概述（三级结构）
@@ -831,6 +912,49 @@ def cmd_generate(args):
                 )
                 chapter_mgr.save_plot_summary(plot_summary)
                 logger.info(f"  📋 Plot summary saved for chapter {chapter.number}")
+
+            if chapter_artifact_path:
+                goal_lock = ""
+                unresolved_goals = []
+                if isinstance(chapter.metadata, dict):
+                    goal_lock = str(chapter.metadata.get("goal_lock", "") or "")
+                    raw_unresolved = chapter.metadata.get("unresolved_goals", [])
+                    if isinstance(raw_unresolved, list):
+                        unresolved_goals = [str(item) for item in raw_unresolved if item]
+                if not goal_lock and isinstance(context.get("volume_guidance_payload"), dict):
+                    goal_lock = str(context["volume_guidance_payload"].get("goal_lock", "") or "")
+                try:
+                    memory_rows_written = record_memory_after_save(
+                        longform_memory_store,
+                        project_id=project_id,
+                        run_id=generation_run_id,
+                        chapter_number=chapter.number,
+                        chapter_path=chapter_artifact_path,
+                        chapter_content=chapter.content,
+                        summary=actual_summary,
+                        key_events=chapter.metadata.get("key_events", []),
+                        character_appearances=chapter.metadata.get("character_appearances", []),
+                        goal_lock=goal_lock,
+                        unresolved_goals=unresolved_goals,
+                    )
+                    if memory_rows_written:
+                        logger.info(
+                            "  🧠 Longform memory rows written: %s",
+                            memory_rows_written,
+                        )
+                    if run_dir:
+                        update_status(
+                            run_dir,
+                            longform_memory_rows_written=memory_rows_written,
+                            longform_memory_error=None,
+                        )
+                except Exception as exc:
+                    logger.warning("Longform memory write skipped: %s", exc)
+                    if run_dir:
+                        update_status(
+                            run_dir,
+                            longform_memory_error=str(exc),
+                        )
 
             # 保存 FILM_DRAMA 内容（场景、角色、情节结构等）
             if hasattr(chapter, "orchestrator_result") and chapter.orchestrator_result:
@@ -1041,7 +1165,13 @@ def cmd_generate(args):
             chapters_completed=skipped_existing + len(generated),
             run_started_at=run_started_at,
         )
-        _run_auto_feedback(project_id, generated, current_total, llm_client=llm_client)
+        _run_auto_feedback(
+            project_id,
+            generated,
+            current_total,
+            llm_client=llm_client,
+            project_dir=project_dir,
+        )
 
     if failed_chapters:
         _update_run_progress(
@@ -1203,7 +1333,11 @@ def cmd_export(args):
     if output_dir:
         base_path = Path(output_dir).resolve()
     else:
-        base_path = Path(f"./lib/knowledge_base/novels/{config_mgr.current_project.id}")
+        workspace_paths = WorkspacePaths.from_root(KNOWLEDGE_BASE_DIR)
+        base_path = workspace_paths.project_paths(
+            title=config_mgr.current_project.title,
+            project_id=config_mgr.current_project.id,
+        ).project_dir
     output_path = args.output or str(
         base_path / f"{config_mgr.current_project.title}.txt"
     )
@@ -1524,7 +1658,7 @@ def cmd_feedback_loop(args):
     project_id = config_mgr.current_project.id
 
     # 导入反馈循环模块
-    from agents.feedback_loop import (
+    from young_writer.agents.feedback_loop import (
         FeedbackMode,
         FeedbackStrategy,
         get_feedback_loop,
@@ -1539,7 +1673,9 @@ def cmd_feedback_loop(args):
 
     # 初始化反馈循环
     try:
-        feedback = get_feedback_loop(project_id, llm_client=llm_client)
+        feedback = get_feedback_loop(
+            project_id, llm_client=llm_client, project_dir=_project_dir(config_mgr)
+        )
     except Exception as e:
         print(f"❌ 初始化反馈循环失败: {e}")
         return 1
@@ -2778,9 +2914,24 @@ def main():
         "--no-auto-feedback", action="store_true", help="禁用自动反馈循环"
     )
     parser.add_argument(
+        "--require-llm",
+        action="store_true",
+        help="要求真实 LLM 生成；LLM 调用失败或输出过短时不写入 fallback 占位章节",
+    )
+    parser.add_argument(
         "--show-writing-options",
         action="store_true",
         help="显示所有写作参数可选值并退出",
+    )
+    parser.add_argument(
+        "--diagnose-config",
+        action="store_true",
+        help="检查 provider/database/Redis/crawler/发布配置状态（不输出密钥）",
+    )
+    parser.add_argument(
+        "--diagnose-json",
+        action="store_true",
+        help="以 JSON 输出 --diagnose-config 结果",
     )
     parser.add_argument(
         "--style",
@@ -2925,6 +3076,9 @@ def main():
     if args.show_writing_options:
         _print_writing_option_catalog()
         return 0
+
+    if args.diagnose_config:
+        return cmd_diagnose_config(args)
 
     # 根据命令执行
     # 注意: --load 可以和其他生成命令组合使用，所以单独处理

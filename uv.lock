@@ -18,7 +18,7 @@ members = [
     "crewai-devtools",
     "crewai-files",
     "crewai-tools",
-    "knowledge-base",
+    "young-writer",
 ]
 overrides = [
     { name = "langchain-core", specifier = ">=0.3.80,<1" },
@@ -3406,28 +3406,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/33/01/a8ea7c5ea32a9b45ceeaee051a04c8ed4320f5add3c51bfa20879b765b70/kiwisolver-1.4.9-pp311-pypy311_pp73-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:85b5352f94e490c028926ea567fc569c52ec79ce131dadb968d3853e809518c2", size = 80281, upload-time = "2025-08-10T21:27:45.369Z" },
     { url = "https://files.pythonhosted.org/packages/da/e3/dbd2ecdce306f1d07a1aaf324817ee993aab7aee9db47ceac757deabafbe/kiwisolver-1.4.9-pp311-pypy311_pp73-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:464415881e4801295659462c49461a24fb107c140de781d55518c4b80cb6790f", size = 78009, upload-time = "2025-08-10T21:27:46.376Z" },
     { url = "https://files.pythonhosted.org/packages/da/e9/0d4add7873a73e462aeb45c036a2dead2562b825aa46ba326727b3f31016/kiwisolver-1.4.9-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:fb940820c63a9590d31d88b815e7a3aa5915cad3ce735ab45f0c730b39547de1", size = 73929, upload-time = "2025-08-10T21:27:48.236Z" },
-]
-
-[[package]]
-name = "knowledge-base"
-source = { editable = "lib/knowledge_base" }
-dependencies = [
-    { name = "chromadb" },
-    { name = "crewai" },
-    { name = "gradio" },
-    { name = "psycopg2-binary" },
-    { name = "redis" },
-    { name = "streamlit" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "chromadb", specifier = ">=0.4.0" },
-    { name = "crewai", editable = "lib/crewai" },
-    { name = "gradio", specifier = ">=5.0.0" },
-    { name = "psycopg2-binary", specifier = ">=2.9.0" },
-    { name = "redis", specifier = ">=5.0.0" },
-    { name = "streamlit", specifier = ">=1.37.0" },
 ]
 
 [[package]]
@@ -9265,6 +9243,28 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/31/74/8b74bae38ed7fe6793d0c15a0c8207bbb819cf287788459e5ed230996cdd/yarl-1.22.0-cp313-cp313t-win_amd64.whl", hash = "sha256:ff86011bd159a9d2dfc89c34cfd8aff12875980e3bd6a39ff097887520e60249", size = 93715, upload-time = "2025-10-06T14:11:11.739Z" },
     { url = "https://files.pythonhosted.org/packages/69/66/991858aa4b5892d57aef7ee1ba6b4d01ec3b7eb3060795d34090a3ca3278/yarl-1.22.0-cp313-cp313t-win_arm64.whl", hash = "sha256:7861058d0582b847bc4e3a4a4c46828a410bca738673f35a29ba3ca5db0b473b", size = 83857, upload-time = "2025-10-06T14:11:13.586Z" },
     { url = "https://files.pythonhosted.org/packages/73/ae/b48f95715333080afb75a4504487cbe142cae1268afc482d06692d605ae6/yarl-1.22.0-py3-none-any.whl", hash = "sha256:1380560bdba02b6b6c90de54133c81c9f2a453dee9912fe58c1dcced1edb7cff", size = 46814, upload-time = "2025-10-06T14:12:53.872Z" },
+]
+
+[[package]]
+name = "young-writer"
+source = { editable = "lib/knowledge_base" }
+dependencies = [
+    { name = "chromadb" },
+    { name = "crewai" },
+    { name = "gradio" },
+    { name = "psycopg2-binary" },
+    { name = "redis" },
+    { name = "streamlit" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "chromadb", specifier = ">=0.4.0" },
+    { name = "crewai", editable = "lib/crewai" },
+    { name = "gradio", specifier = ">=5.0.0" },
+    { name = "psycopg2-binary", specifier = ">=2.9.0" },
+    { name = "redis", specifier = ">=5.0.0" },
+    { name = "streamlit", specifier = ">=1.37.0" },
 ]
 
 [[package]]

@@ -10,16 +10,14 @@ Usage:
 import argparse
 import asyncio
 import json
-import os
 import sys
 from pathlib import Path
-from typing import Optional
 
 # Add knowledge_base to path
 KB_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(KB_DIR))
 
-from media.minimax_executor import get_media_executor
+from young_writer.media.minimax_executor import get_media_executor
 
 # Character prompts (extracted from visual_reference/characters/)
 # 采用摄影写实风格，参考ARRI Alexa拍摄效果，单段落格式
@@ -92,7 +90,7 @@ async def generate_character_image(character_id: str, dry_run: bool = False) -> 
 
 async def generate_all_characters(dry_run: bool = False) -> list:
     """Generate images for all characters."""
-    print(f"\nMiniMax Image Generation")
+    print("\nMiniMax Image Generation")
     print(f"{'='*60}")
     print(f"Output directory: {OUTPUT_DIR}")
     print(f"Characters: {list(CHARACTER_PROMPTS.keys())}")

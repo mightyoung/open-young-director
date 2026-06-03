@@ -1,12 +1,10 @@
 """Tests for FILM_DRAMA mode components."""
 
 import pytest
-import asyncio
-from unittest.mock import Mock, AsyncMock
+from unittest.mock import Mock
 
-from agents.film_drama import (
+from young_writer.agents.film_drama import (
     DirectorAgent,
-    DirectorConfig,
     CharacterAgent,
     CharacterBible,
     CharacterMemoryQueue,

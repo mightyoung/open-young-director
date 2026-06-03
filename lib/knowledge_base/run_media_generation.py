@@ -15,8 +15,8 @@ import asyncio
 import json
 import logging
 import os
-import sys
 from pathlib import Path
+import sys
 from typing import Any, Dict, List, Optional
 
 # ── Load .env if present (search script dir, then project root) ───────────────
@@ -35,9 +35,6 @@ for _env_path in [
 SCRIPT_DIR = Path(__file__).parent.resolve()
 KB_DIR = SCRIPT_DIR
 
-# Add knowledge_base root to path so imports work
-sys.path.insert(0, str(KB_DIR))
-
 # ── Logging setup (must be before _resolve_novel_dir) ────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
@@ -54,16 +51,23 @@ def _resolve_novel_dir() -> Path:
     Scripts (video_prompts, podcasts) are in {SCRIPTS_DIR}/
     """
     try:
-        from agents.config_manager import get_config_manager
+        from young_writer.agents.config_manager import get_config_manager
 
         config_mgr = get_config_manager()
         if config_mgr.current_project:
-            project_title = config_mgr.current_project.title
+            output_dir = getattr(config_mgr.generation, "output_dir", "")
+            if output_dir:
+                novel_dir = Path(output_dir).resolve()
+            else:
+                from young_writer.services.paths import WorkspacePaths
 
-            # Chapters are stored in novels/{project_title}/chapters/
-            novel_dir = Path("lib/knowledge_base/novels") / project_title.replace("/", "-")
+                project_paths = WorkspacePaths.from_root(KB_DIR).project_paths(
+                    title=config_mgr.current_project.title,
+                    project_id=config_mgr.current_project.id,
+                )
+                novel_dir = project_paths.project_dir
 
-            logger.info(f"Using project: {project_title}")
+            logger.info(f"Using project: {config_mgr.current_project.title}")
             logger.info(f"NOVEL_DIR resolved to: {novel_dir}")
             return novel_dir
     except Exception as e:
@@ -80,14 +84,21 @@ def _resolve_scripts_dir() -> Path:
     Scripts are stored separately from novel chapters.
     """
     try:
-        from agents.config_manager import get_config_manager
+        from young_writer.agents.config_manager import get_config_manager
 
         config_mgr = get_config_manager()
         if config_mgr.current_project:
-            project_title = config_mgr.current_project.title
+            output_dir = getattr(config_mgr.generation, "scripts_dir", "")
+            if output_dir:
+                scripts_dir = Path(output_dir).resolve()
+            else:
+                from young_writer.services.paths import WorkspacePaths
 
-            # Scripts are stored in generated_scripts/{project_title}/
-            scripts_dir = Path("lib/knowledge_base/generated_scripts") / project_title.replace("/", "-")
+                project_paths = WorkspacePaths.from_root(KB_DIR).project_paths(
+                    title=config_mgr.current_project.title,
+                    project_id=config_mgr.current_project.id,
+                )
+                scripts_dir = project_paths.scripts_dir
 
             logger.info(f"SCRIPTS_DIR resolved to: {scripts_dir}")
             return scripts_dir
@@ -103,14 +114,14 @@ NOVEL_DIR = _resolve_novel_dir()
 SCRIPTS_DIR = _resolve_scripts_dir()
 
 # ── Import MiniMax executor ───────────────────────────────────────────────────
-from media.minimax_executor import get_media_executor, MiniMaxMediaExecutor
+from young_writer.media.minimax_executor import get_media_executor, MiniMaxMediaExecutor
 
 # ── Import Doubao client for video prompt generation ───────────────────────────
-from llm.doubao_client import get_doubao_client
+from young_writer.llm.doubao_client import get_doubao_client
 
 # ── Import Kimi client for enhanced prompt generation ────────────────────────
 try:
-    from llm.kimi_client import get_kimi_client, KimiClient
+    from young_writer.llm.kimi_client import get_kimi_client, KimiClient
     _kimi_client: Optional[KimiClient] = None
 except ImportError:
     _kimi_client = None

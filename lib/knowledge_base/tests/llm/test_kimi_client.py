@@ -2,13 +2,13 @@
 
 import os
 import time
-from unittest.mock import MagicMock, Mock, patch, call
+from unittest.mock import MagicMock, Mock, patch
 
 import httpx
 
 import pytest
 
-from llm.kimi_client import (
+from young_writer.llm.kimi_client import (
     KIMIClient,
     KIMIResponse,
     RetryCallback,
@@ -16,6 +16,22 @@ from llm.kimi_client import (
     RETRYABLE_STATUS_CODES,
     NON_RETRYABLE_STATUS_CODES,
 )
+
+
+@pytest.fixture(autouse=True)
+def _reset_kimi_env(monkeypatch):
+    for key in (
+        "KIMI_API_KEY",
+        "KIMI_BASE_URL",
+        "KIMI_MODEL_NAME",
+        "KIMI_MAX_TOKENS",
+        "KIMI_TEMPERATURE",
+        "KIMI_RETRY_ENABLED",
+        "KIMI_RETRY_MAX_RETRIES",
+        "KIMI_RETRY_BASE_DELAY",
+        "KIMI_RETRY_MAX_DELAY",
+    ):
+        monkeypatch.delenv(key, raising=False)
 
 
 class TestKIMIClientInit:
@@ -36,7 +52,7 @@ class TestKIMIClientInit:
             if key == "KIMI_API_KEY":
                 return None
             return default
-        with patch("llm.kimi_client.os.getenv", side_effect=mock_getenv):
+        with patch("young_writer.llm.kimi_client.os.getenv", side_effect=mock_getenv):
             with pytest.raises(ValueError, match="KIMI API key is required"):
                 KIMIClient()
 
@@ -377,6 +393,31 @@ class TestKIMIClientClose:
         client.close()
 
 
+class TestKIMIClientCLI:
+    """Test kimi-cli integration."""
+
+    def test_generate_via_cli_pipes_prompt_to_stdin(self):
+        """Test current kimi-cli print mode invocation."""
+        client = KIMIClient(api_key="test_key", use_cli=True)
+        messages = [{"role": "user", "content": "你好"}]
+
+        mock_result = Mock()
+        mock_result.returncode = 0
+        mock_result.stdout = "回复"
+        mock_result.stderr = ""
+
+        with patch("young_writer.llm.kimi_client.subprocess.run", return_value=mock_result) as run:
+            result = client._generate_via_cli(messages)
+
+        assert result == "回复"
+        call_args = run.call_args
+        command = call_args.args[0]
+        assert "--prompt-file" not in command
+        assert call_args.kwargs["input"] == "User: 你好"
+        assert call_args.kwargs["text"] is True
+        assert call_args.kwargs["capture_output"] is True
+
+
 class TestKIMIResponse:
     """Test KIMIResponse dataclass."""
 
@@ -400,12 +441,12 @@ class TestInitKimiClient:
 
     def test_init_kimi_client_basic(self):
         """Test init_kimi_client factory."""
-        from llm.kimi_client import init_kimi_client, _kimi_client
+        from young_writer.llm.kimi_client import init_kimi_client
 
         # Reset singleton
-        import llm.kimi_client
+        import young_writer.llm.kimi_client as kimi_client_module
 
-        llm.kimi_client._kimi_client = None
+        kimi_client_module._kimi_client = None
 
         client = init_kimi_client(
             api_key="factory_key",
@@ -414,10 +455,10 @@ class TestInitKimiClient:
 
         assert client.api_key == "factory_key"
         assert client.model_name == "test-model"
-        assert llm.kimi_client._kimi_client is client
+        assert kimi_client_module._kimi_client is client
 
         # Cleanup
-        llm.kimi_client._kimi_client = None
+        kimi_client_module._kimi_client = None
 
 
 class TestRetryCallback:
@@ -440,12 +481,6 @@ class TestKIMIClientRetry:
         client = KIMIClient(api_key="test_key", retry_max_retries=2, retry_base_delay=0.01)
 
         # First two calls fail, third succeeds
-        mock_responses = [
-            Mock(side_effect=httpx.ConnectError("Connection refused")),
-            Mock(side_effect=httpx.ConnectError("Connection refused")),
-            Mock(json=lambda: {"choices": [{"message": {"content": "成功"}}], "model": "test", "usage": {}}),
-        ]
-
         with patch.object(client, "_client") as mock_client:
             # Make post return different values on each call
             mock_response_fail = Mock()
@@ -701,4 +736,3 @@ class TestRetryConstants:
         assert issubclass(httpx.ConnectError, RETRYABLE_ERRORS) or any(
             issubclass(httpx.ConnectError, e) for e in RETRYABLE_ERRORS
         )
-

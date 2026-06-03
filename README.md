@@ -8,7 +8,7 @@
 
 ### Overview
 
-**Open Young Director** is a crewAI-based monorepo whose actively maintained novel-writing workflow currently lives in `lib/knowledge_base/`.
+**Open Young Director** is a crewAI-based monorepo whose actively maintained novel-writing workflow currently lives in `lib/knowledge_base/`, with `lib/knowledge_base/young_writer/` as the primary Python package and `knowledge_base` kept as a compatibility alias.
 
 The current deliverable is a local, single-user writing workbench for long-form web fiction. It combines:
 
@@ -53,12 +53,10 @@ lib/
 ├── crewai/                    # Core crewAI framework and CLI
 ├── crewai-tools/              # Tool integrations
 └── knowledge_base/            # Active young-writer workspace
-    ├── agents/                # Novel generation, orchestration, feedback loop
-    ├── services/              # Run storage and longform workflow helpers
-    ├── llm/                   # Provider clients and prompt plumbing
-    ├── consistency/           # Consistency models and manager
-    ├── consumers/             # Derivative-content consumers
-    ├── media/                 # Media generation adapters/executors
+    ├── young_writer/          # Primary product package
+    ├── knowledge_base/        # Compatibility alias package
+    ├── agents/                # Legacy import shim
+    ├── services/              # Legacy import shim
     ├── streamlit_app.py       # Local control panel
     ├── run_novel_generation.py # Main CLI
     ├── writing_options.py     # Shared writing-option presets
@@ -147,6 +145,9 @@ Important behavior:
 - pending review files are derived envelopes for operator review
 - `approval_history` is append-only across reject/revise/approve loops
 - `chapter_review` payloads can include anti-drift evidence, warning issues, semantic review, and structured rewrite plans
+- feedback discovery reads consistency reports, generation results, pending reviews, and derived summary evidence; P0 fix mode is guidance-only and does not mutate chapters
+- when `DATABASE_URL` is not configured, longform memory falls back to project-local SQLite at `longform_memory.sqlite`
+- `WRITER.md` remains the human source; a curated `writer_rules.json` subset is injected into prompts and reported as warning-only writer-rule advisories
 - `volume_review` payloads can include cross-volume registry state for unresolved goals, open promises, and dangling settings
 
 ### Tests
@@ -174,7 +175,7 @@ uv run pytest \
 
 ### 概述
 
-**Open Young Director（青年导演）** 是一个基于 crewAI 的单仓库项目，当前真正处于持续维护状态的小说创作系统位于 `lib/knowledge_base/`。
+**Open Young Director（青年导演）** 是一个基于 crewAI 的单仓库项目，当前真正处于持续维护状态的小说创作系统位于 `lib/knowledge_base/`，其中 `lib/knowledge_base/young_writer/` 是主 Python 包，`knowledge_base` 仅保留兼容别名。
 
 现在这套系统的定位是一个本地、单用户的长篇网文创作工作台，核心能力包括：
 
@@ -219,12 +220,10 @@ lib/
 ├── crewai/                    # crewAI 核心框架与 CLI
 ├── crewai-tools/              # 工具集成
 └── knowledge_base/            # 当前 young-writer 工作台
-    ├── agents/                # 小说生成、编排、反馈循环
-    ├── services/              # run 存储与长篇流程辅助逻辑
-    ├── llm/                   # 模型客户端与 prompt 适配
-    ├── consistency/           # 一致性模型与管理器
-    ├── consumers/             # 衍生内容消费链路
-    ├── media/                 # 媒体生成适配器
+    ├── young_writer/          # 主产品包
+    ├── knowledge_base/        # 兼容别名包
+    ├── agents/                # 旧导入兼容 shim
+    ├── services/              # 旧导入兼容 shim
     ├── streamlit_app.py       # 本地控制台
     ├── run_novel_generation.py # 主 CLI
     ├── writing_options.py     # 共用写作参数预设
