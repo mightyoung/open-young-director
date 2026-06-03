@@ -1,6 +1,7 @@
 """Tests for ConfigManager."""
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -10,6 +11,23 @@ from young_writer.agents.config_manager import (
     LLMProviderConfig,
     NovelProject,
 )
+from young_writer.agents.outline_loader import OutlineLoader
+from young_writer.services.story_input import STORY_INPUT_DIRNAME
+
+COMPLETE_CHAPTER_ARTIFACT = """# 第1章
+
+> 第1章 | 字数: 1200 | 生成时间: 2026-06-03T00:00:00
+
+**本章概要**: 沈夜返回空间城。
+
+**关键事件**: 无
+
+---
+
+正文。
+
+*(本章完)*
+"""
 
 
 @pytest.fixture
@@ -156,6 +174,10 @@ class TestCreateProject:
         assert str(temp_config_dir.parent / "runtime" / "projects") in output_dir
         assert (temp_config_dir.parent / "runtime" / "projects").exists()
         assert "目录测试" in output_dir
+        story_input_dir = Path(output_dir) / STORY_INPUT_DIRNAME
+        assert story_input_dir.exists()
+        assert (story_input_dir / "chapter_plans.json").exists()
+        assert (story_input_dir / "project_bible.json").exists()
 
     def test_existing_legacy_project_directory_is_preserved(
         self, temp_config_dir, mock_env_vars
@@ -197,6 +219,178 @@ class TestCreateProject:
         assert project1.id != project2.id
         # IDs should be 12 characters (MD5 hash truncated)
         assert len(project1.id) == 12
+
+    def test_get_project_summary_recovers_progress_from_chapter_files(
+        self, temp_config_dir, mock_env_vars
+    ):
+        manager = ConfigManager(config_dir=str(temp_config_dir))
+        project = manager.create_project(
+            title="进度恢复测试",
+            author="作者",
+            genre="科幻",
+            outline="大纲",
+            world_setting="世界",
+            character_intro="沈夜：主角",
+            total_chapters=12,
+        )
+
+        chapters_dir = Path(manager.generation.output_dir) / "chapters"
+        chapters_dir.mkdir(parents=True, exist_ok=True)
+        (chapters_dir / "ch001_第1章.md").write_text(
+            COMPLETE_CHAPTER_ARTIFACT, encoding="utf-8"
+        )
+        (chapters_dir / "ch007_第7章.md").write_text(
+            COMPLETE_CHAPTER_ARTIFACT.replace("# 第1章", "# 第7章").replace(
+                "> 第1章 |", "> 第7章 |"
+            ),
+            encoding="utf-8",
+        )
+        manager.current_project.current_chapter = 0
+
+        summary = manager.get_project_summary()
+
+        assert summary["current_chapter"] == 7
+        assert summary["progress_percent"] == pytest.approx(7 / 12 * 100)
+        reloaded = json.loads(
+            (temp_config_dir / f"project_{project.id}.json").read_text(encoding="utf-8")
+        )
+        assert reloaded["current_chapter"] == 7
+
+    def test_get_project_summary_ignores_incomplete_chapter_files(
+        self, temp_config_dir, mock_env_vars
+    ):
+        manager = ConfigManager(config_dir=str(temp_config_dir))
+        project = manager.create_project(
+            title="进度恢复测试",
+            author="作者",
+            genre="科幻",
+            outline="大纲",
+            total_chapters=12,
+        )
+
+        chapters_dir = Path(manager.generation.output_dir) / "chapters"
+        chapters_dir.mkdir(parents=True, exist_ok=True)
+        (chapters_dir / "ch001_第1章.md").write_text(
+            COMPLETE_CHAPTER_ARTIFACT, encoding="utf-8"
+        )
+        (chapters_dir / "ch007_第7章.md").write_text("# 第7章\n", encoding="utf-8")
+        manager.current_project.current_chapter = 0
+
+        summary = manager.get_project_summary()
+
+        assert summary["current_chapter"] == 1
+        reloaded = json.loads(
+            (temp_config_dir / f"project_{project.id}.json").read_text(encoding="utf-8")
+        )
+        assert reloaded["current_chapter"] == 1
+
+    def test_create_project_materializes_seed_outline_files(
+        self, temp_config_dir, mock_env_vars
+    ):
+        manager = ConfigManager(config_dir=str(temp_config_dir))
+
+        project = manager.create_project(
+            title="深渊归航",
+            author="作者",
+            genre="科幻修真",
+            outline="沈夜带着异质核心归来。调查母舰失踪真相。拯救濒临坠毁的空间城。",
+            world_setting="世界以星舰航道和空间城为核心秩序。深渊航道是危险禁区。",
+            character_intro="沈夜：领航员。顾砚青：工程师。闻岚：猎航队指挥官。",
+            total_chapters=3,
+        )
+
+        outline_dir = Path(manager.generation.output_dir) / "outline"
+        outline_file = outline_dir / "第1卷详细章节规划.md"
+        assert outline_file.exists()
+
+        loader = OutlineLoader(str(outline_dir))
+        chapter_outline = loader.get_chapter_outline(1)
+
+        assert chapter_outline is not None
+        assert chapter_outline["title"] == "第1章"
+        assert "沈夜带着异质核心归来" in chapter_outline["summary"]
+        assert chapter_outline["realm"] == "科幻修真"
+        project_file = temp_config_dir / f"project_{project.id}.json"
+        assert project_file.exists()
+
+    def test_outline_loader_prefers_structured_chapter_plan_json(
+        self, temp_config_dir, mock_env_vars
+    ):
+        manager = ConfigManager(config_dir=str(temp_config_dir))
+        manager.create_project(
+            title="结构化计划测试",
+            author="作者",
+            genre="科幻修真",
+            outline="沈夜调查深渊航道真相。",
+            world_setting="空间城与深渊航道构成主要舞台。",
+            character_intro="沈夜：主角。顾砚青：工程师。",
+            total_chapters=3,
+        )
+
+        output_dir = Path(manager.generation.output_dir)
+        chapter_plans_file = output_dir / STORY_INPUT_DIRNAME / "chapter_plans.json"
+        chapter_plans = json.loads(chapter_plans_file.read_text(encoding="utf-8"))
+        chapter_plans[0]["title"] = "第1章：结构化标题"
+        chapter_plans[0]["summary"] = "结构化计划要求沈夜先回到空间城再追查异质核心。"
+        chapter_plans_file.write_text(
+            json.dumps(chapter_plans, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+        loader = OutlineLoader(str(output_dir / "outline"))
+        outline = loader.get_chapter_outline(1)
+
+        assert outline is not None
+        assert outline["title"] == "第1章：结构化标题"
+        assert "沈夜先回到空间城" in outline["summary"]
+
+    def test_seed_outline_materialization_ignores_non_plan_markdown(
+        self, temp_config_dir, mock_env_vars
+    ):
+        manager = ConfigManager(config_dir=str(temp_config_dir))
+
+        project = manager.create_project(
+            title="旁路文档测试",
+            author="作者",
+            genre="科幻修真",
+            outline="沈夜归来。",
+            world_setting="空间城。",
+            character_intro="沈夜：主角",
+            total_chapters=4,
+        )
+
+        outline_dir = Path(manager.generation.output_dir) / "outline"
+        for file in outline_dir.glob("第*卷详细章节规划.md"):
+            file.unlink()
+        (outline_dir / "README.md").write_text("notes", encoding="utf-8")
+
+        manager.set_current_project(project)
+
+        assert (outline_dir / "第1卷详细章节规划.md").exists()
+
+    def test_seed_outline_materialization_regenerates_plan_markdown_from_canonical_json(
+        self, temp_config_dir, mock_env_vars
+    ):
+        manager = ConfigManager(config_dir=str(temp_config_dir))
+        project = manager.create_project(
+            title="canonical export",
+            author="作者",
+            genre="科幻修真",
+            outline="沈夜守住空间城，再调查母舰失踪真相。",
+            world_setting="空间城与深渊航道构成主要舞台。",
+            character_intro="沈夜：主角。顾砚青：工程师。",
+            total_chapters=3,
+        )
+
+        outline_dir = Path(manager.generation.output_dir) / "outline"
+        outline_file = outline_dir / "第1卷详细章节规划.md"
+        outline_file.write_text("人为修改的 markdown 计划", encoding="utf-8")
+
+        manager.set_current_project(project)
+
+        refreshed = outline_file.read_text(encoding="utf-8")
+        assert "人为修改" not in refreshed
+        assert "| 001 | 第1章 |" in refreshed
 
     def test_create_project_auto_fills_missing_fields(self, temp_config_dir, mock_env_vars):
         """Test that empty project fields are auto-generated."""

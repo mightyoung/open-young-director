@@ -11,6 +11,7 @@ import re
 from typing import Any
 
 from young_writer.services.paths import WorkspacePaths, safe_project_slug
+from young_writer.services.story_input import load_story_input_bundle
 
 
 logger = logging.getLogger(__name__)
@@ -346,9 +347,33 @@ class ChapterManager:
             summary_data = json.loads(summary_file.read_text(encoding="utf-8"))
             previous_summary = summary_data.get("brief_summary", "")
 
-        outline_file = self.novel_dir / "outline" / "第一卷详细章节规划.md"
-        outline = outline_file.read_text(encoding="utf-8") if outline_file.exists() else ""
-        world_name, character_names = self._extract_world_and_characters(outline_file)
+        story_input_bundle = load_story_input_bundle(self.novel_dir)
+        if story_input_bundle is not None:
+            outline = story_input_bundle.project_bible.synopsis or story_input_bundle.project_bible.premise
+            matching_plan = next(
+                (
+                    plan
+                    for plan in story_input_bundle.chapter_plans
+                    if int(plan.chapter_number) == int(chapter_num)
+                ),
+                None,
+            )
+            if matching_plan is not None and matching_plan.summary:
+                outline = matching_plan.summary
+            world_name = (
+                story_input_bundle.world_bible.locations[0]
+                if story_input_bundle.world_bible.locations
+                else ""
+            )
+            character_names = [
+                character.name
+                for character in story_input_bundle.characters
+                if character.name
+            ][:8]
+        else:
+            outline_file = self.novel_dir / "outline" / "第一卷详细章节规划.md"
+            outline = outline_file.read_text(encoding="utf-8") if outline_file.exists() else ""
+            world_name, character_names = self._extract_world_and_characters(outline_file)
 
         rendered_text = "\n".join(rendered_lines) if rendered_lines else "暂无前情 (第一章)"
         longform_memory = self._retrieve_longform_memory(chapter_num, rendered_text)
@@ -373,6 +398,7 @@ class ChapterManager:
             outline=outline,
             world_name=world_name,
             character_names=character_names,
+            story_input_bundle=story_input_bundle,
         )
 
     def _retrieve_longform_memory(self, chapter_num: int, query: str = "") -> list[dict[str, Any]]:

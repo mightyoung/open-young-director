@@ -15,7 +15,7 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT_DIR))
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
-AGENTS_DIR = ROOT_DIR / "agents"
+AGENTS_DIR = ROOT_DIR / "young_writer" / "agents"
 PACKAGE = types.ModuleType("agents")
 PACKAGE.__path__ = [str(AGENTS_DIR)]
 sys.modules.setdefault("agents", PACKAGE)
@@ -187,6 +187,121 @@ class TestNovelGeneratorWritingOptions:
         assert report["hard_gate_issue_types"] == []
         assert "writer_rule_blocking" not in report["issue_types"]
         assert report["writer_rule_warnings"][0]["blocking"] is True
+
+    def test_generate_chapter_uses_project_seed_when_outline_file_missing(self, monkeypatch):
+        generator = _make_generator()
+        generator.config_manager.current_project.outline = "沈夜带着异质核心归来，调查母舰失踪真相。"
+        generator.config_manager.current_project.world_setting = "空间城与深渊航道构成主要舞台。"
+        generator.config_manager.current_project.character_intro = (
+            "沈夜：前采矿舰领航员。顾砚青：工程师。闻岚：猎航队指挥官。"
+        )
+
+        monkeypatch.setattr(generator, "_get_chapter_outline", lambda chapter_number: None)
+
+        captured = {}
+
+        def _fake_generate_candidate(**kwargs):
+            captured["outline"] = kwargs["outline"]
+            captured["context"] = dict(kwargs["context"])
+            return {"content": "沈夜回到边境空间城。" * 50, "orchestrator_result": None}
+
+        monkeypatch.setattr(generator, "_generate_candidate", _fake_generate_candidate)
+        monkeypatch.setattr(
+            generator,
+            "_check_consistency",
+            lambda chapter, previous_summary, context: {"invalid": False, "issue_types": []},
+        )
+
+        chapter = generator.generate_chapter(
+            chapter_number=1,
+            context={
+                "project_outline": generator.config_manager.current_project.outline,
+                "world_setting": generator.config_manager.current_project.world_setting,
+                "character_intro": generator.config_manager.current_project.character_intro,
+                "genre": "科幻修真",
+            },
+            previous_summary="",
+        )
+
+        assert "沈夜带着异质核心归来" in captured["outline"]
+        assert "空间城与深渊航道" in captured["outline"]
+        assert "顾砚青" in captured["outline"]
+        assert chapter.metadata["outline_summary"] == captured["outline"]
+
+    def test_generate_content_falls_back_when_orchestrator_character_plan_is_empty(self):
+        generator = _make_generator()
+        generator.llm_client.generate.return_value = "沈夜回到边境空间城，开始调查异质核心来源。" * 80
+
+        class _FakeOrchestrator:
+            def orchestrate_chapter(self, **_kwargs):
+                return {
+                    "content": "沈夜带着异质核心归来。" * 120,
+                    "plot_outline": {"beats": [{"beat_id": "beat_001"}]},
+                    "cast": [],
+                }
+
+        generator.orchestrator = _FakeOrchestrator()
+
+        result = generator._generate_content(
+            chapter_number=1,
+            title="第1章",
+            outline="沈夜带着异质核心归来，在边境空间城落脚并查清核心来源",
+            previous_summary="",
+            context={
+                "chapter_number": 1,
+                "character_intro": "沈夜：主角。顾砚青：调查官。",
+                "genre": "科幻修真",
+            },
+            retry_attempt=0,
+        )
+
+        assert result["orchestrator_result"] is None
+        assert result["generation_trace"]["path"] == "direct_llm"
+        assert (
+            "character_plan_empty"
+            in result["generation_trace"]["orchestrator"]["failure_reasons"]
+        )
+        assert generator._orchestrator_consecutive_failures == 1
+
+    def test_generate_content_disables_orchestrator_after_consecutive_failures(self):
+        generator = _make_generator()
+        generator.llm_client.generate.return_value = "沈夜回到边境空间城，开始调查异质核心来源。" * 80
+
+        calls = {"count": 0}
+
+        class _FakeOrchestrator:
+            def orchestrate_chapter(self, **_kwargs):
+                calls["count"] += 1
+                return {
+                    "content": "沈夜带着异质核心归来。" * 40,
+                    "plot_outline": {"beats": [{"beat_id": "beat_001"}]},
+                    "cast": [],
+                }
+
+        generator.orchestrator = _FakeOrchestrator()
+        base_kwargs = {
+            "title": "第1章",
+            "outline": "沈夜带着异质核心归来，在边境空间城落脚并查清核心来源",
+            "previous_summary": "",
+            "context": {
+                "chapter_number": 1,
+                "character_intro": "沈夜：主角。顾砚青：调查官。",
+                "genre": "科幻修真",
+            },
+            "retry_attempt": 0,
+        }
+
+        generator._generate_content(chapter_number=1, **base_kwargs)
+        second = generator._generate_content(chapter_number=2, **base_kwargs)
+        third = generator._generate_content(chapter_number=3, **base_kwargs)
+
+        assert calls["count"] == 2
+        assert generator._orchestrator_disabled_for_run is True
+        assert second["generation_trace"]["orchestrator"]["disabled_for_run"] is True
+        assert third["generation_trace"]["orchestrator"]["failure_reasons"] == [
+            "orchestrator_backoff_active"
+        ]
+        assert third["generation_trace"]["path"] == "direct_llm"
 
     def test_low_llm_semantic_advisory_does_not_invalidate_chapter(self):
         generator = _make_generator()
@@ -537,6 +652,93 @@ class TestNovelGeneratorSmoothnessConsistency:
 
         assert report["invalid"] is True
         assert "missing_key_events" in report["issue_types"]
+
+    def test_consistency_report_accepts_keyword_covered_key_event(self):
+        generator = NovelGeneratorAgent(
+            config_manager=DummyConfigManager(), llm_client=MagicMock()
+        )
+        chapter = MODULE.GeneratedChapter(
+            number=3,
+            title="第三章",
+            content=(
+                "沈夜按住胸前那枚异质核心，从失控的逃生舱里回到边境空间城。"
+                "他刚落地就意识到，自己必须赶在追兵封锁前藏起这枚核心。"
+            ),
+            word_count=58,
+            metadata={
+                "key_events": ["沈夜带着异质核心归来"],
+                "outline_summary": "沈夜带着异质核心回到边境空间城",
+            },
+        )
+
+        report = generator._check_consistency(
+            chapter,
+            previous_summary="上一章沈夜从深渊航道脱身。",
+            context={
+                "character_names": ["沈夜"],
+                "previous_chapters": [{"character_states": {"沈夜": "脱离险境"}}],
+            },
+        )
+
+        assert report["invalid"] is False
+        assert "missing_key_events" not in report["issue_types"]
+
+    def test_consistency_report_requires_event_action_anchor(self):
+        generator = NovelGeneratorAgent(
+            config_manager=DummyConfigManager(), llm_client=MagicMock()
+        )
+        chapter = MODULE.GeneratedChapter(
+            number=3,
+            title="第三章",
+            content=(
+                "沈夜在检修通道里与顾砚青碰面，两人迅速交换了空间城外围的监测结果。"
+                "他们提到必须尽快应对接下来的风暴，却没有真正爆发冲突。"
+            ),
+            word_count=61,
+            metadata={
+                "key_events": ["沈夜击败顾砚青"],
+                "outline_summary": "沈夜与顾砚青正面对决",
+            },
+        )
+
+        report = generator._check_consistency(
+            chapter,
+            previous_summary="上一章沈夜追到了顾砚青的藏身点。",
+            context={
+                "character_names": ["沈夜", "顾砚青"],
+                "previous_chapters": [{"character_states": {"沈夜": "准备出手"}}],
+            },
+        )
+
+        assert report["invalid"] is True
+        assert "missing_key_events" in report["issue_types"]
+
+    def test_consistency_report_accepts_short_event_action_synonym(self):
+        generator = NovelGeneratorAgent(
+            config_manager=DummyConfigManager(), llm_client=MagicMock()
+        )
+        chapter = MODULE.GeneratedChapter(
+            number=2,
+            title="第二章",
+            content="沈夜回到边境空间城后，立刻封存了那枚异质核心。",
+            word_count=26,
+            metadata={
+                "key_events": ["沈夜归来"],
+                "outline_summary": "沈夜返回边境空间城",
+            },
+        )
+
+        report = generator._check_consistency(
+            chapter,
+            previous_summary="上一章沈夜刚脱离深渊航道。",
+            context={
+                "character_names": ["沈夜"],
+                "previous_chapters": [{"character_states": {"沈夜": "脱离险境"}}],
+            },
+        )
+
+        assert report["invalid"] is False
+        assert "missing_key_events" not in report["issue_types"]
 
     def test_consistency_report_marks_world_fact_violation_as_invalid(self):
         generator = NovelGeneratorAgent(
@@ -1011,6 +1213,24 @@ class TestNovelGeneratorSmoothnessConsistency:
         assert "unbridged_new_setting_in_plan" in result["issues"]
         assert "守住宗门祖地" in result["rewritten_outline"]
         assert "传说中的远古秘境忽然现世" in result["rewritten_outline"]
+
+    def test_extract_goal_lock_prefers_packet_plan_over_runtime_payload(self):
+        generator = _make_generator()
+        context = {
+            "goal_lock_resolution": {
+                "effective_goal_lock": "守住空间城",
+                "effective_source": "chapter_plan.goal_lock",
+            },
+            "volume_guidance_payload": {"goal_lock": "追查异质核心"},
+            "generation_packet": {
+                "chapter_plan": {"goal_lock": "守住空间城"},
+                "runtime_overrides": {
+                    "volume_guidance_payload": {"goal_lock": "追查异质核心"}
+                },
+            },
+        }
+
+        assert generator._extract_goal_lock(context) == "守住空间城"
 
     def test_consistency_report_adds_warning_only_semantic_review_when_precheck_rewrites_outline(
         self,

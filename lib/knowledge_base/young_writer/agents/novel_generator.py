@@ -150,6 +150,54 @@ OPENING_LOCATION_PREFIX_MARKERS = (
     "钟声回荡在",
     "灯火照着",
 )
+EVENT_ACTION_KEYWORDS = (
+    "归来",
+    "返回",
+    "抵达",
+    "调查",
+    "查清",
+    "拯救",
+    "守住",
+    "击败",
+    "现身",
+    "闯入",
+    "夺取",
+    "逃离",
+    "突破",
+)
+EVENT_ACTION_SYNONYMS = {
+    "归来": ("归来", "回来", "回到", "返回", "抵达"),
+    "返回": ("返回", "回到", "归来", "回来", "折返"),
+    "抵达": ("抵达", "到达", "赶到", "来到"),
+    "调查": ("调查", "查探", "探查", "追查"),
+    "查清": ("查清", "查明", "弄清", "摸清"),
+    "拯救": ("拯救", "救下", "救出", "救回"),
+    "守住": ("守住", "守下", "保住", "顶住"),
+    "击败": ("击败", "打败", "战胜", "击倒"),
+    "现身": ("现身", "出现", "露面"),
+    "闯入": ("闯入", "冲进", "潜入", "进入"),
+    "夺取": ("夺取", "夺下", "拿下", "抢下"),
+    "逃离": ("逃离", "逃出", "脱身", "离开"),
+    "突破": ("突破", "冲破", "打破", "突围"),
+}
+EVENT_SPLIT_PATTERNS = re.compile(
+    r"(?:带着|携带|拿着|并且|并|与|和|前往|进入|返回|归来|调查|查清|拯救|守住|击败|现身|闯入|夺取|逃离|突破|以及|然后|随后|为了|必须|正在|已经|开始|继续|尝试|的|了|在)"
+)
+EVENT_NOISE_TERMS = {
+    "阶段目标",
+    "设定约束",
+    "重点人物",
+    "开场",
+    "推进",
+    "承压",
+    "转折",
+    "升级",
+    "收束",
+    "当众",
+}
+ORCHESTRATOR_DISABLE_THRESHOLD = 2
+ORCHESTRATOR_MIN_CONTENT_CHARS = 800
+ORCHESTRATOR_MAX_CONTENT_THRESHOLD = 1200
 
 DISMISSIVE_CONTINUITY_MARKERS = (
     "从未发生",
@@ -299,6 +347,8 @@ class NovelGeneratorAgent:
         self.orchestrator = novel_orchestrator
         self.llm_client = llm_client
         self.allow_fallback = allow_fallback
+        self._orchestrator_consecutive_failures = 0
+        self._orchestrator_disabled_for_run = False
 
         self.outline_loader = None
         self.outline_enforcer = None
@@ -335,18 +385,33 @@ class NovelGeneratorAgent:
         writing_options: dict[str, str] | None = None,
     ) -> GeneratedChapter:
         """Generate a single chapter."""
-        outline_info = self._get_chapter_outline(chapter_number)
+        packet_plan = self._packet_plan(context)
+        outline_info = None
+        if packet_plan:
+            outline_info = {
+                "title": packet_plan.get("title", f"第{chapter_number}章"),
+                "summary": packet_plan.get("summary", ""),
+                "key_events": list(packet_plan.get("key_events", []) or []),
+                "magic_line": packet_plan.get("magic_line", ""),
+                "goal_lock": packet_plan.get("goal_lock", ""),
+                "continuity_in": packet_plan.get("continuity_in", ""),
+                "continuity_out": packet_plan.get("continuity_out", ""),
+            }
+        if not outline_info:
+            outline_info = self._get_chapter_outline(chapter_number)
 
         if not outline_info:
             logger.warning(f"No outline found for chapter {chapter_number}")
-            outline_info = {
-                "title": f"第{chapter_number}章",
-                "summary": "",
-                "key_events": [],
-            }
+            outline_info = self._fallback_outline_summary(chapter_number, context)
 
         title = outline_info.get("title", f"第{chapter_number}章")
         outline_summary = outline_info.get("summary", "")
+        continuity_in = str(outline_info.get("continuity_in", "") or "").strip()
+        continuity_out = str(outline_info.get("continuity_out", "") or "").strip()
+        if continuity_in:
+            outline_summary = f"{continuity_in}\n{outline_summary}"
+        if continuity_out:
+            outline_summary = f"{outline_summary}\n收束要求：{continuity_out}"
         # P0 FIX: Include magic_line (魔帝线) in the outline so it's not lost
         magic_line = outline_info.get("magic_line", "")
         if magic_line:
@@ -396,6 +461,7 @@ class NovelGeneratorAgent:
             context=generation_context,
             writing_options=writing_options,
             orchestrator_result=result.get("orchestrator_result"),
+            generation_trace=result.get("generation_trace"),
         )
 
         chapter.consistency_report = self._check_consistency(
@@ -448,6 +514,154 @@ class NovelGeneratorAgent:
             pass
         return 3000  # Default fallback
 
+    def _min_orchestrator_content_chars(self, target_word_count: int) -> int:
+        """Return the minimum assembled orchestrator output to accept."""
+        return max(
+            ORCHESTRATOR_MIN_CONTENT_CHARS,
+            min(ORCHESTRATOR_MAX_CONTENT_THRESHOLD, max(target_word_count // 3, 0)),
+        )
+
+    def _record_orchestrator_failure(
+        self, failure_reasons: list[str]
+    ) -> dict[str, Any]:
+        """Track orchestrator failures and disable it for the remainder of the run."""
+        self._orchestrator_consecutive_failures += 1
+        disabled_now = False
+        if self._orchestrator_consecutive_failures >= ORCHESTRATOR_DISABLE_THRESHOLD:
+            self._orchestrator_disabled_for_run = True
+            disabled_now = True
+        logger.warning(
+            "[Generator] Orchestrator attempt rejected: %s (consecutive failures=%s, disabled=%s)",
+            ",".join(failure_reasons),
+            self._orchestrator_consecutive_failures,
+            self._orchestrator_disabled_for_run,
+        )
+        return {
+            "consecutive_failures": self._orchestrator_consecutive_failures,
+            "disabled_for_run": self._orchestrator_disabled_for_run,
+            "disabled_now": disabled_now,
+        }
+
+    def _build_orchestrator_diagnostics(
+        self,
+        orchestrator_result: dict[str, Any] | None,
+        context: dict[str, Any],
+        target_word_count: int,
+    ) -> dict[str, Any]:
+        """Evaluate whether orchestrator output is strong enough to keep."""
+        result = orchestrator_result or {}
+        plot_outline = result.get("plot_outline") or {}
+        beats = list(plot_outline.get("beats") or [])
+        cast = list(result.get("cast") or [])
+        content = str(result.get("content") or "")
+        min_content_chars = self._min_orchestrator_content_chars(target_word_count)
+
+        failure_reasons: list[str] = []
+        if not beats:
+            failure_reasons.append("beat_parse_failed")
+        if not cast:
+            failure_reasons.append("character_plan_empty")
+        if len(content) < min_content_chars:
+            failure_reasons.append("scene_assembly_too_short")
+
+        return {
+            "attempted": True,
+            "accepted": not failure_reasons,
+            "failure_reasons": failure_reasons,
+            "beat_count": len(beats),
+            "cast_count": len(cast),
+            "content_chars": len(content),
+            "min_content_chars": min_content_chars,
+            "chapter_number": context.get("chapter_number"),
+        }
+
+    def _resolve_known_char_names(
+        self, context: dict[str, Any] | None = None
+    ) -> list[str]:
+        """Resolve character anchors from the real generation context."""
+        ctx = context or {}
+        packet_characters = self._packet_characters(ctx)
+        if packet_characters:
+            packet_names = [
+                str(character.get("name", "") or "").strip()
+                for character in packet_characters
+                if str(character.get("name", "") or "").strip()
+            ]
+            if packet_names:
+                return packet_names[:8]
+        names = list(ctx.get("known_char_names") or ctx.get("character_names") or [])
+        if names:
+            return [str(name) for name in names if str(name or "").strip()]
+
+        raw_character_intro = str(ctx.get("character_intro", "") or "")
+        extracted = [
+            name.strip()
+            for name in re.findall(r"([\u4e00-\u9fff]{2,6})[：:]", raw_character_intro)
+        ]
+        if extracted:
+            return extracted[:8]
+
+        return ["韩林", "柳如烟", "叶尘"]
+
+    def _generation_packet(self, context: dict[str, Any] | None) -> dict[str, Any]:
+        return dict((context or {}).get("generation_packet", {}) or {})
+
+    def _packet_plan(self, context: dict[str, Any] | None) -> dict[str, Any]:
+        return dict(self._generation_packet(context).get("chapter_plan", {}) or {})
+
+    def _packet_world(self, context: dict[str, Any] | None) -> dict[str, Any]:
+        return dict(self._generation_packet(context).get("world_bible", {}) or {})
+
+    def _packet_project(self, context: dict[str, Any] | None) -> dict[str, Any]:
+        return dict(self._generation_packet(context).get("project_bible", {}) or {})
+
+    def _packet_characters(self, context: dict[str, Any] | None) -> list[dict[str, Any]]:
+        return list(self._generation_packet(context).get("characters", []) or [])
+
+    def _packet_runtime(self, context: dict[str, Any] | None) -> dict[str, Any]:
+        return dict(self._generation_packet(context).get("runtime_overrides", {}) or {})
+
+    def _fallback_outline_summary(
+        self, chapter_number: int, context: dict[str, Any] | None
+    ) -> dict[str, Any]:
+        project_packet = self._packet_project(context)
+        world_packet = self._packet_world(context)
+        packet_characters = self._packet_characters(context)
+        project_outline = str(
+            project_packet.get("synopsis", "")
+            or project_packet.get("premise", "")
+            or (context or {}).get("project_outline", "")
+            or getattr(self.config_manager.current_project, "outline", "")
+            or ""
+        ).strip()
+        world_setting = str(
+            world_packet.get("summary", "")
+            or (context or {}).get("world_setting", "")
+            or getattr(self.config_manager.current_project, "world_setting", "")
+            or ""
+        ).strip()
+        if packet_characters:
+            character_intro = "\n".join(
+                f"{str(character.get('name', '') or '').strip()}："
+                f"{str(character.get('motivation', '') or character.get('role', '') or '关键角色').strip()}"
+                for character in packet_characters
+                if str(character.get("name", "") or "").strip()
+            ).strip()
+        else:
+            character_intro = str(
+                (context or {}).get("character_intro", "")
+                or getattr(self.config_manager.current_project, "character_intro", "")
+                or ""
+            ).strip()
+        fallback_summary_parts = [
+            part for part in (project_outline, world_setting, character_intro) if part
+        ]
+        return {
+            "title": f"第{chapter_number}章",
+            "summary": "\n".join(fallback_summary_parts),
+            "key_events": [],
+        }
+
     def _get_chapter_outline(self, chapter_number: int) -> dict[str, Any] | None:
         """Get chapter outline from loader."""
         if not self.outline_enforcer:
@@ -477,6 +691,7 @@ class NovelGeneratorAgent:
         max_retries = 2
         content = ""
         orchestrator_result = None
+        generation_trace: dict[str, Any] | None = None
 
         for attempt in range(max_retries + 1):
             if attempt > 0:
@@ -502,6 +717,8 @@ class NovelGeneratorAgent:
             content = result["content"]
             if attempt == 0 and result.get("orchestrator_result"):
                 orchestrator_result = result["orchestrator_result"]
+            if result.get("generation_trace") is not None:
+                generation_trace = result["generation_trace"]
 
             word_count = self._count_words(content)
             logger.info(
@@ -526,7 +743,11 @@ class NovelGeneratorAgent:
                     target_word_count,
                 )
 
-        return {"content": content, "orchestrator_result": orchestrator_result}
+        return {
+            "content": content,
+            "orchestrator_result": orchestrator_result,
+            "generation_trace": generation_trace or {},
+        }
 
     def _create_chapter(
         self,
@@ -540,6 +761,7 @@ class NovelGeneratorAgent:
         context: dict[str, Any] | None,
         writing_options: dict[str, str] | None,
         orchestrator_result: dict[str, Any] | None,
+        generation_trace: dict[str, Any] | None,
     ) -> GeneratedChapter:
         """Create a GeneratedChapter object from raw content."""
         goal_lock = self._extract_goal_lock(context)
@@ -558,6 +780,10 @@ class NovelGeneratorAgent:
                 "generation_time": datetime.now().isoformat(),
                 "goal_lock": goal_lock,
                 "goal_terms": goal_terms,
+                "goal_lock_resolution": dict(
+                    (context or {}).get("goal_lock_resolution", {}) or {}
+                ),
+                "generation_trace": dict(generation_trace or {}),
                 "chapter_intent_contract": dict(
                     (context or {}).get("chapter_intent_contract", {}) or {}
                 ),
@@ -615,6 +841,7 @@ class NovelGeneratorAgent:
             context=context,
             writing_options=writing_options,
             orchestrator_result=result.get("orchestrator_result"),
+            generation_trace=result.get("generation_trace"),
         )
         rewritten.consistency_report = self._check_consistency(
             rewritten, previous_summary, context
@@ -659,7 +886,11 @@ class NovelGeneratorAgent:
                 - content: str - the generated chapter content
                 - orchestrator_result: Optional[Dict] - full result from orchestrator (FILM_DRAMA mode)
         """
-        default_result = {"content": "", "orchestrator_result": None}
+        default_result = {
+            "content": "",
+            "orchestrator_result": None,
+            "generation_trace": {"path": "uninitialized"},
+        }
 
         if not self.llm_client:
             if not self.allow_fallback:
@@ -667,18 +898,38 @@ class NovelGeneratorAgent:
             content = self._generate_fallback_content(
                 chapter_number, title, outline, previous_summary, context
             )
-            return {"content": content, "orchestrator_result": None}
+            return {
+                "content": content,
+                "orchestrator_result": None,
+                "generation_trace": {
+                    "path": "fallback_content",
+                    "reason": "llm_client_unavailable",
+                },
+            }
 
         project = self.config_manager.current_project
-        genre = project.genre if project else "玄幻"
+        genre = (
+            str((context or {}).get("genre", "") or "").strip()
+            or (project.genre if project else "")
+            or "玄幻"
+        )
         target_word_count = self._get_target_word_count()
 
-        # P1 FIX: Try using orchestrator (FILM_DRAMA mode) first when available
+        orchestrator_trace: dict[str, Any] = {
+            "attempted": False,
+            "accepted": False,
+            "failure_reasons": [],
+            "consecutive_failures": self._orchestrator_consecutive_failures,
+            "disabled_for_run": self._orchestrator_disabled_for_run,
+        }
+
+        # P2 FIX: use orchestrator only while it clears deterministic quality checks
         if (
             self.orchestrator is not None
             and retry_attempt == 0
             and not rewrite_guidance
             and not force_direct_llm
+            and not self._orchestrator_disabled_for_run
         ):
             # Only use orchestrator on first attempt
             try:
@@ -690,23 +941,55 @@ class NovelGeneratorAgent:
                     chapter_outline=outline,
                     context=context,
                 )
-                if orchestrator_result and orchestrator_result.get("content"):
-                    content = orchestrator_result["content"]
-                    if len(content) > 500:
-                        logger.info(
-                            f"[Generator] Orchestrator generated {len(content)} chars for chapter {chapter_number}"
-                        )
-                        return {
-                            "content": content,
-                            "orchestrator_result": orchestrator_result,
-                        }
-                    logger.warning(
-                        f"[Generator] Orchestrator content too short ({len(content)} chars), falling back to direct LLM"
+                orchestrator_trace = self._build_orchestrator_diagnostics(
+                    orchestrator_result=orchestrator_result,
+                    context=context,
+                    target_word_count=target_word_count,
+                )
+                if orchestrator_trace["accepted"]:
+                    self._orchestrator_consecutive_failures = 0
+                    content = str(orchestrator_result.get("content") or "")
+                    logger.info(
+                        "[Generator] Orchestrator accepted for chapter %s: %s chars, %s beats, %s cast",
+                        chapter_number,
+                        len(content),
+                        orchestrator_trace["beat_count"],
+                        orchestrator_trace["cast_count"],
                     )
+                    return {
+                        "content": content,
+                        "orchestrator_result": orchestrator_result,
+                        "generation_trace": {
+                            "path": "orchestrator",
+                            "orchestrator": orchestrator_trace,
+                        },
+                    }
+                orchestrator_trace.update(
+                    self._record_orchestrator_failure(
+                        list(orchestrator_trace["failure_reasons"])
+                    )
+                )
             except Exception as e:
+                orchestrator_trace = {
+                    "attempted": True,
+                    "accepted": False,
+                    "failure_reasons": ["orchestrator_exception"],
+                    "error": str(e),
+                }
+                orchestrator_trace.update(
+                    self._record_orchestrator_failure(["orchestrator_exception"])
+                )
                 logger.warning(
                     f"[Generator] Orchestrator failed, falling back to direct LLM: {e}"
                 )
+        elif self._orchestrator_disabled_for_run and retry_attempt == 0:
+            orchestrator_trace = {
+                "attempted": False,
+                "accepted": False,
+                "failure_reasons": ["orchestrator_backoff_active"],
+                "consecutive_failures": self._orchestrator_consecutive_failures,
+                "disabled_for_run": True,
+            }
 
         # Fallback: direct LLM generation
         # Extract previous chapters from context
@@ -714,6 +997,23 @@ class NovelGeneratorAgent:
         chapter_dir = context.get("chapter_dir", "")
         world_name = context.get("world_name", "")
         character_names = context.get("character_names", [])
+        packet_world = self._packet_world(context)
+        packet_characters = self._packet_characters(context)
+        packet_plan = self._packet_plan(context)
+        if not world_name:
+            locations = packet_world.get("locations", []) if isinstance(packet_world, dict) else []
+            if locations:
+                world_name = str(locations[0] or "").strip()
+        if not character_names and packet_characters:
+            character_names = [
+                str(character.get("name", "") or "").strip()
+                for character in packet_characters
+                if str(character.get("name", "") or "").strip()
+            ][:8]
+        if not world_name:
+            world_name = str((context or {}).get("world_setting", "") or "").strip()[:120]
+        if not character_names:
+            character_names = self._resolve_known_char_names(context)[:8]
         protagonist_constraint = context.get("protagonist_constraint", "")
         volume_guidance = self._compose_volume_guidance(context)
         goal_lock_guidance = self._build_goal_lock_guidance(context)
@@ -729,6 +1029,16 @@ class NovelGeneratorAgent:
         chapter_intent_contract = self._format_chapter_intent_contract(
             (context or {}).get("chapter_intent_contract")
         )
+        if packet_plan.get("must_include"):
+            chapter_intent_contract = "\n".join(
+                part
+                for part in [
+                    chapter_intent_contract,
+                    "附加强制输入: 必须覆盖 "
+                    + " / ".join(str(item) for item in packet_plan.get("must_include", []) if item),
+                ]
+                if str(part or "").strip()
+            )
 
         prompt = self._build_generation_prompt(
             chapter_number,
@@ -771,7 +1081,14 @@ class NovelGeneratorAgent:
                     chapter_number, title, outline, previous_summary, context
                 )
 
-            return {"content": content, "orchestrator_result": None}
+            return {
+                "content": content,
+                "orchestrator_result": None,
+                "generation_trace": {
+                    "path": "direct_llm",
+                    "orchestrator": orchestrator_trace,
+                },
+            }
 
         except Exception as e:
             logger.error(f"LLM generation failed: {e}")
@@ -780,7 +1097,15 @@ class NovelGeneratorAgent:
             content = self._generate_fallback_content(
                 chapter_number, title, outline, previous_summary, context
             )
-            return {"content": content, "orchestrator_result": None}
+            return {
+                "content": content,
+                "orchestrator_result": None,
+                "generation_trace": {
+                    "path": "fallback_content",
+                    "reason": "llm_generation_failed",
+                    "orchestrator": orchestrator_trace,
+                },
+            }
 
     def _build_generation_prompt(
         self,
@@ -1085,6 +1410,69 @@ class NovelGeneratorAgent:
 
         previous_content = str(previous_chapters[-1].get("content", "") or "")
         return previous_content[-400:]
+
+    def _extract_event_keywords(
+        self, event: str, context: dict[str, Any] | None = None
+    ) -> list[str]:
+        """Extract deterministic anchors for one key event."""
+        normalized_event = str(event or "").strip()
+        if not normalized_event:
+            return []
+
+        keywords: list[str] = []
+        seen: set[str] = set()
+
+        for name in self._resolve_known_char_names(context):
+            candidate = str(name or "").strip()
+            if len(candidate) >= 2 and candidate in normalized_event and candidate not in seen:
+                keywords.append(candidate)
+                seen.add(candidate)
+
+        for action in EVENT_ACTION_KEYWORDS:
+            if action in normalized_event and action not in seen:
+                keywords.append(action)
+                seen.add(action)
+
+        for part in EVENT_SPLIT_PATTERNS.split(normalized_event):
+            candidate = str(part or "").strip("：:，,；;。！？!?\n ")
+            if (
+                len(candidate) >= 2
+                and candidate not in EVENT_NOISE_TERMS
+                and candidate not in seen
+            ):
+                keywords.append(candidate)
+                seen.add(candidate)
+
+        return keywords[:6]
+
+    def _event_is_covered(
+        self, event: str, content: str, context: dict[str, Any] | None = None
+    ) -> bool:
+        """Return True when a key event is deterministically grounded in content."""
+        normalized_event = str(event or "").strip()
+        if len(normalized_event) < 2:
+            return True
+        if normalized_event in content:
+            return True
+
+        keywords = self._extract_event_keywords(normalized_event, context)
+        if not keywords:
+            return False
+
+        action_keywords = [
+            action for action in EVENT_ACTION_KEYWORDS if action in normalized_event
+        ]
+        matched_keywords: set[str] = {keyword for keyword in keywords if keyword in content}
+        matched_action_keywords = {
+            action
+            for action in action_keywords
+            if any(alias in content for alias in EVENT_ACTION_SYNONYMS.get(action, (action,)))
+        }
+        if action_keywords and not matched_action_keywords:
+            return False
+        matched_keywords.update(matched_action_keywords)
+        required_matches = 1 if len(keywords) == 1 else 2
+        return len(matched_keywords) >= required_matches
 
     def _extract_location_anchor(self, text: str) -> str:
         """Extract a conservative location anchor from the provided text."""
@@ -1629,11 +2017,19 @@ class NovelGeneratorAgent:
         """Extract the active goal lock from structured or freeform guidance."""
         if not context:
             return ""
-        payload = context.get("volume_guidance_payload")
-        if isinstance(payload, dict):
-            value = str(payload.get("goal_lock", "") or "").strip()
+        resolution = context.get("goal_lock_resolution")
+        if isinstance(resolution, dict):
+            value = str(resolution.get("effective_goal_lock", "") or "").strip()
             if value:
                 return value
+        plan = self._packet_plan(context)
+        plan_value = str(plan.get("goal_lock", "") or "").strip()
+        if plan_value:
+            return plan_value
+        payload = self._volume_guidance_payload(context)
+        value = str(payload.get("goal_lock", "") or "").strip()
+        if value:
+            return value
         return str(context.get("goal_lock", "") or "").strip()
 
     def _build_goal_lock_guidance(self, context: dict[str, Any] | None) -> str:
@@ -1811,8 +2207,8 @@ class NovelGeneratorAgent:
         """Merge structured volume guidance payload with chapter-specific notes."""
         context = context or {}
         raw_guidance = str(context.get("volume_guidance", "") or "").strip()
-        payload = context.get("volume_guidance_payload")
-        if not isinstance(payload, dict):
+        payload = self._volume_guidance_payload(context)
+        if not payload:
             return raw_guidance
 
         labels = {
@@ -2030,7 +2426,10 @@ class NovelGeneratorAgent:
     def _volume_guidance_payload(
         self, context: dict[str, Any] | None
     ) -> dict[str, Any]:
-        payload = context.get("volume_guidance_payload") if context else None
+        runtime = self._packet_runtime(context)
+        payload = runtime.get("volume_guidance_payload") if runtime else None
+        if not isinstance(payload, dict):
+            payload = context.get("volume_guidance_payload") if context else None
         return payload if isinstance(payload, dict) else {}
 
     def _parse_stage_gate_ratio(self, context: dict[str, Any] | None) -> float:
@@ -2084,8 +2483,8 @@ class NovelGeneratorAgent:
 
     def _extract_new_setting_budget(self, context: dict[str, Any] | None) -> int:
         """Extract the structured budget for new-setting introductions."""
-        payload = context.get("volume_guidance_payload") if context else None
-        if isinstance(payload, dict):
+        payload = self._volume_guidance_payload(context)
+        if payload:
             raw_budget = payload.get("new_setting_budget", "")
             try:
                 return max(int(raw_budget), 0)
@@ -2340,17 +2739,7 @@ class NovelGeneratorAgent:
         import re
 
         # P1 FIX: Dynamic character names from context (fallback to minimal set)
-        if context:
-            known_char_names = context.get("known_char_names", [])
-        else:
-            known_char_names = []
-        if not known_char_names:
-            # Fallback: minimal set that should always be present in this novel
-            known_char_names = {
-                "韩林",
-                "柳如烟",
-                "叶尘",
-            }
+        known_char_names = self._resolve_known_char_names(context)
 
         # P1 FIX: Extended dialogue suffixes (all common Chinese dialogue verbs)
         dialogue_suffixes = r"(?:的|声音|说道|问道|回答|喊道|轻声道|冷笑道|怒道|叹道|低声道|低语道|喃喃道|沉声道|厉声道|朗声道|颤声道|哽咽道|哭诉道|怒吼道|暴喝道|冷声道|淡声道|平静道|缓缓道|郑重道|轻叹道|悲叹道|惨笑道|嗤笑道|高声道|扬声道|宣判道|陈述道|补充道|提醒道|告诫道|警告道|解释道|说明道|断言道|坚称道|声称道|争辩道|抗辩道|认命道|绝望道|茫然道|恍惚道|清醒道|断续道)"
@@ -2472,7 +2861,7 @@ class NovelGeneratorAgent:
         for event in key_events:
             if len(event) < 4:
                 continue
-            if event not in content:
+            if not self._event_is_covered(event, content, context):
                 missing_events.append(event)
 
         # Score based on completeness

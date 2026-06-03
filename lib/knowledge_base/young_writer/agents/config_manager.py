@@ -12,7 +12,13 @@ import socket
 from typing import Any, ClassVar
 from urllib.parse import urlparse
 
+from young_writer.services.chapter_artifacts import discover_saved_chapter_numbers
 from young_writer.services.paths import WorkspacePaths
+from young_writer.services.story_input import (
+    build_story_input_bundle,
+    render_outline_markdown,
+    write_story_input_bundle,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -514,6 +520,85 @@ class ConfigManager:
         self.generation.output_dir = str(paths.project_dir)
         self.generation.scripts_dir = str(paths.scripts_dir)
         self.generation.film_drama_dir = str(paths.film_drama_dir)
+        self._materialize_seed_outline_files(project, paths.project_dir)
+
+    def _materialize_seed_outline_files(
+        self, project: NovelProject, project_dir: Path
+    ) -> None:
+        """Materialize canonical JSON assets and regenerate markdown compatibility exports."""
+        volume_size = max(int(getattr(self.generation, "chapters_per_volume", 60) or 60), 1)
+        bundle = build_story_input_bundle(
+            project,
+            writing_options=dict(getattr(project, "metadata", {}).get("writing_options", {}) or {}),
+            chapters_per_volume=volume_size,
+        )
+        write_story_input_bundle(project_dir, bundle)
+
+        outline_dir = project_dir / "outline"
+        outline_dir.mkdir(parents=True, exist_ok=True)
+        for legacy_plan in outline_dir.glob("第*卷详细章节规划.md"):
+            legacy_plan.unlink()
+        for volume_index, start in enumerate(
+            range(0, len(bundle.chapter_plans), volume_size),
+            start=1,
+        ):
+            chunk = bundle.chapter_plans[start:start + volume_size]
+            outline_file = outline_dir / f"第{volume_index}卷详细章节规划.md"
+            outline_file.write_text(
+                render_outline_markdown(volume_index, chunk),
+                encoding="utf-8",
+            )
+
+    def _build_seed_outline_rows(self, project: NovelProject) -> list[dict[str, Any]]:
+        """Build deterministic per-chapter outline rows from project seed fields."""
+        bundle = build_story_input_bundle(
+            project,
+            writing_options=dict(getattr(project, "metadata", {}).get("writing_options", {}) or {}),
+            chapters_per_volume=max(int(getattr(self.generation, "chapters_per_volume", 60) or 60), 1),
+        )
+        return [
+            {
+                "number": plan.chapter_number,
+                "title": plan.title,
+                "realm": plan.pacing or project.genre or "-",
+                "summary": plan.summary,
+                "magic_line": plan.magic_line,
+            }
+            for plan in bundle.chapter_plans
+        ]
+
+    def _render_seed_outline_markdown(
+        self, volume_index: int, rows: list[dict[str, Any]]
+    ) -> str:
+        """Render seed rows into the markdown table format OutlineLoader already parses."""
+        from young_writer.services.story_input import ChapterPlan
+
+        plans = [
+            ChapterPlan(
+                chapter_number=int(row["number"]),
+                title=str(row["title"]),
+                summary=str(row["summary"]),
+                pacing=str(row.get("realm", "")),
+                magic_line=str(row.get("magic_line", "")),
+            )
+            for row in rows
+        ]
+        return render_outline_markdown(volume_index, plans)
+
+    def _split_seed_sentences(self, text: str) -> list[str]:
+        return [
+            part.strip()
+            for part in re.split(r"[。！？；;\n]+", str(text or ""))
+            if part.strip()
+        ]
+
+    def _extract_seed_character_names(self, text: str) -> list[str]:
+        seen: list[str] = []
+        for name in re.findall(r"([\u4e00-\u9fff]{2,6})[：:]", str(text or "")):
+            cleaned = name.strip()
+            if cleaned and cleaned not in seen:
+                seen.append(cleaned)
+        return seen
 
     def update_project_progress(self, chapter: int):
         """Update current chapter progress."""
@@ -536,14 +621,32 @@ class ConfigManager:
             return {"status": "no_project"}
 
         p = self.current_project
-        progress = (p.current_chapter / p.total_chapters * 100) if p.total_chapters > 0 else 0
+        current_chapter = int(getattr(p, "current_chapter", 0) or 0)
+        project_paths = self.paths.project_paths(
+            title=p.title,
+            project_id=p.id,
+            prefer_existing_legacy=True,
+        )
+        chapter_numbers = discover_saved_chapter_numbers(project_paths.project_dir)
+        if chapter_numbers:
+            current_chapter = max(current_chapter, max(chapter_numbers))
+
+        if current_chapter != p.current_chapter:
+            self.current_project.current_chapter = current_chapter
+            self._save_project(self.current_project)
+
+        progress = (
+            (current_chapter / p.total_chapters * 100)
+            if p.total_chapters > 0
+            else 0
+        )
 
         return {
             "status": "ok",
             "title": p.title,
             "author": p.author,
             "genre": p.genre,
-            "current_chapter": p.current_chapter,
+            "current_chapter": current_chapter,
             "total_chapters": p.total_chapters,
             "progress_percent": progress,
             "metadata": p.metadata,

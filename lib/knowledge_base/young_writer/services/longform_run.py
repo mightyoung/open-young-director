@@ -73,6 +73,7 @@ STRUCTURED_VOLUME_GUIDANCE_FIELDS = (
     "must_avoid",
     "tone_target",
     "goal_lock",
+    "goal_lock_mode",
     "new_setting_budget",
     "anti_drift_start_ratio",
     "anti_drift_min_chapter",
