@@ -708,7 +708,7 @@ class MiniMaxMediaExecutor:
 
         # Poll for completion
         query_url = f"{api_host}/v1/query/music_generation"
-        for attempt in range(max_polls):
+        for _ in range(max_polls):
             async with aiohttp.ClientSession() as session:
                 async with session.get(query_url, params={"task_id": task_id}, headers=headers, timeout=aiohttp.ClientTimeout(total=30)) as resp:
                     if resp.status == 200:

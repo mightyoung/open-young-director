@@ -12,6 +12,7 @@ from young_writer.agents.film_drama import (
     EmotionalStateMiddleware,
     ClarificationMiddleware,
     MemoryQueueMiddleware,
+    SubagentLimitMiddleware,
     MiddlewareResult,
     HandoffMessage,
     PlotBeat,
@@ -363,6 +364,33 @@ class TestMemoryQueueMiddleware:
         assert result.modified_output == "开场白"
 
 
+class TestSubagentLimitMiddleware:
+    """Test SubagentLimitMiddleware."""
+
+    @pytest.mark.asyncio
+    async def test_uses_real_batch_size_without_cumulative_false_positive(self):
+        mw = SubagentLimitMiddleware(max_concurrent=2)
+        beat = PlotBeat(beat_id="b1", beat_type=BeatType.OPENING.value, description="开场")
+
+        first = await mw.process(
+            "韩林",
+            beat,
+            "输出1",
+            {"subagent_batch_size": 2, "subagent_batch_members": ["韩林", "柳如烟"]},
+        )
+        second = await mw.process(
+            "柳如烟",
+            beat,
+            "输出2",
+            {"subagent_batch_size": 2, "subagent_batch_members": ["韩林", "柳如烟"]},
+        )
+
+        assert first.metadata["within_limit"] is True
+        assert first.metadata["observed_max_batch_size"] == 2
+        assert second.metadata["within_limit"] is True
+        assert second.metadata["observed_max_batch_size"] == 2
+
+
 class TestDirectorAgent:
     """Test DirectorAgent."""
 
@@ -389,6 +417,51 @@ class TestDirectorAgent:
         assert script.scene.location == "太虚宗"
         assert len(script.cast) == 1
         assert script.cast[0].name == "韩林"
+
+    def test_llm_decompose_beats_parses_fenced_json(self):
+        agent = DirectorAgent()
+        agent.llm_client = Mock()
+        agent.llm_client.generate.return_value = """
+下面是节拍：
+```json
+{
+  "beats": [
+    {
+      "beat_type": "OPENING",
+      "description": "韩林进入演武场",
+      "expected_chars": ["韩林"],
+      "sequence": 0
+    }
+  ]
+}
+```
+"""
+
+        beats = agent._llm_decompose_beats(
+            "韩林进入演武场",
+            {"韩林": {"identity": "太虚宗弟子"}},
+        )
+
+        assert len(beats) == 1
+        assert beats[0].beat_type == BeatType.OPENING.value
+        assert beats[0].expected_chars == ["韩林"]
+
+    def test_llm_decompose_beats_fills_missing_expected_chars(self):
+        agent = DirectorAgent()
+        agent.llm_client = Mock()
+        agent.llm_client.generate.return_value = """
+请参考：
+{"beats": [{"beat_type": "CLIMAX", "description": "韩林做出决定", "sequence": 3}]}
+"""
+
+        beats = agent._llm_decompose_beats(
+            "韩林做出决定",
+            {"韩林": {"identity": "太虚宗弟子"}, "柳如烟": {"identity": "柳家千金"}},
+        )
+
+        assert len(beats) == 1
+        assert beats[0].beat_type == BeatType.CLIMAX.value
+        assert beats[0].expected_chars == ["韩林", "柳如烟"]
 
     @pytest.mark.asyncio
     async def test_execute_scene_with_mock_llm(self):
@@ -450,6 +523,20 @@ class TestDirectorAgent:
 
         output = agent.assemble_scene_output(script)
         assert len(output) > 0
+
+    def test_assemble_scene_output_keeps_beat_descriptions_without_character_outputs(self):
+        agent = DirectorAgent()
+        script = agent.plan_scene(
+            chapter_number=1,
+            scene_outline="韩林在演武场做出决定",
+            characters={"韩林": {"identity": "太虚宗弟子"}},
+            location="太虚宗",
+        )
+
+        output = agent.assemble_scene_output(script, beat_outputs={})
+
+        assert "韩林在演武场做出决定" in output
+        assert "◆开场" in output
 
 
 class TestCharacterAgent:

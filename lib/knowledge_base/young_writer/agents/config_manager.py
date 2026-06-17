@@ -24,6 +24,37 @@ from young_writer.services.story_input import (
 logger = logging.getLogger(__name__)
 
 
+def _contiguous_completed_chapter(chapter_numbers: set[int]) -> int:
+    """Return the highest contiguous completed chapter starting from 1."""
+    expected = 1
+    while expected in chapter_numbers:
+        expected += 1
+    return expected - 1
+
+
+def _load_failed_chapter_numbers(project_dir: Path) -> list[int]:
+    """Load failed chapter numbers from the latest generation results when present."""
+    results_file = project_dir / "generation_results.json"
+    if not results_file.exists():
+        return []
+    try:
+        payload = json.loads(results_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+
+    failed_numbers: list[int] = []
+    for item in payload.get("failed_chapters", []) or []:
+        if not isinstance(item, dict):
+            continue
+        try:
+            chapter_number = int(item.get("chapter_number", 0) or 0)
+        except (TypeError, ValueError):
+            continue
+        if chapter_number > 0 and chapter_number not in failed_numbers:
+            failed_numbers.append(chapter_number)
+    return failed_numbers
+
+
 @dataclass
 class NovelProject:
     """Novel project configuration."""
@@ -628,25 +659,30 @@ class ConfigManager:
             prefer_existing_legacy=True,
         )
         chapter_numbers = discover_saved_chapter_numbers(project_paths.project_dir)
+        successful_chapter_count = len(chapter_numbers)
+        contiguous_completed_chapter = _contiguous_completed_chapter(chapter_numbers)
+        high_watermark_chapter = current_chapter
         if chapter_numbers:
-            current_chapter = max(current_chapter, max(chapter_numbers))
-
-        if current_chapter != p.current_chapter:
-            self.current_project.current_chapter = current_chapter
-            self._save_project(self.current_project)
+            high_watermark_chapter = max(high_watermark_chapter, max(chapter_numbers))
 
         progress = (
-            (current_chapter / p.total_chapters * 100)
+            (successful_chapter_count / p.total_chapters * 100)
             if p.total_chapters > 0
             else 0
         )
+        failed_chapters = _load_failed_chapter_numbers(project_paths.project_dir)
 
         return {
             "status": "ok",
             "title": p.title,
             "author": p.author,
             "genre": p.genre,
-            "current_chapter": current_chapter,
+            "current_chapter": high_watermark_chapter,
+            "successful_chapter_count": successful_chapter_count,
+            "contiguous_completed_chapter": contiguous_completed_chapter,
+            "high_watermark_chapter": high_watermark_chapter,
+            "failed_chapters": failed_chapters,
+            "saved_chapters": sorted(chapter_numbers),
             "total_chapters": p.total_chapters,
             "progress_percent": progress,
             "metadata": p.metadata,

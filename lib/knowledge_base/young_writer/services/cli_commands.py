@@ -35,6 +35,7 @@ def build_generate_command(
     start: int = 0,
     dry_run: bool = False,
     no_auto_feedback: bool = False,
+    sync_derivatives_after_generate: bool = False,
     writing_options: dict[str, str] | None = None,
 ) -> list[str]:
     cmd = [python_executable, str(run_script), "--generate", str(int(count))]
@@ -44,6 +45,8 @@ def build_generate_command(
         cmd.append("--dry-run")
     if no_auto_feedback:
         cmd.append("--no-auto-feedback")
+    if sync_derivatives_after_generate:
+        cmd.append("--sync-derivatives-after-generate")
     append_writing_option_flags(cmd, writing_options or {})
     return cmd
 

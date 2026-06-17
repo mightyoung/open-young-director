@@ -128,5 +128,35 @@
     },
     "expected_invalid": false,
     "expected_issue_types": []
+  },
+  {
+    "name": "compound_goal_real_deepseek_case_reports_all_subgoals",
+    "chapter_number": 3,
+    "previous_summary": "上一章末尾，林渊已经确认异常信号与旧星门有关，接下来必须先验证信号真假，再决定是否继续深入。",
+    "previous_content": "林渊在回声空域外围比对第一组波形时，发现异常信号与母亲留下的私钥片段重叠。他没有贸然启航，而是决定先核实这段信号的真伪，并准备联系顾岚确认研究院加密层是否被人篡改。",
+    "current_content": "林渊抵达白昼环监测站主控室，面对星图投影中标记的异常信号源。他调出回声空域的旧星门与远征舰队残骸的扫描数据，发现信号与已知航标波形存在细微偏差，必须优先验证真伪才能决定是否启航。\n\n林渊试图独立解析信号编码，但发现其中嵌入了顾岚团队特有的加密片段。他主动联络顾岚，说明情况并请求顾岚协助解码。",
+    "plot_summary": {
+      "l2_brief_summary": "林渊继续验证信号真假，并争取顾岚协助破解噪声。"
+    },
+    "context_overrides": {
+      "character_names": ["林渊", "顾岚"],
+      "chapter_intent_contract": {
+        "goal_lock": "途中他必须验证信号真假、争取顾岚协助"
+      }
+    },
+    "metadata_overrides": {
+      "key_events": [
+        "途中他必须验证信号真假、争取顾岚协助"
+      ],
+      "outline_summary": "途中他必须验证信号真假、争取顾岚协助"
+    },
+    "expected_invalid": false,
+    "expected_issue_types": [],
+    "expected_anti_drift_details": {
+      "goal_lock": "途中他必须验证信号真假、争取顾岚协助",
+      "body_alignment": true,
+      "covered_subgoals": ["验证信号真假", "争取顾岚协助"],
+      "missing_subgoals": []
+    }
   }
 ]

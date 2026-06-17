@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 import uuid
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Any
@@ -384,6 +385,7 @@ emoji: "🎬"
                             beat=beat,
                             script=script,
                             llm_fn=llm_fn,
+                            batch_members=batch,
                         )
                     ))
                     for idx, char_name in enumerate(batch)
@@ -486,6 +488,7 @@ emoji: "🎬"
         beat: PlotBeat,
         script: DirectorScript,
         llm_fn,
+        batch_members: list[str] | None = None,
     ) -> str:
         """Hand off to character and process through middleware."""
         # Build previous outputs in flat format
@@ -500,6 +503,8 @@ emoji: "🎬"
             "scene_id": script.scene.scene_id,
             "memory": self.memory_queue.get_context_for_character(character_name, include_history=True),
             "global_tension": self.memory_queue.get_global_tension(),
+            "subagent_batch_size": len(batch_members or []),
+            "subagent_batch_members": list(batch_members or []),
         }
 
         await self._middleware_chain.on_beat_start(character_name, beat, context)
@@ -778,21 +783,58 @@ emoji: "🎬"
                 response = self.llm_client.chat(prompt)
             else:
                 raise ValueError(f"Unknown LLM client type: {type(self.llm_client)}")
-            data = json.loads(response)
+            data = self._parse_beat_json_response(response)
             beats = []
             for b in data.get("beats", []):
+                beat_type = str(b.get("beat_type", BeatType.DEVELOPMENT.value) or "").strip()
+                beat_type = beat_type.lower()
+                expected_chars = [
+                    name
+                    for name in b.get("expected_chars", [])
+                    if isinstance(name, str) and name in char_names
+                ]
+                if not expected_chars:
+                    expected_chars = char_names[:3]
                 beat = PlotBeat(
                     beat_id=f"beat_{uuid.uuid4().hex[:6]}",
-                    beat_type=b["beat_type"],
-                    description=b["description"],
-                    expected_chars=b.get("expected_chars", []),
+                    beat_type=beat_type,
+                    description=str(b.get("description", "") or "情节推进"),
+                    expected_chars=expected_chars,
                     sequence=b.get("sequence", 0),
                 )
                 beats.append(beat)
+            if not beats:
+                raise ValueError("LLM beat JSON contained no beats")
             return beats
         except Exception as e:
             logger.warning(f"LLM beat decomposition failed: {e}, using manual")
             return self._manual_decompose_beats(scene_outline, characters, protagonist_constraint)
+
+    def _parse_beat_json_response(self, response: Any) -> Dict[str, Any]:
+        """Parse beat JSON from plain JSON, fenced JSON, or explanatory text."""
+        text = str(response or "").strip()
+        if not text:
+            raise ValueError("empty beat response")
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            pass
+
+        fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+        if fenced:
+            return json.loads(fenced.group(1))
+
+        decoder = json.JSONDecoder()
+        for index, char in enumerate(text):
+            if char != "{":
+                continue
+            try:
+                data, _ = decoder.raw_decode(text[index:])
+            except json.JSONDecodeError:
+                continue
+            if isinstance(data, dict):
+                return data
+        raise ValueError("no JSON object found in beat response")
 
     def _extract_protagonist_from_constraint(
         self, constraint: str, char_names: list
@@ -1130,6 +1172,8 @@ beat_description: {beat.description}
             BeatType.TRANSITION.value: "过渡",
         }
         parts.append(f"◆{beat_type_names.get(beat.beat_type, beat.beat_type)}")
+        if beat.description:
+            parts.append(str(beat.description).strip())
 
         # Get outputs for this beat's characters
         beat_char_outputs = beat_outputs.get(beat.beat_id, {})

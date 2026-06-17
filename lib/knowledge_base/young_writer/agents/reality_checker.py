@@ -288,12 +288,8 @@ class RealityChecker:
 
         for char_name, char_info in characters.items():
             # Check if character name appears in content
-            name_pattern = rf"(?<!\w){re.escape(char_name)}(?!\w)"
-            name_occurrences = len(re.findall(name_pattern, content))
-
             # Check realm/trait consistency
             realm = char_info.get("realm", "")
-            identity = char_info.get("identity", "")
             personality = char_info.get("personality", "")
 
             # Detect realm inconsistencies (e.g., mentioning higher realm)

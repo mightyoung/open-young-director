@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import run_novel_generation
+import streamlit_app
 from young_writer.services.longform_run import (
     CHECKPOINT_CHAPTER,
     CHECKPOINT_OUTLINE,
@@ -16,7 +17,6 @@ from young_writer.services.longform_run import (
     record_pause,
 )
 from young_writer.services.run_storage import read_status, update_status
-import streamlit_app
 
 
 def _configure_streamlit_longform_env(
@@ -179,6 +179,7 @@ class _StatusSummaryFakeStreamlit:
     def __init__(self, *, allow_caption: bool = True):
         self.warnings = []
         self.infos = []
+        self.errors = []
         self.markdowns = []
         self.codes = []
         self.captions = []
@@ -207,8 +208,8 @@ class _StatusSummaryFakeStreamlit:
             self.captions.append(message)
         return
 
-    def error(self, *_args, **_kwargs):
-        raise AssertionError("unexpected error state")
+    def error(self, message, **_kwargs):
+        self.errors.append(message)
 
     def success(self, *_args, **_kwargs):
         raise AssertionError("unexpected success state")
@@ -1170,6 +1171,24 @@ def test_chapter_review_helpers_surface_structured_evidence():
             },
         ],
         "quality_gate_next_action": "自动整章重写后仍未通过质量门，请按结构化重写方案选择重试、带备注重试或保持暂停。",
+        "chapter_graph_packet": {
+            "previous_scene_anchor": "白昼环控制室",
+            "opening_bridge_required": "先接住白昼环控制室，再切到废弃港。",
+            "completed_goal_subgoals": ["确认信号真假"],
+        },
+        "graph_diff_details": {
+            "schema_version": "graph_diff_details.v1",
+            "recommended_action": "rewrite",
+            "missing_edges": [
+                {"type": "MUST_INCLUDE", "label": "确认信号真假"},
+            ],
+            "evidence_refs": [
+                {
+                    "kind": "continuity",
+                    "excerpt": "上一章从白昼环控制室转到废弃港时缺少补桥。",
+                }
+            ],
+        },
         "rewrite_plan": {
             "schema_version": "rewrite_plan.v2",
             "strategy": "targeted_patch",
@@ -1193,15 +1212,18 @@ def test_chapter_review_helpers_surface_structured_evidence():
     evidence = dict(streamlit_app._chapter_review_evidence(review_payload))
 
     assert "goal_lock_false_inheritance" in structured["问题类型"]
+    assert "建议动作: rewrite" in structured["图差分"]
     assert "attempt=1" in structured["重写尝试"]
     assert "下一步: 自动整章重写后仍未通过质量门" in structured["重写尝试"]
     assert "生成前意图检查已重写章节大纲" in structured["语义告警"]
     assert "banned_wording" in structured["写作规则告警"]
     assert "当前目标锁: 守住宗门祖地" in evidence["目标锁证据"]
+    assert "上一场景锚点: 白昼环控制室" in evidence["剧情状态图输入"]
     assert "未对齐片段" in evidence["目标锁证据"]
     assert "本章计划动作: 韩林必须调度伏兵守住祖地。" in evidence["生成前执行合同"]
     assert "goal_lock_semantic_risk" in evidence["语义复核"]
     assert "避免 AI 腔垫话" in evidence["WRITER.md 规则依据"]
+    assert "上一章从白昼环控制室转到废弃港时缺少补桥。" in evidence["图差分证据"]
     assert "重写时围绕目标锁重组正文推进链：守住宗门祖地" in evidence["结构化重写方案"]
     assert (
         "body / rebuild_goal_lock_chain / goal_lock_progression"
@@ -1362,6 +1384,8 @@ def test_longform_control_panel_sections_reads_goal_lock_registry_and_pending_re
                 "review_payload": {
                     "summary": "目标锁假继承，正文掉锚。",
                     "issue_types": ["goal_lock_false_inheritance"],
+                    "graph_recommended_action": "rewrite",
+                    "pause_disposition": "auto_repair_exhausted",
                     "blocking_issues": [
                         "目标锁假继承[摘要命中但正文掉锚]: goal_lock=守住宗门祖地"
                     ],
@@ -1408,6 +1432,8 @@ def test_longform_control_panel_sections_reads_goal_lock_registry_and_pending_re
     assert sections["审批轨迹"] == expected_approval_history
     assert "待处理节点: chapter_review" in sections["最近待审批"]
     assert "问题类型: goal_lock_false_inheritance" in sections["最近待审批"]
+    assert "推荐动作: rewrite" in sections["最近待审批"]
+    assert "暂停分类: auto_repair_exhausted" in sections["最近待审批"]
 
 
 def test_render_run_status_summary_shows_chapter_review_control_panel(temp_project_dir):
@@ -1456,6 +1482,8 @@ def test_render_run_status_summary_shows_chapter_review_control_panel(temp_proje
                 "review_payload": {
                     "summary": "目标锁假继承，正文掉锚。",
                     "issue_types": ["goal_lock_false_inheritance"],
+                    "graph_recommended_action": "rewrite",
+                    "pause_disposition": "auto_repair_exhausted",
                     "blocking_issues": [
                         "目标锁假继承[摘要命中但正文掉锚]: goal_lock=守住宗门祖地"
                     ],
@@ -1480,6 +1508,11 @@ def test_render_run_status_summary_shows_chapter_review_control_panel(temp_proje
             "queued_volume_guidance": "- 必须回收的伏笔/问题: 回收第一卷宗门裂痕",
             "longform_state_path": str(longform_state_path),
             "pending_state_path": str(pending_path),
+            "auto_repair_status": "auto_repair_exhausted",
+            "graph_recommended_action": "rewrite",
+            "last_auto_repair_chapter": 4,
+            "last_auto_repair_action": "rewrite",
+            "repair_exhausted_reason": "第 4 章自动修复已达上限 1 次",
         },
         "run_dir": str(temp_project_dir / "runs" / "run-001"),
     }
@@ -1495,6 +1528,7 @@ def test_render_run_status_summary_shows_chapter_review_control_panel(temp_proje
     assert any("当前 goal_lock: 守住宗门祖地" in item for item in fake_st.codes)
     assert any("章节复核 -> 修订" in item for item in fake_st.codes)
     assert any("待处理节点: chapter_review" in item for item in fake_st.codes)
+    assert any("章节自动修复" in item for item in fake_st.infos)
     assert any("运行目录:" in item for item in fake_st.captions)
 
 
@@ -1605,7 +1639,13 @@ def test_resume_longform_action_writes_guidance_payload(temp_project_dir, monkey
 
     monkeypatch.setattr(streamlit_app, "RUN_SCRIPT", Path("/tmp/fake_run.py"))
     monkeypatch.setattr(
-        streamlit_app, "read_status", lambda _run_dir: {"run_id": "run-001"}
+        streamlit_app,
+        "read_status",
+        lambda _run_dir: {
+            "run_id": "run-001",
+            "chapter_review_mode": "auto",
+            "chapter_auto_repair_attempts": 2,
+        },
     )
     monkeypatch.setattr(
         streamlit_app,
@@ -1632,6 +1672,8 @@ def test_resume_longform_action_writes_guidance_payload(temp_project_dir, monkey
     assert payload["must_recover"] == "回收第一卷伏笔"
     assert payload["relationship_focus"] == "强化师徒冲突"
     assert "--approval-payload" in launched["cmd"]
+    assert "--chapter-review-mode" in launched["cmd"]
+    assert "--chapter-auto-repair-attempts" in launched["cmd"]
 
 
 def test_resume_longform_action_writes_cross_volume_registry_payload(
@@ -1644,7 +1686,13 @@ def test_resume_longform_action_writes_cross_volume_registry_payload(
 
     monkeypatch.setattr(streamlit_app, "RUN_SCRIPT", Path("/tmp/fake_run.py"))
     monkeypatch.setattr(
-        streamlit_app, "read_status", lambda _run_dir: {"run_id": "run-001"}
+        streamlit_app,
+        "read_status",
+        lambda _run_dir: {
+            "run_id": "run-001",
+            "chapter_review_mode": "auto",
+            "chapter_auto_repair_attempts": 2,
+        },
     )
     monkeypatch.setattr(
         streamlit_app,
@@ -1671,6 +1719,30 @@ def test_resume_longform_action_writes_cross_volume_registry_payload(
     assert payload["open_promises"] == []
     assert payload["dangling_settings"] == ["远古秘境现世"]
     assert "--approval-payload" in launched["cmd"]
+
+
+def test_render_run_status_summary_does_not_show_running_auto_repair_as_error():
+    fake_st = _StatusSummaryFakeStreamlit()
+
+    streamlit_app._render_run_status_summary(
+        fake_st,
+        {
+            "status": {
+                "status": "running",
+                "current_stage": "chapter.review",
+                "current_step": "第 4 章进入自动修复 (1/2): rewrite",
+                "chapters_completed": 3,
+                "chapters_total": 10,
+                "failed_stage": "chapter.generate",
+                "error_message": "should not render as failure",
+                "auto_repair_status": "auto_repair_pending",
+                "graph_recommended_action": "rewrite",
+            }
+        },
+    )
+
+    assert fake_st.errors == []
+    assert any("auto_repair_pending" in message for message in fake_st.infos)
 
 
 def test_render_pending_review_submits_risk_revise(temp_project_dir, monkeypatch):

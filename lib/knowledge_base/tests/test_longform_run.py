@@ -3,8 +3,8 @@
 from datetime import datetime
 from pathlib import Path
 
-from young_writer.agents.novel_generator import GeneratedChapter
 from run_novel_generation import _pause_for_invalid_chapter
+from young_writer.agents.novel_generator import GeneratedChapter
 from young_writer.services.longform_run import (
     CHECKPOINT_CHAPTER,
     CHECKPOINT_OUTLINE,
@@ -27,6 +27,7 @@ from young_writer.services.longform_run import (
     normalize_longform_registry,
     normalize_volume_guidance_payload,
     record_pause,
+    review_payload_for_chapter,
 )
 from young_writer.services.run_storage import create_run, read_status
 
@@ -66,6 +67,8 @@ def test_initial_longform_state_creates_volume_plan(temp_project_dir):
         "open_promises": [],
         "dangling_settings": [],
     }
+    assert state["chapter_review_mode"] == "manual"
+    assert state["chapter_auto_repair_attempts"] == 1
     assert Path(state["project_dir"]).resolve() == temp_project_dir.resolve()
     assert Path(state["longform_state_path"]).exists()
 
@@ -165,6 +168,438 @@ def test_pause_for_invalid_chapter_writes_chapter_review_payload(temp_project_di
     assert "自动整章重写后仍未通过质量门" in pending["review_payload"][
         "quality_gate_next_action"
     ]
+
+
+def test_pause_for_invalid_chapter_queues_auto_repair_when_enabled(temp_project_dir):
+    project_dir = temp_project_dir / "project"
+    run_dir = create_run(
+        project_dir=project_dir,
+        run_id="run-auto",
+        project_id="project-123",
+        command=["--generate-full"],
+    )
+    state = initial_longform_state(
+        project=_Project(),
+        run_id="run-auto",
+        run_dir=run_dir,
+        chapters_per_volume=60,
+        approval_mode="none",
+        auto_approve=False,
+        chapter_review_mode="auto",
+        chapter_auto_repair_attempts=2,
+    )
+    chapter = GeneratedChapter(
+        number=4,
+        title="第四章",
+        content="测试内容",
+        word_count=4,
+        metadata={"rewrite_history": [{"attempt": 1, "mode": "rewrite"}]},
+        consistency_report={
+            "summary": "章节与前文严重割裂",
+            "blocking_issues": ["本章开头未自然承接上章人物或局势状态，存在明显割裂。"],
+            "issue_types": ["scene_or_timeline_disconnect"],
+            "rewrite_attempted": True,
+            "rewrite_succeeded": False,
+            "rewrite_plan": {
+                "success_criteria": ["开头承接上一章局势并补齐场景过渡。"],
+                "operations": [
+                    {
+                        "phase": "opening",
+                        "action": "bridge_scene",
+                        "target": "opening_bridge",
+                        "instruction": "开头先补齐上一章到本章的移动承接。",
+                        "rationale": "scene_or_timeline_disconnect",
+                    }
+                ],
+            },
+            "graph_diff_details": {"recommended_action": "rewrite"},
+        },
+    )
+
+    result = _pause_for_invalid_chapter(
+        run_dir=run_dir,
+        state=state,
+        project_id="project-123",
+        command=["--generate-full"],
+        run_started_at=datetime.now(),
+        chapter=chapter,
+    )
+
+    status = read_status(run_dir)
+    reloaded = load_longform_state(run_dir)
+    assert result == 0
+    assert status["status"] == "running"
+    assert status["pause_reason"] is None
+    assert status["auto_repair_status"] == "auto_repair_pending"
+    assert status["graph_recommended_action"] == "rewrite"
+    assert reloaded["pending_revision_validation"]["chapter_number"] == 4
+    assert reloaded["pending_revision_validation"]["auto_repair_attempt"] == 1
+
+
+def test_pause_for_invalid_chapter_auto_rewrites_repairable_world_fact_conflict(
+    temp_project_dir,
+):
+    project_dir = temp_project_dir / "project"
+    run_dir = create_run(
+        project_dir=project_dir,
+        run_id="run-world-fact-auto",
+        project_id="project-123",
+        command=["--generate-full"],
+    )
+    state = initial_longform_state(
+        project=_Project(),
+        run_id="run-world-fact-auto",
+        run_dir=run_dir,
+        chapters_per_volume=60,
+        approval_mode="none",
+        auto_approve=False,
+        chapter_review_mode="auto",
+        chapter_auto_repair_attempts=2,
+    )
+    chapter = GeneratedChapter(
+        number=10,
+        title="第十章",
+        content="测试内容",
+        word_count=4,
+        metadata={"rewrite_history": [{"attempt": 1, "mode": "rewrite"}]},
+        consistency_report={
+            "summary": "前文已明确角色退场，本章再次将其写成活跃对象。",
+            "blocking_issues": ["前文已明确角色退场，本章再次将其写成活跃对象。"],
+            "issue_types": ["world_fact_violation"],
+            "rewrite_attempted": True,
+            "rewrite_succeeded": False,
+            "rewrite_plan": {
+                "success_criteria": ["重写后不得出现与前文既定事实直接冲突的设定。"],
+                "operations": [
+                    {
+                        "phase": "body",
+                        "action": "reconcile_canon_fact",
+                        "target": "world_fact_conflict",
+                        "instruction": "回收或改写与既有世界事实冲突的描写。",
+                        "rationale": "world_fact_violation",
+                    }
+                ],
+            },
+            "graph_diff_details": {
+                "recommended_action": "chapter_review",
+                "conflicting_edges": [
+                    {
+                        "type": "WORLD_FACT",
+                        "label": "前文已明确角色退场，本章再次将其写成活跃对象。",
+                    }
+                ],
+            },
+        },
+    )
+
+    result = _pause_for_invalid_chapter(
+        run_dir=run_dir,
+        state=state,
+        project_id="project-123",
+        command=["--generate-full"],
+        run_started_at=datetime.now(),
+        chapter=chapter,
+    )
+
+    status = read_status(run_dir)
+    reloaded = load_longform_state(run_dir)
+    assert result == 0
+    assert status["status"] == "running"
+    assert status["pause_reason"] is None
+    assert status["graph_recommended_action"] == "chapter_review"
+    assert status["repair_decision"] == "rewrite"
+    assert status["repair_decision_reason"] == "rewriteable_world_fact_conflict"
+    assert status["auto_repair_status"] == "auto_repair_pending"
+    assert reloaded["pending_revision_validation"]["chapter_number"] == 10
+    assert reloaded["pending_revision_validation"]["auto_repair_action"] == "rewrite"
+    assert reloaded["chapter_auto_repair_attempts_used"]["10"] == 1
+
+
+def test_pause_for_invalid_chapter_preserves_exhausted_status_for_rebaseline(
+    temp_project_dir,
+):
+    project_dir = temp_project_dir / "project"
+    run_dir = create_run(
+        project_dir=project_dir,
+        run_id="run-001b",
+        project_id="project-123",
+        command=["--generate-full"],
+    )
+    state = initial_longform_state(
+        project=_Project(),
+        run_id="run-001b",
+        run_dir=run_dir,
+        chapters_per_volume=60,
+        approval_mode="outline+volume",
+        auto_approve=False,
+        chapter_review_mode="auto",
+        chapter_auto_repair_attempts=1,
+    )
+    state["chapter_auto_repair_attempts_used"] = {"4": 1}
+    chapter = GeneratedChapter(
+        number=4,
+        title="第四章",
+        content="测试内容",
+        word_count=4,
+        consistency_report={
+            "summary": "需要重基线但自动修复已耗尽",
+            "blocking_issues": ["章节计划已过期"],
+            "issue_types": ["structure_drift_risk"],
+            "rewrite_attempted": True,
+            "rewrite_succeeded": False,
+            "graph_diff_details": {"recommended_action": "rebaseline"},
+        },
+    )
+
+    result = _pause_for_invalid_chapter(
+        run_dir=run_dir,
+        state=state,
+        project_id="project-123",
+        command=["--generate-full"],
+        run_started_at=datetime.now(),
+        chapter=chapter,
+    )
+
+    status = read_status(run_dir)
+    assert result == 0
+    assert status["status"] == "paused"
+    assert status["auto_repair_status"] == "auto_repair_exhausted"
+    assert status["graph_recommended_action"] == "rebaseline"
+    pending = approval_payload_from_input(status["pending_state_path"])
+    assert pending["review_payload"]["pause_disposition"] == "auto_repair_exhausted"
+
+
+def test_pause_for_invalid_chapter_queues_continuity_escalation_after_attempt_limit(
+    temp_project_dir,
+):
+    project_dir = temp_project_dir / "project"
+    run_dir = create_run(
+        project_dir=project_dir,
+        run_id="run-continuity-escalation",
+        project_id="project-123",
+        command=["--generate-full"],
+    )
+    state = initial_longform_state(
+        project=_Project(),
+        run_id="run-continuity-escalation",
+        run_dir=run_dir,
+        chapters_per_volume=60,
+        approval_mode="none",
+        auto_approve=False,
+        chapter_review_mode="auto",
+        chapter_auto_repair_attempts=2,
+    )
+    state["chapter_auto_repair_attempts_used"] = {"12": 2}
+    chapter = GeneratedChapter(
+        number=12,
+        title="第十二章",
+        content="测试内容",
+        word_count=4,
+        metadata={"rewrite_history": [{"attempt": 1, "mode": "rewrite"}]},
+        consistency_report={
+            "summary": "上一章后果未被承接。",
+            "blocking_issues": ["上一章后果未被承接。"],
+            "issue_types": ["scene_or_timeline_disconnect"],
+            "rewrite_attempted": True,
+            "rewrite_succeeded": False,
+            "smoothness_details": [
+                {
+                    "category": "上一章后果未被承接",
+                    "previous_evidence": "必须在“立刻下探”与“紧急撤离”之间做出选择",
+                    "current_evidence": "沈雁穿过极地轨道电梯的残骸区",
+                }
+            ],
+            "rewrite_plan": {
+                "success_criteria": ["开头必须接住上一章的后果，不能让危机凭空消失。"],
+                "operations": [
+                    {
+                        "phase": "opening",
+                        "action": "restore_carryover",
+                        "target": "carryover_consequence",
+                        "instruction": "明确回应上一章遗留的危机、伤势、追击或未完成动作。",
+                        "rationale": "上一章后果未被承接",
+                    }
+                ],
+            },
+            "graph_diff_details": {"recommended_action": "rewrite"},
+        },
+    )
+
+    result = _pause_for_invalid_chapter(
+        run_dir=run_dir,
+        state=state,
+        project_id="project-123",
+        command=["--generate-full"],
+        run_started_at=datetime.now(),
+        chapter=chapter,
+    )
+
+    status = read_status(run_dir)
+    reloaded = load_longform_state(run_dir)
+    assert result == 0
+    assert status["status"] == "running"
+    assert status["auto_repair_status"] == "auto_repair_pending"
+    assert reloaded["chapter_auto_repair_attempts_used"]["12"] == 3
+    assert reloaded["chapter_auto_repair_escalations_used"]["12"] == 1
+    assert reloaded["pending_revision_validation"]["auto_repair_variant"] == (
+        "continuity_escalation"
+    )
+    assert (
+        "必须在“立刻下探”与“紧急撤离”之间做出选择"
+        in reloaded["next_chapter_guidance"]
+    )
+
+
+def test_pause_for_invalid_chapter_exhausts_after_continuity_escalation_is_used(
+    temp_project_dir,
+):
+    project_dir = temp_project_dir / "project"
+    run_dir = create_run(
+        project_dir=project_dir,
+        run_id="run-continuity-escalation-used",
+        project_id="project-123",
+        command=["--generate-full"],
+    )
+    state = initial_longform_state(
+        project=_Project(),
+        run_id="run-continuity-escalation-used",
+        run_dir=run_dir,
+        chapters_per_volume=60,
+        approval_mode="none",
+        auto_approve=False,
+        chapter_review_mode="auto",
+        chapter_auto_repair_attempts=2,
+    )
+    state["chapter_auto_repair_attempts_used"] = {"12": 3}
+    state["chapter_auto_repair_escalations_used"] = {"12": 1}
+    chapter = GeneratedChapter(
+        number=12,
+        title="第十二章",
+        content="测试内容",
+        word_count=4,
+        metadata={"rewrite_history": [{"attempt": 1, "mode": "rewrite"}]},
+        consistency_report={
+            "summary": "上一章后果未被承接。",
+            "blocking_issues": ["上一章后果未被承接。"],
+            "issue_types": ["scene_or_timeline_disconnect"],
+            "rewrite_attempted": True,
+            "rewrite_succeeded": False,
+            "smoothness_details": [
+                {
+                    "category": "上一章后果未被承接",
+                    "previous_evidence": "必须在“立刻下探”与“紧急撤离”之间做出选择",
+                    "current_evidence": "沈雁穿过极地轨道电梯的残骸区",
+                }
+            ],
+            "rewrite_plan": {
+                "success_criteria": ["开头必须接住上一章的后果，不能让危机凭空消失。"],
+                "operations": [
+                    {
+                        "phase": "opening",
+                        "action": "restore_carryover",
+                        "target": "carryover_consequence",
+                        "instruction": "明确回应上一章遗留的危机、伤势、追击或未完成动作。",
+                        "rationale": "上一章后果未被承接",
+                    }
+                ],
+            },
+            "graph_diff_details": {"recommended_action": "rewrite"},
+        },
+    )
+
+    result = _pause_for_invalid_chapter(
+        run_dir=run_dir,
+        state=state,
+        project_id="project-123",
+        command=["--generate-full"],
+        run_started_at=datetime.now(),
+        chapter=chapter,
+    )
+
+    status = read_status(run_dir)
+    assert result == 0
+    assert status["status"] == "paused"
+    assert status["auto_repair_status"] == "auto_repair_exhausted"
+    pending = approval_payload_from_input(status["pending_state_path"])
+    assert pending["review_payload"]["pause_disposition"] == "auto_repair_exhausted"
+
+
+def test_pause_for_invalid_chapter_keeps_unrepairable_world_fact_conflict_in_review(
+    temp_project_dir,
+):
+    project_dir = temp_project_dir / "project"
+    chapters_dir = project_dir / "chapters"
+    chapters_dir.mkdir(parents=True, exist_ok=True)
+    for chapter_number in range(1, 10):
+        (chapters_dir / f"ch{chapter_number:03d}_第{chapter_number}章.md").write_text(
+            f"# 第{chapter_number}章\n\n> 第{chapter_number}章 | 字数: 1200 | 生成时间: 2026-06-03T00:00:00\n\n**本章概要**: 概要。\n\n**关键事件**: 无\n\n---\n\n正文。\n\n*(本章完)*\n",
+            encoding="utf-8",
+        )
+    run_dir = create_run(
+        project_dir=project_dir,
+        run_id="run-world-fact-review",
+        project_id="project-123",
+        command=["--generate-full"],
+    )
+    state = initial_longform_state(
+        project=_Project(),
+        run_id="run-world-fact-review",
+        run_dir=run_dir,
+        chapters_per_volume=60,
+        approval_mode="none",
+        auto_approve=False,
+        chapter_review_mode="auto",
+        chapter_auto_repair_attempts=2,
+    )
+    state["chapters_completed"] = 8
+    state["chapters_completed_high_watermark"] = 8
+    state["chapter_auto_repair_attempts_used"] = {"8": 1}
+    state["last_auto_repair_action"] = "rewrite"
+    chapter = GeneratedChapter(
+        number=10,
+        title="第十章",
+        content="测试内容",
+        word_count=4,
+        metadata={"rewrite_history": [{"attempt": 1, "mode": "rewrite"}]},
+        consistency_report={
+            "summary": "前文已明确角色退场，本章再次将其写成活跃对象。",
+            "blocking_issues": ["前文已明确角色退场，本章再次将其写成活跃对象。"],
+            "issue_types": ["world_fact_violation", "structure_drift_risk"],
+            "rewrite_attempted": True,
+            "rewrite_succeeded": False,
+            "graph_diff_details": {
+                "recommended_action": "chapter_review",
+                "conflicting_edges": [
+                    {
+                        "type": "WORLD_FACT",
+                        "label": "前文已明确角色退场，本章再次将其写成活跃对象。",
+                    }
+                ],
+            },
+        },
+    )
+
+    result = _pause_for_invalid_chapter(
+        run_dir=run_dir,
+        state=state,
+        project_id="project-123",
+        command=["--generate-full"],
+        run_started_at=datetime.now(),
+        chapter=chapter,
+    )
+
+    status = read_status(run_dir)
+    pending = approval_payload_from_input(status["pending_state_path"])
+    reloaded = load_longform_state(run_dir)
+    assert result == 0
+    assert status["status"] == "paused"
+    assert status["auto_repair_status"] == "human_review_required"
+    assert status["repair_decision"] == "chapter_review"
+    assert status["chapters_completed"] == 9
+    assert status["chapters_completed_high_watermark"] == 9
+    assert "10" not in reloaded["chapter_auto_repair_attempts_used"]
+    assert pending["review_payload"]["repair_decision"] == "chapter_review"
+    assert pending["review_payload"]["pause_disposition"] == "human_review_required"
 
 
 def test_pause_for_invalid_chapter_preserves_anti_drift_review_details(
@@ -290,6 +725,47 @@ def test_pause_for_invalid_chapter_preserves_anti_drift_review_details(
         pending["review_payload"]["smoothness_details"][0]["category"]
         == "structure_drift_risk"
     )
+
+
+def test_review_payload_for_chapter_preserves_graph_diff_and_rebaseline_action():
+    payload = review_payload_for_chapter(
+        chapter_number=7,
+        title="第七章",
+        report={
+            "summary": "计划已过期，需要重基线。",
+            "issue_types": ["scene_or_timeline_disconnect"],
+            "blocking_issues": ["上一章后果未被承接。"],
+            "graph_diff_details": {
+                "schema_version": "graph_diff_details.v1",
+                "recommended_action": "rebaseline",
+                "missing_edges": [
+                    {"type": "SCENE_BRIDGE", "label": "开篇缺少从白昼环到废弃港的补桥"}
+                ],
+            },
+            "rewrite_attempted": True,
+            "rewrite_succeeded": False,
+        },
+        rewrite_history=[{"attempt": 1, "mode": "targeted_full_rewrite"}],
+    )
+
+    assert payload["graph_diff_details"]["recommended_action"] == "rebaseline"
+    assert "重基线建议" in payload["quality_gate_next_action"]
+
+
+def test_initial_longform_state_initializes_empty_experience_capsule(temp_project_dir):
+    run_dir = temp_project_dir / "runs" / "run-experience"
+    run_dir.mkdir(parents=True)
+
+    state = initial_longform_state(
+        project=_Project(),
+        run_id="run-experience",
+        run_dir=run_dir,
+        chapters_per_volume=60,
+        approval_mode="outline+volume",
+        auto_approve=False,
+    )
+
+    assert state["next_chapter_experience_capsule"] == {}
 
 
 def test_approval_payload_from_file_and_inline_json(temp_project_dir):

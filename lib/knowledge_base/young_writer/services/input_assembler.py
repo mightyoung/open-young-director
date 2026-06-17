@@ -111,6 +111,45 @@ class InputAssembler:
         packet.validation = validate_generation_packet(packet)
         return packet
 
+    def _legacy_orchestrator_characters(
+        self, packet: GenerationPacket
+    ) -> list[dict[str, Any]]:
+        """Expose structured characters in the legacy shape used by FILM_DRAMA."""
+        objective = str(packet.chapter_plan.goal_lock or "").strip()
+        characters: list[dict[str, Any]] = []
+        for character in packet.characters:
+            name = str(character.name or "").strip()
+            if not name:
+                continue
+            characters.append(
+                {
+                    "name": name,
+                    "identity": character.role or character.motivation or "关键角色",
+                    "cultivation_realm": "",
+                    "personality": character.voice or character.motivation or "目标明确",
+                    "speaking_style": character.voice or "简洁清晰",
+                    "backstory": character.arc or "",
+                    "objective_this_chapter": objective,
+                    "relationships": {
+                        item: item for item in (character.relationships or [])
+                    },
+                }
+            )
+        return characters
+
+    def _resolve_primary_location(self, packet: GenerationPacket) -> str:
+        locations = list(packet.world_bible.locations or [])
+        location_map = {
+            f"location:{str(location or '').strip().lower()}": str(location or "").strip()
+            for location in locations
+            if str(location or "").strip()
+        }
+        for location_id in packet.chapter_plan.location_ids:
+            resolved = location_map.get(str(location_id or "").strip().lower())
+            if resolved:
+                return resolved
+        return locations[0] if locations else ""
+
     def enrich_context(
         self,
         *,
@@ -129,7 +168,13 @@ class InputAssembler:
         project_outline = packet.project_bible.synopsis or packet.project_bible.premise
         character_names = [character.name for character in packet.characters if character.name]
         goal_lock_resolution = resolve_goal_lock_resolution(packet)
-        context = base_context if isinstance(base_context, dict) else {}
+        context = dict(base_context) if isinstance(base_context, dict) else {}
+        existing_characters = context.get("characters")
+        legacy_characters = (
+            existing_characters
+            if isinstance(existing_characters, (dict, list)) and existing_characters
+            else self._legacy_orchestrator_characters(packet)
+        )
         context.update(
             {
                 "chapter_number": chapter_number,
@@ -146,7 +191,10 @@ class InputAssembler:
                 "outline_info": outline_info,
                 "goal_lock": goal_lock_resolution["effective_goal_lock"],
                 "goal_lock_resolution": goal_lock_resolution,
-                "world_name": packet.world_bible.locations[0] if packet.world_bible.locations else "",
+                "world_name": self._resolve_primary_location(packet),
+                "location": self._resolve_primary_location(packet),
+                "time_of_day": str(context.get("time_of_day", "") or "").strip(),
+                "characters": legacy_characters,
                 "character_names": character_names[:8],
                 "generation_packet": packet_to_dict(packet),
                 "story_input_validation": asdict(packet.validation),

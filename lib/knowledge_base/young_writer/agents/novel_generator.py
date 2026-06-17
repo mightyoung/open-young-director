@@ -12,7 +12,11 @@ from young_writer.agents.writer_rules import (
     check_writer_rules,
     compact_writer_rule_summary,
 )
-from young_writer.writing_options import build_writing_guidance, normalize_writing_options
+from young_writer.services.story_graph.diff import build_graph_diff_details
+from young_writer.writing_options import (
+    build_writing_guidance,
+    normalize_writing_options,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -45,6 +49,11 @@ TRANSITION_BRIDGE_SIGNALS = (
     "返回",
     "回到",
     "抵达",
+    "进入",
+    "踏入",
+    "走进",
+    "推开",
+    "穿过",
     "奔赴",
     "路上",
     "沿途",
@@ -69,8 +78,24 @@ def classify_hard_gate_issue_types(issue_types: list[str]) -> list[str]:
     return [item for item in issue_types if item in HARD_GATE_ISSUE_TYPES]
 
 HIGH_CONFIDENCE_LOCATION_SUFFIXES = (
+    "实验室",
+    "监测中心",
+    "控制中心",
+    "监控室",
+    "声呐室",
+    "控制室",
+    "城邦",
+    "海沟",
+    "边界",
+    "基地",
+    "中心",
+    "监测站",
+    "舰桥",
+    "指挥舱",
+    "舱室",
     "城",
     "镇",
+    "站",
     "街",
     "巷",
     "村",
@@ -84,6 +109,7 @@ HIGH_CONFIDENCE_LOCATION_SUFFIXES = (
     "河",
     "海",
     "岛",
+    "区",
     "宫",
     "殿",
     "阁",
@@ -103,7 +129,10 @@ HIGH_CONFIDENCE_LOCATION_SUFFIXES = (
     "庙",
     "厅",
     "室",
+    "舱",
     "牢",
+    "邦",
+    "沟",
 )
 
 CONSEQUENCE_MARKERS = (
@@ -139,6 +168,24 @@ CONSEQUENCE_ACKNOWLEDGEMENT_MARKERS = (
     "未散",
 )
 
+SUMMARY_CONSEQUENCE_CONTEXT_MARKERS = (
+    "上一章结尾",
+    "上一章末尾",
+    "上一章最后",
+    "还没来得及",
+    "尚未",
+    "仍在",
+    "必须",
+    "只能",
+    "正要",
+    "未能",
+)
+
+CONSEQUENCE_CLAUSE_PATTERNS = (
+    re.compile(r"(必须在[^。！？\n]{0,40}之间做出选择)"),
+    re.compile(r"([^。！？\n]{0,24}(?:逼近|警报|裂缝|中断|撤离|下探)[^。！？\n]{0,24})"),
+)
+
 OPENING_LOCATION_PREFIX_MARKERS = (
     "晨雾笼罩",
     "夜色笼罩",
@@ -150,38 +197,87 @@ OPENING_LOCATION_PREFIX_MARKERS = (
     "钟声回荡在",
     "灯火照着",
 )
+LOW_CONFIDENCE_LOCATION_ANCHORS = {
+    "那扇门",
+    "这扇门",
+    "一扇门",
+    "木门",
+    "铁门",
+    "石门",
+    "房门",
+    "舱门",
+}
+LOW_CONFIDENCE_LOCATION_PARTS = {
+    "窗口",
+    "信号",
+    "图谱",
+    "记录",
+    "数据流",
+    "波形",
+    "警报",
+}
+NON_BRIDGE_TRANSITION_PATTERNS = (
+    r"准备进入[\u4e00-\u9fff]{2,16}",
+    r"必须进入[\u4e00-\u9fff]{2,16}",
+    r"计划进入[\u4e00-\u9fff]{2,16}",
+    r"打算进入[\u4e00-\u9fff]{2,16}",
+    r"将进入[\u4e00-\u9fff]{2,16}",
+    r"要求[\u4e00-\u9fff]{0,8}进入[\u4e00-\u9fff]{2,16}",
+)
 EVENT_ACTION_KEYWORDS = (
     "归来",
     "返回",
     "抵达",
+    "进入",
+    "验证",
     "调查",
+    "追查",
     "查清",
+    "确认",
+    "协助",
+    "救回",
     "拯救",
+    "公开",
     "守住",
     "击败",
     "现身",
     "闯入",
     "夺取",
+    "截获",
     "逃离",
     "突破",
+    "寻找",
+    "潜入",
+    "破解",
 )
 EVENT_ACTION_SYNONYMS = {
     "归来": ("归来", "回来", "回到", "返回", "抵达"),
     "返回": ("返回", "回到", "归来", "回来", "折返"),
     "抵达": ("抵达", "到达", "赶到", "来到"),
+    "进入": ("进入", "踏入", "冲入", "闯入", "潜入"),
+    "验证": ("验证", "核实", "确认", "证实", "查验", "校验"),
     "调查": ("调查", "查探", "探查", "追查"),
+    "追查": ("追查", "调查", "查探", "追索"),
     "查清": ("查清", "查明", "弄清", "摸清"),
+    "确认": ("确认", "证实", "核实"),
+    "协助": ("协助", "帮忙", "帮助", "配合", "支援", "帮我", "帮他", "帮她"),
+    "救回": ("救回", "救出", "救下", "营救", "带回"),
     "拯救": ("拯救", "救下", "救出", "救回"),
+    "公开": ("公开", "公布", "揭开", "揭露"),
     "守住": ("守住", "守下", "保住", "顶住"),
     "击败": ("击败", "打败", "战胜", "击倒"),
     "现身": ("现身", "出现", "露面"),
     "闯入": ("闯入", "冲进", "潜入", "进入"),
     "夺取": ("夺取", "夺下", "拿下", "抢下"),
+    "截获": ("截获", "拦截", "收到", "捕获"),
     "逃离": ("逃离", "逃出", "脱身", "离开"),
     "突破": ("突破", "冲破", "打破", "突围"),
+    "寻找": ("寻找", "找寻", "搜寻", "查找"),
+    "潜入": ("潜入", "闯入", "混入", "进入"),
+    "破解": ("破解", "解开", "破译", "拆解"),
 }
 EVENT_SPLIT_PATTERNS = re.compile(
-    r"(?:带着|携带|拿着|并且|并|与|和|前往|进入|返回|归来|调查|查清|拯救|守住|击败|现身|闯入|夺取|逃离|突破|以及|然后|随后|为了|必须|正在|已经|开始|继续|尝试|的|了|在)"
+    r"(?:带着|携带|拿着|并且|并|与|和|前往|进入|返回|归来|验证|调查|追查|查清|确认|协助|救回|拯救|公开|守住|击败|现身|闯入|夺取|截获|逃离|突破|寻找|潜入|破解|争取|请求|寻求|以及|然后|随后|为了|必须|正在|已经|开始|继续|尝试|的|了|在)"
 )
 EVENT_NOISE_TERMS = {
     "阶段目标",
@@ -195,6 +291,12 @@ EVENT_NOISE_TERMS = {
     "收束",
     "当众",
 }
+COMPOUND_GOAL_CONNECTOR_PATTERN = re.compile(
+    r"[、；;]|(?:并且|并|同时|随后|然后|再去|再向|并向|并找|并请|并争取)"
+)
+ANCHOR_LEADING_NOISE_PATTERN = re.compile(
+    r"^(?:途中|此时|这时|随后|然后|继续|仍要|仍需|需要|必须|先|首先|立即|赶紧|设法|尝试|他|她|它|主角)+"
+)
 ORCHESTRATOR_DISABLE_THRESHOLD = 2
 ORCHESTRATOR_MIN_CONTENT_CHARS = 800
 ORCHESTRATOR_MAX_CONTENT_THRESHOLD = 1200
@@ -358,7 +460,10 @@ class NovelGeneratorAgent:
     def _load_outline_loader(self):
         """Load outline loader and enforcer."""
         try:
-            from young_writer.agents.outline_loader import OutlineEnforcer, OutlineLoader
+            from young_writer.agents.outline_loader import (
+                OutlineEnforcer,
+                OutlineLoader,
+            )
 
             project = self.config_manager.current_project
             if project:
@@ -439,13 +544,16 @@ class NovelGeneratorAgent:
             generation_context["chapter_intent_check"].get("rewritten_outline", "")
             or outline_summary
         )
+        effective_previous_summary = str(
+            previous_summary or generation_context.get("previous_summary", "") or ""
+        )
 
         rewrite_history: list[dict[str, Any]] = []
         result = self._generate_candidate(
             chapter_number=chapter_number,
             title=title,
             outline=generation_context["generation_outline"],
-            previous_summary=previous_summary,
+            previous_summary=effective_previous_summary,
             context=generation_context,
             writing_options=writing_options,
             target_word_count=target_word_count,
@@ -465,7 +573,7 @@ class NovelGeneratorAgent:
         )
 
         chapter.consistency_report = self._check_consistency(
-            chapter, previous_summary, generation_context
+            chapter, effective_previous_summary, generation_context
         )
         if chapter.consistency_report.get("invalid"):
             rewrite_history.append(
@@ -484,7 +592,7 @@ class NovelGeneratorAgent:
             )
             chapter = self._rewrite_invalid_chapter(
                 chapter=chapter,
-                previous_summary=previous_summary,
+                previous_summary=effective_previous_summary,
                 context=generation_context,
                 writing_options=writing_options,
                 outline_summary=outline_summary,
@@ -573,6 +681,50 @@ class NovelGeneratorAgent:
             "content_chars": len(content),
             "min_content_chars": min_content_chars,
             "chapter_number": context.get("chapter_number"),
+        }
+
+    def _orchestrator_preflight(self, context: dict[str, Any] | None) -> dict[str, Any]:
+        """Check whether the orchestrator has enough structured input to run."""
+        ctx = context or {}
+        character_source = ctx.get("characters")
+        if isinstance(character_source, dict) and character_source:
+            character_count = len(
+                [name for name in character_source.keys() if str(name or "").strip()]
+            )
+        elif isinstance(character_source, list):
+            character_count = len(
+                [
+                    item
+                    for item in character_source
+                    if isinstance(item, dict) and str(item.get("name", "") or "").strip()
+                ]
+            )
+        else:
+            packet_characters = self._packet_characters(ctx)
+            if packet_characters:
+                character_count = len(
+                    [
+                        item
+                        for item in packet_characters
+                        if str(item.get("name", "") or "").strip()
+                    ]
+                )
+            else:
+                character_count = len(
+                    [
+                        name
+                        for name in ctx.get("character_names", [])
+                        if str(name or "").strip()
+                    ]
+                )
+
+        failure_reasons: list[str] = []
+        if character_count <= 0:
+            failure_reasons.append("orchestrator_preflight_no_characters")
+        return {
+            "passed": not failure_reasons,
+            "failure_reasons": failure_reasons,
+            "character_count": character_count,
         }
 
     def _resolve_known_char_names(
@@ -815,21 +967,31 @@ class NovelGeneratorAgent:
         rewrite_history: list[dict[str, Any]],
     ) -> GeneratedChapter:
         """Run one targeted full-chapter rewrite for invalid output."""
-        guidance = self._build_rewrite_guidance(chapter.consistency_report or {})
+        report = chapter.consistency_report or {}
+        repair_plan = self._build_chapter_repair_plan(
+            report=report,
+            outline_summary=outline_summary,
+            context=context,
+        )
+        guidance = self._format_rewrite_guidance(repair_plan)
         generation_outline = str(
             context.get("generation_outline", "") or outline_summary
         )
+        rewrite_context = dict(context)
+        rewrite_context["chapter_repair_plan"] = repair_plan
         result = self._generate_candidate(
             chapter_number=chapter.number,
             title=chapter.title,
-            outline=generation_outline,
+            outline=self._compose_rewrite_outline(
+                outline=generation_outline,
+                repair_plan=repair_plan,
+            ),
             previous_summary=previous_summary,
-            context=context,
+            context=rewrite_context,
             writing_options=writing_options,
             target_word_count=target_word_count,
             min_word_count=min_word_count,
             rewrite_guidance=guidance,
-            force_direct_llm=True,
         )
         rewritten = self._create_chapter(
             chapter_number=chapter.number,
@@ -838,13 +1000,13 @@ class NovelGeneratorAgent:
             outline_summary=outline_summary,
             outline_info=outline_info,
             magic_line=magic_line,
-            context=context,
+            context=rewrite_context,
             writing_options=writing_options,
             orchestrator_result=result.get("orchestrator_result"),
             generation_trace=result.get("generation_trace"),
         )
         rewritten.consistency_report = self._check_consistency(
-            rewritten, previous_summary, context
+            rewritten, previous_summary, rewrite_context
         )
         rewritten.consistency_report["rewrite_attempted"] = True
         rewritten.consistency_report[
@@ -861,11 +1023,161 @@ class NovelGeneratorAgent:
                 "blocking_issues": list(
                     rewritten.consistency_report.get("blocking_issues", [])
                 ),
+                "repair_plan": repair_plan,
                 "guidance": guidance,
                 "generated_at": datetime.now().isoformat(),
             }
         )
         return rewritten
+
+    def _build_chapter_repair_plan(
+        self,
+        *,
+        report: dict[str, Any],
+        outline_summary: str,
+        context: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        repair_plan = self._build_rewrite_plan(report)
+        anti_drift = dict(report.get("anti_drift_details", {}) or {})
+        blocking_issues = [
+            str(item).strip()
+            for item in report.get("blocking_issues", [])
+            if str(item).strip()
+        ]
+        missing_events = [
+            str(item).strip()
+            for item in report.get("missing_events", [])
+            if str(item).strip()
+        ]
+        goal_lock = str(anti_drift.get("goal_lock", "") or "").strip()
+        goal_subgoals = self._split_compound_goal_fragments(goal_lock)
+        ordered_beats: list[dict[str, Any]] = []
+        continuity_anchor_contract: dict[str, str] = {}
+        if report.get("continuity_issues"):
+            ordered_beats.append(
+                {
+                    "phase": "opening",
+                    "required_action": "承接上一章残留后果或地点/时间切换",
+                    "evidence": list(report.get("continuity_issues", []))[:2],
+                }
+            )
+        for item in report.get("smoothness_details", []) or []:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("category", "") or "").strip() != "地点跳切无承接":
+                continue
+            previous_anchor = str(item.get("previous_evidence", "") or "").strip()
+            current_anchor = str(item.get("current_evidence", "") or "").strip()
+            if previous_anchor and current_anchor:
+                continuity_anchor_contract = {
+                    "previous_anchor": previous_anchor,
+                    "current_anchor": current_anchor,
+                    "instruction": (
+                        f"开篇先接住「{previous_anchor}」；如需切到「{current_anchor}」，"
+                        f"必须写出路径、抵达动作或切换原因，不得直接在「{current_anchor}」重开。"
+                    ),
+                }
+                break
+        if missing_events:
+            ordered_beats.append(
+                {
+                    "phase": "development",
+                    "required_action": "覆盖必须发生的关键事件",
+                    "must_include": missing_events,
+                }
+            )
+        if goal_lock:
+            ordered_beats.append(
+                {
+                    "phase": "conflict",
+                    "required_action": "把关键行动、选择或结果重新对准目标锁",
+                    "goal_lock": goal_lock,
+                    "goal_subgoals": goal_subgoals,
+                    "matched_fragments": list(anti_drift.get("matched_fragments", []))[:2],
+                }
+            )
+        ordered_beats.append(
+            {
+                "phase": "resolution",
+                "required_action": "用本章结果自然引出下一章压力，不留无解释跳切",
+                "continuity_out": str(
+                    ((context or {}).get("chapter_plan", {}) or {}).get("continuity_out", "")
+                ).strip(),
+            }
+        )
+        repair_plan.update(
+            {
+                "rewrite_mode": "plan_first_full_rewrite",
+                "outline_summary": outline_summary,
+                "goal_lock": goal_lock,
+                "goal_subgoals": goal_subgoals,
+                "opening_bridge": list(report.get("continuity_issues", []))[:2],
+                "must_include_events": missing_events,
+                "continuity_anchor_contract": continuity_anchor_contract,
+                "failure_evidence": {
+                    "issue_types": list(report.get("issue_types", [])),
+                    "blocking_issues": blocking_issues[:4],
+                    "anti_drift_details": anti_drift,
+                },
+                "ordered_beats": ordered_beats,
+            }
+        )
+        return repair_plan
+
+    def _compose_rewrite_outline(
+        self,
+        *,
+        outline: str,
+        repair_plan: dict[str, Any],
+    ) -> str:
+        lines = [str(outline or "").strip()]
+        opening_bridge = [
+            str(item).strip() for item in repair_plan.get("opening_bridge", []) if str(item).strip()
+        ]
+        must_include_events = [
+            str(item).strip()
+            for item in repair_plan.get("must_include_events", [])
+            if str(item).strip()
+        ]
+        goal_lock = str(repair_plan.get("goal_lock", "") or "").strip()
+        goal_subgoals = [
+            str(item).strip()
+            for item in repair_plan.get("goal_subgoals", [])
+            if str(item).strip()
+        ]
+        continuity_anchor_contract = (
+            repair_plan.get("continuity_anchor_contract", {})
+            if isinstance(repair_plan.get("continuity_anchor_contract", {}), dict)
+            else {}
+        )
+        ordered_beats = [
+            item for item in repair_plan.get("ordered_beats", []) if isinstance(item, dict)
+        ]
+        lines.append("【重写执行蓝图】")
+        if opening_bridge:
+            lines.append("开场先承接：")
+            lines.extend(f"- {item}" for item in opening_bridge[:2])
+        if continuity_anchor_contract:
+            instruction = str(continuity_anchor_contract.get("instruction", "") or "").strip()
+            if instruction:
+                lines.append("场景锚点硬约束：")
+                lines.append(f"- {instruction}")
+        if must_include_events:
+            lines.append("必须落实事件：")
+            lines.extend(f"- {item}" for item in must_include_events[:3])
+        if goal_lock:
+            lines.append(f"主线目标锁：{goal_lock}")
+        if len(goal_subgoals) > 1:
+            lines.append("目标锁必须逐项落地：")
+            lines.extend(f"- {item}" for item in goal_subgoals[:4])
+        if ordered_beats:
+            lines.append("重写节拍：")
+            for index, beat in enumerate(ordered_beats[:4], start=1):
+                phase = str(beat.get("phase", "") or "").strip()
+                action = str(beat.get("required_action", "") or "").strip()
+                if phase and action:
+                    lines.append(f"{index}. {phase}: {action}")
+        return "\n".join(part for part in lines if str(part).strip())
 
     def _generate_content(
         self,
@@ -911,7 +1223,7 @@ class NovelGeneratorAgent:
         genre = (
             str((context or {}).get("genre", "") or "").strip()
             or (project.genre if project else "")
-            or "玄幻"
+            or "长篇小说"
         )
         target_word_count = self._get_target_word_count()
 
@@ -922,66 +1234,90 @@ class NovelGeneratorAgent:
             "consecutive_failures": self._orchestrator_consecutive_failures,
             "disabled_for_run": self._orchestrator_disabled_for_run,
         }
+        chapter_repair_plan = dict((context or {}).get("chapter_repair_plan", {}) or {})
+        prefer_orchestrator_rewrite = (
+            bool(chapter_repair_plan)
+            and str(chapter_repair_plan.get("rewrite_mode", "") or "").strip()
+            == "plan_first_full_rewrite"
+        )
 
         # P2 FIX: use orchestrator only while it clears deterministic quality checks
         if (
             self.orchestrator is not None
             and retry_attempt == 0
-            and not rewrite_guidance
             and not force_direct_llm
             and not self._orchestrator_disabled_for_run
+            and (not rewrite_guidance or prefer_orchestrator_rewrite)
         ):
             # Only use orchestrator on first attempt
-            try:
-                logger.info(
-                    f"[Generator] Using orchestrator for chapter {chapter_number}"
-                )
-                orchestrator_result = self.orchestrator.orchestrate_chapter(
-                    chapter_number=chapter_number,
-                    chapter_outline=outline,
-                    context=context,
-                )
-                orchestrator_trace = self._build_orchestrator_diagnostics(
-                    orchestrator_result=orchestrator_result,
-                    context=context,
-                    target_word_count=target_word_count,
-                )
-                if orchestrator_trace["accepted"]:
-                    self._orchestrator_consecutive_failures = 0
-                    content = str(orchestrator_result.get("content") or "")
-                    logger.info(
-                        "[Generator] Orchestrator accepted for chapter %s: %s chars, %s beats, %s cast",
-                        chapter_number,
-                        len(content),
-                        orchestrator_trace["beat_count"],
-                        orchestrator_trace["cast_count"],
-                    )
-                    return {
-                        "content": content,
-                        "orchestrator_result": orchestrator_result,
-                        "generation_trace": {
-                            "path": "orchestrator",
-                            "orchestrator": orchestrator_trace,
-                        },
+            preflight = self._orchestrator_preflight(context)
+            if not preflight["passed"]:
+                orchestrator_trace.update(
+                    {
+                        "attempted": False,
+                        "accepted": False,
+                        "failure_reasons": list(preflight["failure_reasons"]),
+                        "preflight": preflight,
                     }
-                orchestrator_trace.update(
-                    self._record_orchestrator_failure(
-                        list(orchestrator_trace["failure_reasons"])
+                )
+                logger.info(
+                    "[Generator] Skipping orchestrator for chapter %s: %s",
+                    chapter_number,
+                    ",".join(preflight["failure_reasons"]),
+                )
+            else:
+                try:
+                    logger.info(
+                        f"[Generator] Using orchestrator for chapter {chapter_number}"
                     )
-                )
-            except Exception as e:
-                orchestrator_trace = {
-                    "attempted": True,
-                    "accepted": False,
-                    "failure_reasons": ["orchestrator_exception"],
-                    "error": str(e),
-                }
-                orchestrator_trace.update(
-                    self._record_orchestrator_failure(["orchestrator_exception"])
-                )
-                logger.warning(
-                    f"[Generator] Orchestrator failed, falling back to direct LLM: {e}"
-                )
+                    orchestrator_result = self.orchestrator.orchestrate_chapter(
+                        chapter_number=chapter_number,
+                        chapter_outline=outline,
+                        context=context,
+                    )
+                    orchestrator_trace = self._build_orchestrator_diagnostics(
+                        orchestrator_result=orchestrator_result,
+                        context=context,
+                        target_word_count=target_word_count,
+                    )
+                    if orchestrator_trace["accepted"]:
+                        self._orchestrator_consecutive_failures = 0
+                        content = str(orchestrator_result.get("content") or "")
+                        logger.info(
+                            "[Generator] Orchestrator accepted for chapter %s: %s chars, %s beats, %s cast",
+                            chapter_number,
+                            len(content),
+                            orchestrator_trace["beat_count"],
+                            orchestrator_trace["cast_count"],
+                        )
+                        return {
+                            "content": content,
+                            "orchestrator_result": orchestrator_result,
+                            "generation_trace": {
+                                "path": "orchestrator_rewrite"
+                                if prefer_orchestrator_rewrite
+                                else "orchestrator",
+                                "orchestrator": orchestrator_trace,
+                            },
+                        }
+                    orchestrator_trace.update(
+                        self._record_orchestrator_failure(
+                            list(orchestrator_trace["failure_reasons"])
+                        )
+                    )
+                except Exception as e:
+                    orchestrator_trace = {
+                        "attempted": True,
+                        "accepted": False,
+                        "failure_reasons": ["orchestrator_exception"],
+                        "error": str(e),
+                    }
+                    orchestrator_trace.update(
+                        self._record_orchestrator_failure(["orchestrator_exception"])
+                    )
+                    logger.warning(
+                        f"[Generator] Orchestrator failed, falling back to direct LLM: {e}"
+                    )
         elif self._orchestrator_disabled_for_run and retry_attempt == 0:
             orchestrator_trace = {
                 "attempted": False,
@@ -1156,7 +1492,7 @@ class NovelGeneratorAgent:
         # Build world constraints section
         world_constraints = ""
         if world_name:
-            world_constraints += f"\n- 宗门名称: {world_name}（必须严格使用，不得更改）"
+            world_constraints += f"\n- 主要舞台: {world_name}（若本章发生在此处，名称必须保持一致）"
         if character_names:
             world_constraints += f"\n- 主要人物: {', '.join(character_names)}"
 
@@ -1182,7 +1518,7 @@ class NovelGeneratorAgent:
 3. 完整的起承转合结构
 """
 
-        prompt = f"""你是一个专业的中文玄幻小说写作助手。请根据以下信息创作小说章节。
+        prompt = f"""你是一个专业的中文长篇小说写作助手。请根据以下信息创作小说章节。
 
 ## 章节信息
 - 章节号: 第{chapter_number}章
@@ -1229,7 +1565,7 @@ class NovelGeneratorAgent:
 5. 环境描写营造氛围
 6. 高潮部分要有冲击力
 7. **重要**: 如果"详细前文"中提到了具体物品、地点、人物关系，创作时必须保持一致
-8. **重要**: 必须使用上述宗门名称和人物名称，不得使用其他同名或相似名称
+8. **重要**: 必须保持上述场景名称、人物名称与既有设定一致，不得凭空替换或引入题材错位设定
 
 ## 风格参数
 - 基础风格: {normalized_options["style"]}
@@ -1399,6 +1735,32 @@ class NovelGeneratorAgent:
         """Normalize text for lightweight deterministic matching."""
         return re.sub(r"\s+", "", text or "")
 
+    def _clean_anchor_candidate(self, text: str) -> str:
+        """Trim common connective noise from deterministic match anchors."""
+        candidate = str(text or "").strip("：:，,；;。！？!?\n ")
+        while True:
+            trimmed = ANCHOR_LEADING_NOISE_PATTERN.sub("", candidate).strip(
+                "：:，,；;。！？!?\n "
+            )
+            if trimmed == candidate:
+                break
+            candidate = trimmed
+        return candidate
+
+    def _split_compound_goal_fragments(self, text: str) -> list[str]:
+        """Split compound goals/events into ordered deterministic sub-goals."""
+        normalized = str(text or "").strip()
+        if not normalized:
+            return []
+
+        fragments: list[str] = []
+        for raw_part in COMPOUND_GOAL_CONNECTOR_PATTERN.split(normalized):
+            candidate = self._clean_anchor_candidate(raw_part)
+            if len(candidate) < 2 or candidate in fragments:
+                continue
+            fragments.append(candidate)
+        return fragments[:4]
+
     def _extract_previous_chapter_tail(self, context: dict[str, Any] | None) -> str:
         """Return the tail of the previous chapter when available."""
         if not context:
@@ -1429,12 +1791,45 @@ class NovelGeneratorAgent:
                 seen.add(candidate)
 
         for action in EVENT_ACTION_KEYWORDS:
-            if action in normalized_event and action not in seen:
+            if action not in normalized_event:
+                continue
+            if action not in seen:
                 keywords.append(action)
                 seen.add(action)
+            action_index = normalized_event.find(action)
+            subject = normalized_event[max(0, action_index - 4) : action_index].strip()
+            subject = re.sub(r"[^\u4e00-\u9fff]", "", subject)[-4:]
+            subject = self._clean_anchor_candidate(subject)
+            if (
+                len(subject) >= 2
+                and subject not in EVENT_NOISE_TERMS
+                and subject not in seen
+            ):
+                keywords.append(subject)
+                seen.add(subject)
+            subject_tail = re.sub(r"^(?:争取|请求|寻求|获得|得到|请|让)", "", subject)
+            subject_tail = self._clean_anchor_candidate(subject_tail[-4:])
+            if (
+                len(subject_tail) >= 2
+                and subject_tail not in EVENT_NOISE_TERMS
+                and subject_tail not in seen
+            ):
+                keywords.append(subject_tail)
+                seen.add(subject_tail)
+            object_tail = normalized_event[action_index + len(action) :].strip()
+            object_tail = re.sub(r"^(?:在|于|向|对|把|将|从|往|朝)", "", object_tail)
+            object_tail = re.split(r"[，。；、：:！!？?\s/]+", object_tail, maxsplit=1)[0]
+            object_tail = self._clean_anchor_candidate(object_tail[:8])
+            if (
+                len(object_tail) >= 2
+                and object_tail not in EVENT_NOISE_TERMS
+                and object_tail not in seen
+            ):
+                keywords.append(object_tail)
+                seen.add(object_tail)
 
         for part in EVENT_SPLIT_PATTERNS.split(normalized_event):
-            candidate = str(part or "").strip("：:，,；;。！？!?\n ")
+            candidate = self._clean_anchor_candidate(part)
             if (
                 len(candidate) >= 2
                 and candidate not in EVENT_NOISE_TERMS
@@ -1445,11 +1840,11 @@ class NovelGeneratorAgent:
 
         return keywords[:6]
 
-    def _event_is_covered(
-        self, event: str, content: str, context: dict[str, Any] | None = None
+    def _event_fragment_is_covered(
+        self, event_fragment: str, content: str, context: dict[str, Any] | None = None
     ) -> bool:
-        """Return True when a key event is deterministically grounded in content."""
-        normalized_event = str(event or "").strip()
+        """Return True when one event fragment is deterministically grounded in content."""
+        normalized_event = str(event_fragment or "").strip()
         if len(normalized_event) < 2:
             return True
         if normalized_event in content:
@@ -1462,17 +1857,44 @@ class NovelGeneratorAgent:
         action_keywords = [
             action for action in EVENT_ACTION_KEYWORDS if action in normalized_event
         ]
-        matched_keywords: set[str] = {keyword for keyword in keywords if keyword in content}
+        matched_keywords: set[str] = {
+            keyword for keyword in keywords if keyword in content
+        }
         matched_action_keywords = {
             action
             for action in action_keywords
-            if any(alias in content for alias in EVENT_ACTION_SYNONYMS.get(action, (action,)))
+            if any(
+                alias in content
+                for alias in EVENT_ACTION_SYNONYMS.get(action, (action,))
+            )
         }
         if action_keywords and not matched_action_keywords:
             return False
+        for keyword in keywords:
+            if keyword in matched_keywords:
+                continue
+            if keyword.endswith(("真假", "真伪")) and any(
+                marker in content for marker in ("真假", "真伪", "是真是假")
+            ):
+                matched_keywords.add(keyword)
         matched_keywords.update(matched_action_keywords)
         required_matches = 1 if len(keywords) == 1 else 2
         return len(matched_keywords) >= required_matches
+
+    def _event_is_covered(
+        self, event: str, content: str, context: dict[str, Any] | None = None
+    ) -> bool:
+        """Return True when a key event is deterministically grounded in content."""
+        normalized_event = str(event or "").strip()
+        if len(normalized_event) < 2:
+            return True
+        subgoals = self._split_compound_goal_fragments(normalized_event)
+        if len(subgoals) > 1 and all(
+            self._event_fragment_is_covered(subgoal, content, context)
+            for subgoal in subgoals
+        ):
+            return True
+        return self._event_fragment_is_covered(normalized_event, content, context)
 
     def _extract_location_anchor(self, text: str) -> str:
         """Extract a conservative location anchor from the provided text."""
@@ -1482,27 +1904,69 @@ class NovelGeneratorAgent:
             return ""
 
         suffix_pattern = "|".join(
-            re.escape(item) for item in HIGH_CONFIDENCE_LOCATION_SUFFIXES
+            re.escape(item)
+            for item in sorted(
+                HIGH_CONFIDENCE_LOCATION_SUFFIXES, key=len, reverse=True
+            )
         )
+        nested_scene_match = re.search(
+            rf"(?:在|于)[\u4e00-\u9fff]{{2,12}}(?:{suffix_pattern})的([\u4e00-\u9fff]{{2,12}}(?:{suffix_pattern}))(?:内|中|里|上|前)?",
+            normalized,
+        )
+        if nested_scene_match:
+            nested_candidate = nested_scene_match.group(1)
+            if not self._is_low_confidence_location_anchor(nested_candidate):
+                return nested_candidate
+        candidates: list[tuple[int, int, str]] = []
         for prefix in OPENING_LOCATION_PREFIX_MARKERS:
             match = re.search(
                 rf"{re.escape(prefix)}([\u4e00-\u9fff]{{2,12}}(?:{suffix_pattern}))",
                 normalized,
             )
             if match:
-                return match.group(1)
+                candidate = match.group(1)
+                if self._is_low_confidence_location_anchor(candidate):
+                    continue
+                candidates.append((match.start(1), -len(candidate), candidate))
         patterns = (
             rf"^(?:[\u4e00-\u9fff]{{1,4}}的)?([\u4e00-\u9fff]{{2,12}}(?:{suffix_pattern}))(?:内|中|外|上|下|前|里)",
+            rf"(?:回到|返回|抵达|来到|赶到|赶往|奔赴|进入|踏入|冲进|冲出|躲进|潜入|驶入|驶向|退回)([\u4e00-\u9fff]{{2,12}}(?:{suffix_pattern}))",
+            rf"(?:走进|推开|穿过[\u4e00-\u9fff]{0,8}后进入)([\u4e00-\u9fff]{{2,12}}(?:{suffix_pattern}))",
             rf"(?:在|于)([\u4e00-\u9fff]{{2,12}}(?:{suffix_pattern}))",
-            rf"(?:回到|返回|抵达|来到|赶到|赶往|奔赴|进入|踏入|冲进|躲进|潜入)([\u4e00-\u9fff]{{2,12}}(?:{suffix_pattern}))",
             rf"(?:这里仍是|仍是|依旧是)([\u4e00-\u9fff]{{2,12}}(?:{suffix_pattern}))",
             rf"^([\u4e00-\u9fff]{{2,12}}(?:{suffix_pattern}))(?:内|中|外|上|下|前|里)",
         )
         for pattern in patterns:
             match = re.search(pattern, normalized)
             if match:
-                return match.group(1)
-        return ""
+                candidate = match.group(1)
+                if self._is_low_confidence_location_anchor(candidate):
+                    continue
+                candidates.append((match.start(1), -len(candidate), candidate))
+        if not candidates:
+            return ""
+        candidates.sort()
+        return candidates[0][2]
+
+    def _is_low_confidence_location_anchor(self, candidate: str) -> bool:
+        """Reject prop-like or operational fragments that are not stable scenes."""
+        if not candidate:
+            return True
+        if candidate in LOW_CONFIDENCE_LOCATION_ANCHORS:
+            return True
+        return any(part in candidate for part in LOW_CONFIDENCE_LOCATION_PARTS)
+
+    def _extract_narrative_opening(self, content: str) -> str:
+        """Strip markdown prelude and return the actual narrative opening window."""
+        raw_text = str(content or "")
+        if not raw_text:
+            return ""
+        narrative = raw_text
+        if "◆开场" in narrative:
+            narrative = narrative.split("◆开场", 1)[1]
+        elif "\n---" in narrative:
+            narrative = narrative.split("\n---", 1)[1]
+        return self._normalize_text_for_match(narrative[:600])
 
     def _location_anchors_conflict(
         self, previous_anchor: str, current_anchor: str
@@ -1532,6 +1996,8 @@ class NovelGeneratorAgent:
         normalized = self._normalize_text_for_match(opening)
         if not normalized:
             return False
+        for pattern in NON_BRIDGE_TRANSITION_PATTERNS:
+            normalized = re.sub(pattern, "", normalized)
         return any(marker in normalized for marker in TRANSITION_BRIDGE_SIGNALS)
 
     def _extract_time_jump_marker(self, opening: str) -> str:
@@ -1549,6 +2015,50 @@ class NovelGeneratorAgent:
             if marker in normalized:
                 return marker
         return ""
+
+    def _extract_consequence_clause(self, text: str) -> str:
+        """Return a stronger carry-over clause when a single keyword is not enough."""
+        raw_text = str(text or "")
+        if not raw_text:
+            return ""
+        for pattern in CONSEQUENCE_CLAUSE_PATTERNS:
+            matches: list[str] = []
+            for match in pattern.finditer(raw_text):
+                clause = str(match.group(1) or "").strip(" ，,；;。！？\n")
+                if clause:
+                    matches.append(clause)
+            if matches:
+                return matches[-1]
+        return ""
+
+    def _extract_consequence_evidence(
+        self, previous_summary: str, previous_tail: str
+    ) -> str:
+        """Prefer the real previous chapter tail over template-like summary fallbacks."""
+        previous_tail = str(previous_tail or "")
+        tail_marker = self._extract_consequence_marker(previous_tail)
+        if tail_marker:
+            return tail_marker
+        tail_clause = self._extract_consequence_clause(previous_tail)
+        if tail_clause:
+            return tail_clause
+
+        # When the previous chapter text exists, do not let macro/template summaries
+        # override the actual chapter ending with stale background accidents.
+        if previous_tail.strip():
+            return ""
+
+        normalized_summary = self._normalize_text_for_match(previous_summary)
+        if not normalized_summary or not any(
+            marker in normalized_summary
+            for marker in SUMMARY_CONSEQUENCE_CONTEXT_MARKERS
+        ):
+            return ""
+
+        summary_marker = self._extract_consequence_marker(previous_summary)
+        if summary_marker:
+            return summary_marker
+        return self._extract_consequence_clause(previous_summary)
 
     def _opening_acknowledges_consequence(
         self, opening: str, consequence_marker: str
@@ -1602,7 +2112,7 @@ class NovelGeneratorAgent:
         context: dict[str, Any] | None = None,
     ) -> list[dict[str, str]]:
         """Check deterministic chapter-to-chapter smoothness boundaries."""
-        opening = self._normalize_text_for_match(content[:600])
+        opening = self._extract_narrative_opening(content)
         previous_tail = self._extract_previous_chapter_tail(context)
         previous_context = self._normalize_text_for_match(
             f"{previous_summary}\n{previous_tail}"
@@ -1648,7 +2158,10 @@ class NovelGeneratorAgent:
                 )
             )
 
-        consequence_marker = self._extract_consequence_marker(previous_context)
+        consequence_marker = self._extract_consequence_evidence(
+            previous_summary,
+            previous_tail,
+        )
         consequence_dismissed = self._opening_dismisses_prior_consequence(opening)
         consequence_acknowledged = self._opening_acknowledges_consequence(
             opening, consequence_marker
@@ -1777,6 +2290,35 @@ class NovelGeneratorAgent:
                 instruction="补足地点变化的过渡动作、路径或抵达说明。",
                 rationale="地点跳切无承接",
                 success_signal="开场地点变化必须带过渡动作或抵达锚点，不能直接切场。",
+            )
+        for item in smoothness_details:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("category", "") or "").strip() != "地点跳切无承接":
+                continue
+            previous_anchor = str(item.get("previous_evidence", "") or "").strip()
+            current_anchor = str(item.get("current_evidence", "") or "").strip()
+            if not previous_anchor or not current_anchor:
+                continue
+            instruction = (
+                f"若上一章已落在「{previous_anchor}」，本章前两句必须先承接该场景后果；"
+                f"若切到「{current_anchor}」，必须明确写出从「{previous_anchor}」到「{current_anchor}」的路径、抵达或切换原因，不得在「{current_anchor}」直接重开故事。"
+            )
+            success_signal = (
+                f"开篇场景必须先承接「{previous_anchor}」，或显式完成到「{current_anchor}」的过桥，不能直接回到其他起始场景。"
+            )
+            if instruction not in guidance_plan["fixes"]:
+                guidance_plan["fixes"].append(instruction)
+            if success_signal not in guidance_plan["success_criteria"]:
+                guidance_plan["success_criteria"].append(success_signal)
+            self._append_rewrite_operation(
+                guidance_plan,
+                phase="opening",
+                action="lock_scene_anchor",
+                target="scene_entry",
+                instruction=instruction,
+                rationale="地点跳切无承接",
+                success_signal=success_signal,
             )
         if (
             "时间跳跃无锚点" in smoothness_categories
@@ -1996,21 +2538,56 @@ class NovelGeneratorAgent:
         """Format structured rewrite instructions into the legacy string field."""
         sections: list[str] = []
         for label, key in (
+            ("失败证据", "blocking_issues"),
+            ("开篇补桥", "opening_bridge"),
+            ("必须覆盖事件", "must_include_events"),
             ("保留要求", "must_keep"),
             ("本次修复", "fixes"),
             ("验收条件", "success_criteria"),
         ):
-            items = [
-                str(item).strip()
-                for item in rewrite_plan.get(key, [])
-                if str(item).strip()
-            ]
+            source = rewrite_plan.get(key, [])
+            if key == "blocking_issues" and not source:
+                source = (rewrite_plan.get("failure_evidence", {}) or {}).get(
+                    "blocking_issues", []
+                )
+            items = [str(item).strip() for item in source if str(item).strip()]
             if not items:
                 continue
             numbered = " ".join(
                 f"{index + 1}. {item}" for index, item in enumerate(items)
             )
             sections.append(f"【{label}】{numbered}")
+        goal_lock = str(rewrite_plan.get("goal_lock", "") or "").strip()
+        if goal_lock:
+            sections.append(f"【目标锁】{goal_lock}")
+        goal_subgoals = [
+            str(item).strip()
+            for item in rewrite_plan.get("goal_subgoals", [])
+            if str(item).strip()
+        ]
+        if len(goal_subgoals) > 1:
+            numbered = " ".join(
+                f"{index + 1}. {item}" for index, item in enumerate(goal_subgoals[:4])
+            )
+            sections.append(f"【目标锁分项】{numbered}")
+        ordered_beats = [
+            item for item in rewrite_plan.get("ordered_beats", []) if isinstance(item, dict)
+        ]
+        if ordered_beats:
+            beat_lines: list[str] = []
+            for index, beat in enumerate(ordered_beats, start=1):
+                phase = str(beat.get("phase", "") or "").strip() or f"phase_{index}"
+                action = str(beat.get("required_action", "") or "").strip()
+                suffix_parts = [
+                    str(beat.get("goal_lock", "") or "").strip(),
+                    str(beat.get("continuity_out", "") or "").strip(),
+                ]
+                suffix = "；".join(part for part in suffix_parts if part)
+                entry = f"{index}. {phase}: {action}".strip()
+                if suffix:
+                    entry += f"（{suffix}）"
+                beat_lines.append(entry)
+            sections.append(f"【重写节拍】{' '.join(beat_lines)}")
         return " ".join(sections).strip()
 
     def _extract_goal_lock(self, context: dict[str, Any] | None) -> str:
@@ -2030,6 +2607,11 @@ class NovelGeneratorAgent:
         value = str(payload.get("goal_lock", "") or "").strip()
         if value:
             return value
+        contract = context.get("chapter_intent_contract")
+        if isinstance(contract, dict):
+            value = str(contract.get("goal_lock", "") or "").strip()
+            if value:
+                return value
         return str(context.get("goal_lock", "") or "").strip()
 
     def _build_goal_lock_guidance(self, context: dict[str, Any] | None) -> str:
@@ -2064,15 +2646,39 @@ class NovelGeneratorAgent:
         """Build a stable execution contract that keeps goal_lock above one-shot guidance."""
         goal_lock = self._extract_goal_lock(context)
         planned_action = self._summarize_outline_focus(outline)
+        goal_subgoals = self._split_compound_goal_fragments(goal_lock)
+        chapter_graph_packet = dict(
+            (context or {}).get("chapter_graph_packet", {}) or {}
+        )
         contract: dict[str, Any] = {
             "goal_lock": goal_lock,
+            "goal_subgoals": goal_subgoals,
             "planned_action": planned_action,
+            "chapter_goal": str(chapter_graph_packet.get("chapter_goal", "") or "").strip(),
+            "required_bridge": str(
+                chapter_graph_packet.get("required_bridge", "") or ""
+            ).strip(),
+            "success_evidence": list(
+                chapter_graph_packet.get("success_evidence", []) or []
+            ),
             "chapter_guidance_scope": "additive_only"
             if chapter_guidance.strip()
             else "none",
             "new_setting_budget": self._extract_new_setting_budget(context)
             if goal_lock
             else None,
+            "opening_bridge_required": str(
+                chapter_graph_packet.get("opening_bridge_required", "") or ""
+            ).strip(),
+            "target_destinations": list(
+                chapter_graph_packet.get("target_destinations", []) or []
+            ),
+            "completed_goal_subgoals": list(
+                chapter_graph_packet.get("completed_goal_subgoals", []) or []
+            ),
+            "prohibited_inheritance": list(
+                chapter_graph_packet.get("prohibited_inheritance", []) or []
+            ),
             "success_checks": [],
         }
         if goal_lock:
@@ -2084,6 +2690,10 @@ class NovelGeneratorAgent:
                     "若引入新设定，必须在 1-2 段内解释它为什么服务主线目标，而不是平行扩写支线。",
                 ]
             )
+            if len(goal_subgoals) > 1:
+                contract["success_checks"].append(
+                    "复合目标锁必须逐项落地，不能只覆盖其中一个子目标。"
+                )
         else:
             contract["success_checks"].append(
                 "本章开头必须尽快承接上一章状态，避免无锚点跳切。"
@@ -2091,6 +2701,28 @@ class NovelGeneratorAgent:
         if chapter_guidance.strip():
             contract["success_checks"].append(
                 "章节附加指令只能补充执行方式，不得覆盖或改写卷级主线目标锁。"
+            )
+        if contract["chapter_goal"]:
+            contract["success_checks"].append(
+                f"本章至少一处关键行动必须服务当前章节目标：{contract['chapter_goal']}"
+            )
+        if contract["required_bridge"]:
+            contract["success_checks"].append(contract["required_bridge"])
+        if contract["success_evidence"]:
+            contract["success_checks"].extend(
+                str(item).strip()
+                for item in contract["success_evidence"][:3]
+                if str(item).strip()
+            )
+        if contract["opening_bridge_required"]:
+            contract["success_checks"].append(
+                contract["opening_bridge_required"]
+            )
+        if contract["prohibited_inheritance"]:
+            contract["success_checks"].extend(
+                str(item).strip()
+                for item in contract["prohibited_inheritance"][:2]
+                if str(item).strip()
             )
         return contract
 
@@ -2105,6 +2737,50 @@ class NovelGeneratorAgent:
         goal_lock = str(contract.get("goal_lock", "") or "").strip()
         if goal_lock:
             lines.append(f"- 不可偏离的主线目标锁: {goal_lock}")
+        chapter_goal = str(contract.get("chapter_goal", "") or "").strip()
+        if chapter_goal:
+            lines.append(f"- 当前章节目标: {chapter_goal}")
+        goal_subgoals = [
+            str(item).strip()
+            for item in contract.get("goal_subgoals", [])
+            if str(item).strip()
+        ]
+        if len(goal_subgoals) > 1:
+            lines.append("- 复合目标锁分项落地:")
+            lines.extend(f"  - {item}" for item in goal_subgoals[:4])
+        completed_goal_subgoals = [
+            str(item).strip()
+            for item in contract.get("completed_goal_subgoals", [])
+            if str(item).strip()
+        ]
+        if completed_goal_subgoals:
+            lines.append(
+                "- 已完成分项(避免假继承): "
+                + " / ".join(completed_goal_subgoals[:4])
+            )
+        target_destinations = [
+            str(item).strip()
+            for item in contract.get("target_destinations", [])
+            if str(item).strip()
+        ]
+        if target_destinations:
+            lines.append("- 本章目标地点: " + " / ".join(target_destinations[:3]))
+        opening_bridge_required = str(
+            contract.get("opening_bridge_required", "") or ""
+        ).strip()
+        if opening_bridge_required:
+            lines.append(f"- 开篇承接要求: {opening_bridge_required}")
+        required_bridge = str(contract.get("required_bridge", "") or "").strip()
+        if required_bridge:
+            lines.append(f"- 必补桥段: {required_bridge}")
+        success_evidence = [
+            str(item).strip()
+            for item in contract.get("success_evidence", [])
+            if str(item).strip()
+        ]
+        if success_evidence:
+            lines.append("- 成功证据:")
+            lines.extend(f"  - {item}" for item in success_evidence[:4])
         scope = str(contract.get("chapter_guidance_scope", "") or "").strip()
         if scope == "additive_only":
             lines.append("- 本章附加指令定位: 只补充执行方式，不覆盖主线目标锁。")
@@ -2236,11 +2912,33 @@ class NovelGeneratorAgent:
     def _goal_terms(self, goal_lock: str) -> list[str]:
         """Split the goal lock into stable matching terms."""
         terms: list[str] = []
-        for chunk in re.split(r"[，。；、：:！!？?\s/]+", goal_lock):
-            term = chunk.strip()
+        normalized_goal = str(goal_lock or "").strip()
+        for fragment in self._split_compound_goal_fragments(normalized_goal):
+            if fragment not in terms:
+                terms.append(fragment)
+        for chunk in re.split(r"[，。；、：:！!？?\s/]+", normalized_goal):
+            term = self._clean_anchor_candidate(chunk)
             if len(term) < 2 or term in ANTI_DRIFT_GOAL_STOPWORDS or term in terms:
                 continue
             terms.append(term)
+            if len(terms) >= 8:
+                break
+        for action in sorted(EVENT_ACTION_KEYWORDS, key=len, reverse=True):
+            if action not in normalized_goal:
+                continue
+            if action not in terms:
+                terms.append(action)
+            action_index = normalized_goal.find(action)
+            subject = normalized_goal[max(0, action_index - 4) : action_index].strip()
+            subject = re.sub(r"[^\u4e00-\u9fff]", "", subject)[-4:]
+            if len(subject) >= 2 and subject not in ANTI_DRIFT_GOAL_STOPWORDS and subject not in terms:
+                terms.append(subject)
+            object_tail = normalized_goal[action_index + len(action) :].strip()
+            object_tail = re.sub(r"^(?:在|于|向|对|把|将|从|往|朝)", "", object_tail)
+            object_tail = re.split(r"[，。；、：:！!？?\s/]+", object_tail, maxsplit=1)[0]
+            object_tail = object_tail[:8].strip()
+            if len(object_tail) >= 2 and object_tail not in ANTI_DRIFT_GOAL_STOPWORDS and object_tail not in terms:
+                terms.append(object_tail)
             if len(terms) >= 8:
                 break
         return terms
@@ -2358,9 +3056,13 @@ class NovelGeneratorAgent:
         """Detect false inheritance where the summary aligns but the body does not."""
         goal_lock = self._extract_goal_lock(context)
         goal_terms = self._goal_terms(goal_lock)
+        goal_subgoals = self._split_compound_goal_fragments(goal_lock)
         details: dict[str, Any] = {
             "goal_lock": goal_lock,
             "goal_terms": goal_terms,
+            "goal_subgoals": goal_subgoals,
+            "covered_subgoals": [],
+            "missing_subgoals": [],
             "summary_alignment": False,
             "body_alignment": False,
             "summary_matches": [],
@@ -2381,10 +3083,16 @@ class NovelGeneratorAgent:
         )
 
         body_matches: list[dict[str, Any]] = []
+        covered_subgoals: set[str] = set()
         for window in self._build_goal_lock_windows(chapter.content):
             matched_terms = self._find_goal_lock_matches(window, goal_terms)
+            covered_window_subgoals = [
+                subgoal
+                for subgoal in goal_subgoals
+                if self._event_fragment_is_covered(subgoal, window, context)
+            ]
             details["checked_windows"].append(window[:140])
-            if not matched_terms:
+            if not matched_terms and not covered_window_subgoals:
                 continue
             negated = self._window_negates_goal_lock(window)
             aligned = not negated and (
@@ -2393,21 +3101,43 @@ class NovelGeneratorAgent:
                     connector in window for connector in ANTI_DRIFT_BRIDGE_CONNECTORS
                 )
                 or len(matched_terms) >= 2
+                or (
+                    bool(covered_window_subgoals)
+                    and (len(goal_subgoals) <= 1 or len(covered_window_subgoals) == len(goal_subgoals))
+                )
             )
             fragment = window[:140]
             body_matches.append(
                 {
                     "fragment": fragment,
                     "matched_terms": matched_terms,
+                    "covered_subgoals": covered_window_subgoals,
                     "negated": negated,
                     "aligned": aligned,
                 }
             )
+            if not negated:
+                covered_subgoals.update(covered_window_subgoals)
             if aligned:
                 details["body_alignment"] = True
             else:
                 details["unaligned_fragments"].append(fragment)
 
+        if len(goal_subgoals) > 1:
+            overall_covered_subgoals = {
+                subgoal
+                for subgoal in goal_subgoals
+                if self._event_fragment_is_covered(subgoal, chapter.content, context)
+            }
+            if overall_covered_subgoals:
+                covered_subgoals.update(overall_covered_subgoals)
+
+        if goal_subgoals and len(covered_subgoals) == len(goal_subgoals):
+            details["body_alignment"] = True
+        details["covered_subgoals"] = list(covered_subgoals)
+        details["missing_subgoals"] = [
+            item for item in goal_subgoals if item not in covered_subgoals
+        ]
         details["body_matches"] = body_matches[:5]
         details["matched_fragments"] = [item["fragment"] for item in body_matches[:3]]
 
@@ -2932,7 +3662,19 @@ class NovelGeneratorAgent:
         anti_drift_details["goal_lock_false_inheritance_backstop"] = (
             goal_lock_safety_backstop
         )
-        goal_lock_blocks = goal_lock_mode == "block" or goal_lock_safety_backstop
+        goal_lock_event_backstop = (
+            bool(goal_lock_alignment_issues)
+            and not missing_events
+            and not continuity_issues
+            and not world_fact_issues
+            and not structure_drift_issues
+            and bool(anti_drift_details.get("summary_alignment"))
+            and not goal_lock_safety_backstop
+        )
+        anti_drift_details["goal_lock_event_backstop"] = goal_lock_event_backstop
+        goal_lock_blocks = (
+            goal_lock_mode == "block" or goal_lock_safety_backstop
+        ) and not goal_lock_event_backstop
         if goal_lock_alignment_issues:
             if goal_lock_blocks:
                 blocking_issues.extend(
@@ -3028,6 +3770,15 @@ class NovelGeneratorAgent:
             f"WRITER.md 告警: {item}" for item in writer_rule_messages if item
         )
         hard_gate_issue_types = classify_hard_gate_issue_types(issue_types)
+        graph_diff_details = build_graph_diff_details(
+            chapter_number=chapter.number,
+            context=context,
+            missing_events=missing_events,
+            continuity_issues=continuity_issues,
+            world_fact_issues=world_fact_issues,
+            anti_drift_details=anti_drift_details,
+            hard_gate_issue_types=hard_gate_issue_types,
+        )
 
         rewrite_guidance = ""
         rewrite_plan: dict[str, Any] = {}
@@ -3067,6 +3818,10 @@ class NovelGeneratorAgent:
             "chapter_intent_check": dict(
                 (context or {}).get("chapter_intent_check", {}) or {}
             ),
+            "chapter_graph_packet": dict(
+                (context or {}).get("chapter_graph_packet", {}) or {}
+            ),
+            "graph_diff_details": graph_diff_details,
             "rewrite_plan": rewrite_plan,
             "rewrite_guidance": rewrite_guidance,
             "summary": "；".join(blocking_issues[:3])

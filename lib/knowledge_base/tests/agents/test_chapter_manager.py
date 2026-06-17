@@ -10,6 +10,7 @@ from young_writer.agents.chapter_manager import (
     ChapterMetadata,
     ChapterPlotSummary,
 )
+import young_writer.agents.chapter_manager as chapter_manager_module
 
 
 class TestChapterManagerInit:
@@ -257,6 +258,36 @@ class TestGetChapterList:
         assert chapter_list[1].number == 2
         assert chapter_list[2].number == 3
 
+
+class TestBuildContext:
+    def test_build_context_includes_story_graph_packet_summary(
+        self, temp_novels_dir, monkeypatch
+    ):
+        project_id = "test_project_graph_context"
+        manager = ChapterManager(project_id, base_dir=str(temp_novels_dir))
+
+        monkeypatch.setattr(
+            chapter_manager_module,
+            "build_chapter_graph_packet",
+            lambda *_args, **_kwargs: {
+                "goal_lock": "守住空间城",
+                "previous_scene_anchor": "白昼环控制室",
+                "opening_bridge_required": "先接住白昼环控制室，再切到废弃港。",
+                "completed_goal_subgoals": ["确认信号真假"],
+            },
+        )
+        monkeypatch.setattr(
+            chapter_manager_module,
+            "render_chapter_graph_packet_summary",
+            lambda _packet: "上一场景锚点: 白昼环控制室\n开篇补桥: 先接住白昼环控制室，再切到废弃港。",
+        )
+
+        context = manager.build_context(1)
+
+        assert context["chapter_graph_packet"]["goal_lock"] == "守住空间城"
+        assert "剧情状态图摘要:" in str(context)
+        assert "上一场景锚点: 白昼环控制室" in str(context)
+
     def test_get_chapter_list_returns_metadata(self, temp_novels_dir):
         """Test that chapter list returns ChapterMetadata objects."""
         project_id = "test_project_012"
@@ -412,8 +443,7 @@ class TestExportToText:
         output_path = temp_novels_dir / "export.txt"
         count = manager.export_to_text(str(output_path))
 
-        # count is number of lines written, not chapters
-        assert count > 0
+        assert count == 2
         assert output_path.exists()
 
         content = output_path.read_text(encoding="utf-8")
@@ -435,8 +465,7 @@ class TestExportToText:
         output_path = temp_novels_dir / "export.txt"
         count = manager.export_to_text(str(output_path), start=1, end=2)
 
-        # count is lines written
-        assert count > 0
+        assert count == 2
         content = output_path.read_text(encoding="utf-8")
         assert "第3章" not in content
 

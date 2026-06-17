@@ -19,7 +19,10 @@ REPO_ROOT_DIR = ROOT_DIR.parents[1]
 load_dotenv(REPO_ROOT_DIR / ".env", override=False)
 load_dotenv(ROOT_DIR / ".env", override=True)
 
-from young_writer.agents.chapter_manager import ChapterManager, get_chapter_manager  # noqa: E402
+from young_writer.agents.chapter_manager import (  # noqa: E402
+    ChapterManager,
+    get_chapter_manager,
+)
 from young_writer.agents.config_manager import get_config_manager  # noqa: E402
 from young_writer.services.cli_commands import (  # noqa: E402
     append_writing_option_flags,
@@ -573,6 +576,17 @@ def resume_longform_action(
         "--submit-approval",
         action,
     ]
+    chapter_review_mode = str(status.get("chapter_review_mode", "") or "").strip()
+    if chapter_review_mode:
+        cmd.extend(["--chapter-review-mode", chapter_review_mode])
+    chapter_auto_repair_attempts = status.get("chapter_auto_repair_attempts")
+    if chapter_auto_repair_attempts is not None:
+        cmd.extend(
+            [
+                "--chapter-auto-repair-attempts",
+                str(int(chapter_auto_repair_attempts)),
+            ]
+        )
     if payload:
         payload_path = _approval_payload_file(run_dir, payload)
         cmd.extend(["--approval-payload", str(payload_path)])
@@ -1223,6 +1237,7 @@ def _chapter_review_structured_sections(
         for item in review_payload.get("rewrite_history", [])
         if isinstance(item, dict)
     ]
+    graph_diff = review_payload.get("graph_diff_details", {}) or {}
     next_action = str(review_payload.get("quality_gate_next_action", "") or "").strip()
 
     sections: list[tuple[str, str]] = []
@@ -1230,6 +1245,29 @@ def _chapter_review_structured_sections(
         sections.append(("问题类型", _non_empty_lines(issue_types)))
     if issue_categories:
         sections.append(("问题分类", _non_empty_lines(issue_categories)))
+    if graph_diff:
+        lines = []
+        recommended_action = str(graph_diff.get("recommended_action", "") or "").strip()
+        if recommended_action:
+            lines.append(f"建议动作: {recommended_action}")
+        missing_edges = [
+            item for item in graph_diff.get("missing_edges", []) if isinstance(item, dict)
+        ]
+        conflicting_edges = [
+            item for item in graph_diff.get("conflicting_edges", []) if isinstance(item, dict)
+        ]
+        if missing_edges:
+            lines.extend(
+                f"缺口[{item.get('type', '') or ''!s}]: {item.get('label', '') or ''!s}"
+                for item in missing_edges[:4]
+            )
+        if conflicting_edges:
+            lines.extend(
+                f"冲突[{item.get('type', '') or ''!s}]: {item.get('label', '') or ''!s}"
+                for item in conflicting_edges[:4]
+            )
+        if lines:
+            sections.append(("图差分", _non_empty_lines(lines)))
     if rewrite_history or next_action:
         lines = []
         if rewrite_history:
@@ -1261,6 +1299,8 @@ def _chapter_review_structured_sections(
 def _chapter_review_evidence(review_payload: dict[str, Any]) -> list[tuple[str, str]]:
     anti_drift = review_payload.get("anti_drift_details", {}) or {}
     chapter_intent_contract = review_payload.get("chapter_intent_contract", {}) or {}
+    chapter_graph_packet = review_payload.get("chapter_graph_packet", {}) or {}
+    graph_diff = review_payload.get("graph_diff_details", {}) or {}
     semantic_review = review_payload.get("semantic_review", {}) or {}
     writer_rule_warnings = [
         item
@@ -1302,6 +1342,28 @@ def _chapter_review_evidence(review_payload: dict[str, Any]) -> list[tuple[str, 
             lines.append("- 未对齐片段:")
             lines.extend(f"  - {item}" for item in unaligned_fragments[:3])
         sections.append(("目标锁证据", "\n".join(lines)))
+
+    if chapter_graph_packet:
+        lines = []
+        previous_anchor = str(
+            chapter_graph_packet.get("previous_scene_anchor", "") or ""
+        ).strip()
+        if previous_anchor:
+            lines.append(f"- 上一场景锚点: {previous_anchor}")
+        opening_bridge = str(
+            chapter_graph_packet.get("opening_bridge_required", "") or ""
+        ).strip()
+        if opening_bridge:
+            lines.append(f"- 开篇补桥: {opening_bridge}")
+        completed_subgoals = [
+            str(item).strip()
+            for item in chapter_graph_packet.get("completed_goal_subgoals", [])
+            if str(item).strip()
+        ]
+        if completed_subgoals:
+            lines.append("- 已完成分项: " + "、".join(completed_subgoals[:4]))
+        if lines:
+            sections.append(("剧情状态图输入", "\n".join(lines)))
 
     bridge_results = anti_drift.get("bridge_results", []) or []
     if bridge_results:
@@ -1411,6 +1473,19 @@ def _chapter_review_evidence(review_payload: dict[str, Any]) -> list[tuple[str, 
                 elif instruction:
                     lines.append(f"  - {instruction}")
         sections.append(("结构化重写方案", "\n".join(lines)))
+
+    graph_evidence = [
+        item for item in graph_diff.get("evidence_refs", []) if isinstance(item, dict)
+    ]
+    if graph_evidence:
+        lines = []
+        for item in graph_evidence[:5]:
+            kind = str(item.get("kind", "") or "").strip() or "graph"
+            excerpt = str(item.get("excerpt", "") or "").strip()
+            if excerpt:
+                lines.append(f"- {kind}: {excerpt}")
+        if lines:
+            sections.append(("图差分证据", "\n".join(lines)))
 
     return sections
 
@@ -1666,6 +1741,16 @@ def _longform_control_panel_sections(status: dict[str, Any]) -> list[tuple[str, 
         ]
         if issue_types:
             pending_lines.append(f"- 问题类型: {' / '.join(issue_types[:4])}")
+        recommended_action = str(
+            review_payload.get("graph_recommended_action")
+            or review_payload.get("graph_diff_details", {}).get("recommended_action", "")
+            or ""
+        ).strip()
+        if recommended_action:
+            pending_lines.append(f"- 推荐动作: {recommended_action}")
+        pause_disposition = str(review_payload.get("pause_disposition", "") or "").strip()
+        if pause_disposition:
+            pending_lines.append(f"- 暂停分类: {pause_disposition}")
         blocking_issues = [
             str(item).strip()
             for item in review_payload.get("blocking_issues", [])
@@ -1701,7 +1786,7 @@ def _render_run_status_summary(st_mod: Any, payload: dict[str, Any]) -> None:
         min(max(progress, 0.0), 1.0), text=status.get("current_step", "等待启动")
     )
 
-    if status.get("failed_stage") or status.get("error_message"):
+    if status.get("status") == "failed":
         st_mod.error(
             f"失败阶段: {status.get('failed_stage') or 'unknown'}\n\n"
             f"{status.get('error_message') or '无错误详情'}"
@@ -1717,6 +1802,30 @@ def _render_run_status_summary(st_mod: Any, payload: dict[str, Any]) -> None:
     queued_guidance = _queued_guidance_summary(status)
     if queued_guidance:
         st_mod.info(f"下一卷排队指令:\n{queued_guidance}")
+
+    auto_repair_lines: list[str] = []
+    auto_repair_status = str(status.get("auto_repair_status", "") or "").strip()
+    if auto_repair_status:
+        auto_repair_lines.append(f"- 当前状态: {auto_repair_status}")
+    graph_recommended_action = str(
+        status.get("graph_recommended_action", "") or ""
+    ).strip()
+    if graph_recommended_action:
+        auto_repair_lines.append(f"- 推荐动作: {graph_recommended_action}")
+    if status.get("last_auto_repair_chapter"):
+        auto_repair_lines.append(
+            f"- 最近章节: 第 {status.get('last_auto_repair_chapter')} 章"
+        )
+    if status.get("last_auto_repair_action"):
+        auto_repair_lines.append(
+            f"- 最近自动修复: {status.get('last_auto_repair_action')}"
+        )
+    if status.get("repair_exhausted_reason"):
+        auto_repair_lines.append(
+            f"- 耗尽原因: {status.get('repair_exhausted_reason')}"
+        )
+    if auto_repair_lines:
+        st_mod.info("章节自动修复:\n" + "\n".join(auto_repair_lines))
 
     control_sections = _longform_control_panel_sections(status)
     if control_sections:

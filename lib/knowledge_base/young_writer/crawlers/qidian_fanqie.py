@@ -213,8 +213,6 @@ class QidianFanqieCrawler(FirecrawlCrawler):
             chapter_num = match.group(1)
             title = match.group(2).strip() if match.group(2) else ""
             url = match.group(3)
-            chapter_id = match.group(4)
-
             if url in seen_urls:
                 continue
             seen_urls.add(url)
@@ -232,7 +230,6 @@ class QidianFanqieCrawler(FirecrawlCrawler):
         # Also try HTML pattern as fallback
         for match in html_pattern.finditer(content):
             url = match.group(1)
-            chapter_id = match.group(2)
             chapter_num = match.group(3)
             title = match.group(4).strip() if match.group(4) else ""
 

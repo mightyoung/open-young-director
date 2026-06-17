@@ -101,6 +101,81 @@ def test_hard_gate_classifier_keeps_unknown_issue_categories_warning_only():
     ) == ["scene_or_timeline_disconnect"]
 
 
+def test_goal_terms_extracts_compact_action_anchors():
+    generator = _make_generator()
+
+    terms = generator._goal_terms("林渊追查失踪舰队回声真相")
+
+    assert "林渊" in terms
+    assert "追查" in terms
+    assert any(term in terms for term in ("失踪舰队回声真相", "回声真相"))
+
+
+def test_goal_terms_extracts_terminal_rescue_anchors():
+    generator = _make_generator()
+
+    terms = generator._goal_terms("林渊救回母亲")
+
+    assert "林渊" in terms
+    assert "救回" in terms
+    assert "母亲" in terms
+
+
+def test_goal_lock_false_inheritance_downgrades_when_key_events_are_covered(monkeypatch):
+    generator = _make_generator()
+    chapter = _make_chapter(
+        1,
+        "第1章",
+        """
+        林渊守在监测站前，盯着回声舰队的加密波形。
+        白昼环的旧坐标在终端上一行行跳出，他继续顺着残缺记录往下查。
+        """,
+    )
+    chapter.metadata.update(
+        {
+            "key_events": ["林渊追查失踪舰队回声真相"],
+            "outline_summary": "林渊追查失踪舰队回声真相",
+        }
+    )
+
+    monkeypatch.setattr(
+        generator,
+        "_check_goal_lock_alignment",
+        lambda chapter, context: (
+            [
+                {
+                    "category": "goal_lock_false_inheritance",
+                    "message": "目标锁假继承",
+                }
+            ],
+            {
+                "goal_lock": "林渊追查失踪舰队回声真相",
+                "summary_alignment": True,
+                "body_matches": [{"fragment": "林渊守在监测站前", "negated": False}],
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        generator,
+        "_check_structure_drift",
+        lambda content, previous_summary, context: ([], {}),
+    )
+    monkeypatch.setattr(generator, "_event_is_covered", lambda event, content, context=None: True)
+
+    report = generator._check_consistency(
+        chapter,
+        "",
+        {
+            "known_char_names": ["林渊"],
+            "chapter_intent_contract": {"goal_lock": "林渊追查失踪舰队回声真相"},
+        },
+    )
+
+    assert report["invalid"] is False
+    assert "goal_lock_false_inheritance" not in report["hard_gate_issue_types"]
+    assert any("目标锁假继承" in item for item in report["warning_issues"])
+
+
 class TestNovelGeneratorWritingOptions:
     """Test writing option prompt expansion in the main generation path."""
 
@@ -140,6 +215,8 @@ class TestNovelGeneratorWritingOptions:
         assert "逆天写法" in prompt
         assert "WRITER.md 宪法摘录" in prompt
         assert "banned_wording" in prompt
+        assert "中文长篇小说写作助手" in prompt
+        assert "宗门名称" not in prompt
 
     def test_writer_rule_warnings_are_advisory_not_invalid(self):
         report = _run_consistency_check(
@@ -249,6 +326,7 @@ class TestNovelGeneratorWritingOptions:
             previous_summary="",
             context={
                 "chapter_number": 1,
+                "characters": [{"name": "沈夜", "identity": "主角"}],
                 "character_intro": "沈夜：主角。顾砚青：调查官。",
                 "genre": "科幻修真",
             },
@@ -262,6 +340,35 @@ class TestNovelGeneratorWritingOptions:
             in result["generation_trace"]["orchestrator"]["failure_reasons"]
         )
         assert generator._orchestrator_consecutive_failures == 1
+
+    def test_generate_content_skips_orchestrator_when_character_sources_missing(self):
+        generator = _make_generator()
+        generator.llm_client.generate.return_value = "沈夜回到边境空间城，开始调查异质核心来源。" * 80
+
+        calls = {"count": 0}
+
+        class _FakeOrchestrator:
+            def orchestrate_chapter(self, **_kwargs):
+                calls["count"] += 1
+                return {"content": "不应调用", "plot_outline": {"beats": []}, "cast": []}
+
+        generator.orchestrator = _FakeOrchestrator()
+
+        result = generator._generate_content(
+            chapter_number=1,
+            title="第1章",
+            outline="沈夜带着异质核心归来，在边境空间城落脚并查清核心来源",
+            previous_summary="",
+            context={"chapter_number": 1, "genre": "科幻修真"},
+            retry_attempt=0,
+        )
+
+        assert calls["count"] == 0
+        assert result["generation_trace"]["path"] == "direct_llm"
+        assert result["generation_trace"]["orchestrator"]["failure_reasons"] == [
+            "orchestrator_preflight_no_characters"
+        ]
+        assert generator._orchestrator_consecutive_failures == 0
 
     def test_generate_content_disables_orchestrator_after_consecutive_failures(self):
         generator = _make_generator()
@@ -285,6 +392,7 @@ class TestNovelGeneratorWritingOptions:
             "previous_summary": "",
             "context": {
                 "chapter_number": 1,
+                "characters": [{"name": "沈夜", "identity": "主角"}],
                 "character_intro": "沈夜：主角。顾砚青：调查官。",
                 "genre": "科幻修真",
             },
@@ -575,6 +683,58 @@ class TestNovelGeneratorSmoothnessConsistency:
 
         _assert_transition_issue(report, "上一章后果未被承接")
 
+    def test_consistency_report_prefers_previous_tail_over_template_summary_consequence(
+        self,
+    ):
+        report = _run_consistency_check(
+            previous_summary=(
+                "承接上一章局势，继续开场阶段推进。"
+                "在近未来的极地轨道电梯网络崩塌后，沈雁重返被封锁的冰穹城。"
+            ),
+            previous_content="""
+            远程通信器响起紧急呼叫，岑暮警告冰穹城外围冰架出现大面积共振裂缝。
+            祁湛的雷达同时显示不明潜航器正高速逼近港口。
+            沈雁必须在“立刻下探”与“紧急撤离”之间做出选择。
+            """,
+            current_content="""
+            沈雁穿过极地轨道电梯的残骸区，踏入被封锁的北海冰穹城外围。
+            她像是重新开始了一段调查，前一刻的紧急呼叫与逼近威胁仿佛都没有发生。
+            """,
+            context_overrides={
+                "chapter_intent_contract": {
+                    "goal_lock": "沈雁重返被封锁的北海冰穹城"
+                },
+            },
+        )
+
+        _assert_transition_issue(report, "上一章后果未被承接")
+        assert any(
+            detail["category"] == "上一章后果未被承接"
+            and "立刻下探" in detail["previous_evidence"]
+            for detail in report["smoothness_details"]
+        )
+        assert all(
+            detail.get("previous_evidence") != "崩塌"
+            for detail in report["smoothness_details"]
+        )
+
+    def test_consistency_report_falls_back_to_summary_when_previous_tail_missing(self):
+        report = _run_consistency_check(
+            previous_summary="上一章结尾，爆炸将叶尘炸成重伤，柳如烟也在废墟中昏迷不醒。",
+            previous_content="",
+            current_content="""
+            清晨的集市热闹非凡。
+            韩林慢悠悠地挑着糕点，还盘算着今晚去哪里听戏。
+            """,
+        )
+
+        _assert_transition_issue(report, "上一章后果未被承接")
+        assert any(
+            detail["category"] == "上一章后果未被承接"
+            and detail["previous_evidence"] == "重伤"
+            for detail in report["smoothness_details"]
+        )
+
     def test_consistency_report_flags_superficially_smooth_but_causally_broken_opening(
         self,
     ):
@@ -628,6 +788,214 @@ class TestNovelGeneratorSmoothnessConsistency:
         assert not any(
             "scene_or_timeline_disconnect" == issue for issue in report["issue_types"]
         )
+
+    def test_consistency_report_allows_explicit_path_bridge_into_new_room(self):
+        report = _run_consistency_check(
+            previous_summary="上一章结尾，季衡刚踏进那扇门，准备去监控室确认求救信号。",
+            previous_content="""
+            季衡压住呼吸，在走廊尽头推开那扇门。
+            他知道门后就是监控区，必须尽快确认那段异常信号的真假。
+            """,
+            current_content="""
+            季衡从上一章踏进那扇门后，穿过昏暗的走廊进入声呐监控室。
+            苏未已经坐在控制台前，等他把第一轮波形比对结果调出来。
+            """,
+        )
+
+        assert report["invalid"] is False
+        assert not any("地点跳切无承接" in issue for issue in report["blocking_issues"])
+
+    def test_extract_location_anchor_prefers_destination_over_control_console(self):
+        generator = _make_generator()
+
+        anchor = generator._extract_location_anchor(
+            "季衡从上一章踏进那扇门后，穿过昏暗的走廊进入声呐监控室。苏未已经坐在控制台前。"
+        )
+
+        assert anchor == "声呐监控室"
+
+    def test_extract_location_anchor_keeps_full_scifi_place_name(self):
+        generator = _make_generator()
+
+        anchor = generator._extract_location_anchor(
+            "深潜器进入禁航海沟后，季衡发现所谓的求救信号并非来自失踪考察舰。"
+        )
+
+        assert anchor == "禁航海沟"
+
+    def test_extract_location_anchor_rejects_window_countdown_fragment(self):
+        generator = _make_generator()
+
+        anchor = generator._extract_location_anchor(
+            "深潜器在潮汐窗口关闭前三十秒冲出禁航区边界，船身猛地一沉。"
+        )
+
+        assert anchor == "禁航区边界"
+
+    def test_extract_location_anchor_detects_station_scene(self):
+        generator = _make_generator()
+
+        anchor = generator._extract_location_anchor(
+            "季衡在声呐监测站值班时，突然收到来自潮汐空间边界的微弱求救信号。"
+        )
+
+        assert anchor == "声呐监测站"
+
+    def test_extract_location_anchor_prefers_earliest_scene_over_later_goal_place(self):
+        generator = _make_generator()
+
+        anchor = generator._extract_location_anchor(
+            "声呐译码师季衡在潮汐监测站加班时，突然接收到异常信号。上司要求他在72小时内完成鉴定，并准备进入禁航海沟。"
+        )
+
+        assert anchor == "潮汐监测站"
+
+    def test_extract_location_anchor_prefers_nested_room_over_outer_region(self):
+        generator = _make_generator()
+
+        anchor = generator._extract_location_anchor(
+            "季衡在潮汐空间边界的声呐室中，突然收到持续脉冲信号。"
+        )
+
+        assert anchor == "声呐室"
+
+    def test_extract_location_anchor_prefers_nested_center_over_outer_city(self):
+        generator = _make_generator()
+
+        anchor = generator._extract_location_anchor(
+            "苏未在深海城的控制中心调取图谱。"
+        )
+
+        assert anchor == "控制中心"
+
+    def test_consistency_report_flags_reset_from_trench_back_to_station(self):
+        report = _run_consistency_check(
+            previous_summary="上一章末尾，季衡和苏未已经进入禁航海沟，准备打捞中继浮标。",
+            previous_content="""
+            深潜器进入禁航海沟后，季衡发现所谓的求救信号并非来自失踪考察舰，
+            而是一个由季岚预先设置的中继浮标。
+            """,
+            current_content="""
+            季衡在声呐监测站值班时，突然收到来自潮汐空间边界的微弱求救信号。
+            经比对，信号编码与失踪多年的深海考察舰完全一致。
+            """,
+        )
+
+        assert report["invalid"] is True
+        assert "scene_or_timeline_disconnect" in report["issue_types"]
+        assert any(
+            detail["previous_evidence"] == "禁航海沟"
+            and detail["current_evidence"] == "声呐监测站"
+            for detail in report["smoothness_details"]
+        )
+
+    def test_consistency_report_ignores_markdown_prelude_when_checking_opening(self):
+        report = _run_consistency_check(
+            previous_summary="上一章末尾，季衡和苏未已经进入禁航海沟，准备打捞中继浮标。",
+            previous_content="""
+            深潜器进入禁航海沟后，季衡发现所谓的求救信号并非来自失踪考察舰，
+            而是一个由季岚预先设置的中继浮标。
+            """,
+            current_content="""
+            # 第3章
+
+            **本章概要**: 季衡必须确认信号真假、进入禁航海沟
+
+            **关键事件**: 季衡确认信号真假、进入禁航海沟
+
+            ---
+
+            ◆开场
+            季衡在声呐监测站值班时，突然收到来自潮汐空间边界的微弱求救信号。
+            经比对，信号编码与失踪多年的深海考察舰完全一致。
+            """,
+        )
+
+        assert report["invalid"] is True
+        assert "scene_or_timeline_disconnect" in report["issue_types"]
+
+    def test_future_goal_phrase_does_not_count_as_transition_bridge(self):
+        generator = _make_generator()
+
+        assert (
+            generator._has_bridge_signal(
+                "声呐译码师季衡在潮汐监测站加班时，闻彻要求他在72小时内完成鉴定，并准备进入禁航海沟。"
+            )
+            is False
+        )
+
+    def test_generate_chapter_falls_back_to_context_previous_summary_on_resume(
+        self, monkeypatch
+    ):
+        generator = _make_generator()
+        context = {
+            "previous_summary": "上一章末尾，季衡和苏未已经进入禁航海沟，准备打捞中继浮标。",
+            "previous_chapters": [
+                {
+                    "content": dedent(
+                        """
+                        深潜器进入禁航海沟后，季衡发现所谓的求救信号并非来自失踪考察舰，
+                        而是一个由季岚预先设置的中继浮标。
+                        """
+                    ).strip()
+                }
+            ],
+        }
+
+        monkeypatch.setattr(
+            generator,
+            "_get_chapter_outline",
+            lambda chapter_number: {
+                "title": f"第{chapter_number}章",
+                "summary": "承接上一章局势，继续承压阶段推进。",
+                "key_events": ["季衡确认信号真假", "进入禁航海沟"],
+                "magic_line": "",
+                "goal_lock": "季衡确认信号真假、进入禁航海沟",
+                "continuity_in": "",
+                "continuity_out": "",
+            },
+        )
+        monkeypatch.setattr(
+            generator,
+            "_generate_candidate",
+            lambda **kwargs: {
+                "content": dedent(
+                    """
+                    ◆开场
+                    季衡在声呐监测站值班时，突然收到来自潮汐空间边界的微弱求救信号。
+                    经比对，信号编码与失踪多年的深海考察舰完全一致。
+                    """
+                ).strip(),
+                "orchestrator_result": None,
+                "generation_trace": None,
+            },
+        )
+        monkeypatch.setattr(
+            generator,
+            "_create_chapter",
+            lambda **kwargs: MODULE.GeneratedChapter(
+                number=kwargs["chapter_number"],
+                title=kwargs["title"],
+                content=kwargs["content"],
+                word_count=len(kwargs["content"]),
+                metadata={
+                    "key_events": ["季衡确认信号真假", "进入禁航海沟"],
+                    "outline_summary": kwargs["outline_summary"],
+                },
+            ),
+        )
+        monkeypatch.setattr(
+            generator, "_rewrite_invalid_chapter", lambda **kwargs: kwargs["chapter"]
+        )
+
+        chapter = generator.generate_chapter(
+            chapter_number=3,
+            context=context,
+            previous_summary="",
+        )
+
+        assert chapter.consistency_report["invalid"] is True
+        assert "scene_or_timeline_disconnect" in chapter.consistency_report["issue_types"]
 
     def test_consistency_report_marks_missing_events_as_invalid(self):
         generator = NovelGeneratorAgent(
@@ -739,6 +1107,78 @@ class TestNovelGeneratorSmoothnessConsistency:
 
         assert report["invalid"] is False
         assert "missing_key_events" not in report["issue_types"]
+
+    def test_consistency_report_accepts_compound_event_split_across_actions(self):
+        generator = NovelGeneratorAgent(
+            config_manager=DummyConfigManager(), llm_client=MagicMock()
+        )
+        chapter = MODULE.GeneratedChapter(
+            number=3,
+            title="第三章",
+            content=dedent(
+                """
+                林渊盯着回声空域回传的波形，先把异常频段与旧星门底噪逐项比对，确认这批数据到底是真是假。
+                他转向顾岚，低声请她帮忙复核那组偏移参数，再配合自己锁定隐藏在噪声里的第二层坐标。
+                """
+            ).strip(),
+            word_count=94,
+            metadata={
+                "key_events": ["途中他必须验证信号真假、争取顾岚协助"],
+                "outline_summary": "途中他必须验证信号真假、争取顾岚协助",
+            },
+            plot_summary={
+                "l2_brief_summary": "林渊继续验证信号真假，并争取顾岚协助破解噪声。"
+            },
+        )
+
+        report = generator._check_consistency(
+            chapter,
+            previous_summary="上一章林渊刚跃入旧星门外围，准备继续追查母亲线索。",
+            context={
+                "character_names": ["林渊", "顾岚"],
+                "chapter_intent_contract": {
+                    "goal_lock": "途中他必须验证信号真假、争取顾岚协助"
+                },
+            },
+        )
+
+        assert report["invalid"] is False
+        assert "missing_key_events" not in report["issue_types"]
+        assert "goal_lock_false_inheritance" not in report["issue_types"]
+        assert report["anti_drift_details"]["body_alignment"] is True
+        assert set(report["anti_drift_details"]["covered_subgoals"]) == {
+            "验证信号真假",
+            "争取顾岚协助",
+        }
+
+    def test_goal_lock_alignment_reports_all_compound_subgoals_from_full_content(self):
+        generator = _make_generator()
+        chapter = MODULE.GeneratedChapter(
+            number=3,
+            title="第三章",
+            content=dedent(
+                """
+                林渊抵达白昼环监测站主控室，面对星图投影中标记的异常信号源。他调出回声空域的旧星门与远征舰队残骸的扫描数据，发现信号与已知航标波形存在细微偏差，必须优先验证真伪才能决定是否启航。
+
+                林渊试图独立解析信号编码，但发现其中嵌入了顾岚团队特有的加密片段。他主动联络顾岚，说明情况并请求顾岚协助解码。
+                """
+            ).strip(),
+            word_count=138,
+            metadata={"key_events": [], "outline_summary": ""},
+            plot_summary={
+                "l2_brief_summary": "林渊继续验证信号真假，并争取顾岚协助破解噪声。"
+            },
+        )
+
+        issues, details = generator._check_goal_lock_alignment(
+            chapter,
+            {"chapter_intent_contract": {"goal_lock": "途中他必须验证信号真假、争取顾岚协助"}},
+        )
+
+        assert issues == []
+        assert details["body_alignment"] is True
+        assert set(details["covered_subgoals"]) == {"验证信号真假", "争取顾岚协助"}
+        assert details["missing_subgoals"] == []
 
     def test_consistency_report_marks_world_fact_violation_as_invalid(self):
         generator = NovelGeneratorAgent(
@@ -1188,6 +1628,119 @@ class TestNovelGeneratorSmoothnessConsistency:
         assert "【本次修复】" in report["rewrite_guidance"]
         assert "时间跨度带来的状态变化" in report["rewrite_guidance"]
 
+    def test_build_chapter_repair_plan_adds_plan_first_fields(self):
+        generator = _make_generator()
+
+        repair_plan = generator._build_chapter_repair_plan(
+            report={
+                "issue_types": [
+                    "scene_or_timeline_disconnect",
+                    "goal_lock_false_inheritance",
+                ],
+                "blocking_issues": ["上一章后果未被承接。"],
+                "continuity_issues": ["上一章后果未被承接。"],
+                "missing_events": ["林渊救回母亲"],
+                "anti_drift_details": {
+                    "goal_lock": "林渊救回母亲",
+                    "matched_fragments": ["林渊冲向舱门"],
+                },
+            },
+            outline_summary="林渊救回母亲并撤离白昼环。",
+            context={"chapter_plan": {"continuity_out": "暴露撤离路线"}},
+        )
+
+        assert repair_plan["rewrite_mode"] == "plan_first_full_rewrite"
+        assert repair_plan["goal_lock"] == "林渊救回母亲"
+        assert repair_plan["goal_subgoals"] == ["林渊救回母亲"]
+        assert repair_plan["must_include_events"] == ["林渊救回母亲"]
+        assert repair_plan["opening_bridge"] == ["上一章后果未被承接。"]
+        assert repair_plan["continuity_anchor_contract"] == {}
+        assert repair_plan["failure_evidence"]["blocking_issues"] == [
+            "上一章后果未被承接。"
+        ]
+        assert [item["phase"] for item in repair_plan["ordered_beats"]] == [
+            "opening",
+            "development",
+            "conflict",
+            "resolution",
+        ]
+
+    def test_format_rewrite_guidance_includes_plan_first_sections(self):
+        generator = _make_generator()
+
+        guidance = generator._format_rewrite_guidance(
+            {
+                "failure_evidence": {"blocking_issues": ["上一章后果未被承接。"]},
+                "opening_bridge": ["先回应暴露后果。"],
+                "must_include_events": ["林渊救回母亲"],
+                "fixes": ["重建章节行动链。"],
+                "success_criteria": ["正文真实推进目标锁。"],
+                "goal_lock": "林渊验证信号真假、争取顾岚协助",
+                "goal_subgoals": ["验证信号真假", "争取顾岚协助"],
+                "ordered_beats": [
+                    {"phase": "opening", "required_action": "承接暴露后果"},
+                    {
+                        "phase": "resolution",
+                        "required_action": "交代撤离压力",
+                        "continuity_out": "暴露撤离路线",
+                    },
+                ],
+            }
+        )
+
+        assert "【失败证据】1. 上一章后果未被承接。" in guidance
+        assert "【开篇补桥】1. 先回应暴露后果。" in guidance
+        assert "【必须覆盖事件】1. 林渊救回母亲" in guidance
+        assert "【目标锁】林渊验证信号真假、争取顾岚协助" in guidance
+        assert "【目标锁分项】1. 验证信号真假 2. 争取顾岚协助" in guidance
+        assert "【重写节拍】1. opening: 承接暴露后果" in guidance
+        assert "2. resolution: 交代撤离压力（暴露撤离路线）" in guidance
+
+    def test_rewrite_plan_adds_explicit_scene_anchor_contract(self):
+        generator = _make_generator()
+
+        repair_plan = generator._build_chapter_repair_plan(
+            report={
+                "issue_types": ["scene_or_timeline_disconnect"],
+                "blocking_issues": [
+                    "顺畅性问题[地点跳切无承接] 上一章线索「禁航海沟」 与当前开篇「深海城邦」之间缺少地点转换或行动路径交代。"
+                ],
+                "continuity_issues": [
+                    "顺畅性问题[地点跳切无承接] 上一章线索「禁航海沟」 与当前开篇「深海城邦」之间缺少地点转换或行动路径交代。"
+                ],
+                "smoothness_details": [
+                    {
+                        "category": "地点跳切无承接",
+                        "previous_evidence": "禁航海沟",
+                        "current_evidence": "深海城邦",
+                    }
+                ],
+                "anti_drift_details": {
+                    "goal_lock": "季衡确认信号真假、进入禁航海沟",
+                    "matched_fragments": ["季衡拖着浮标回到舱内"],
+                },
+            },
+            outline_summary="季衡在海沟内确认图谱真假并应对追兵。",
+            context={},
+        )
+
+        assert repair_plan["continuity_anchor_contract"] == {
+            "previous_anchor": "禁航海沟",
+            "current_anchor": "深海城邦",
+            "instruction": "开篇先接住「禁航海沟」；如需切到「深海城邦」，必须写出路径、抵达动作或切换原因，不得直接在「深海城邦」重开。",
+        }
+        assert any(
+            item["action"] == "lock_scene_anchor"
+            for item in repair_plan["operations"]
+        )
+
+        rewrite_outline = generator._compose_rewrite_outline(
+            outline="承接上一章局势，继续推进。",
+            repair_plan=repair_plan,
+        )
+        assert "场景锚点硬约束" in rewrite_outline
+        assert "开篇先接住「禁航海沟」" in rewrite_outline
+
     def test_chapter_intent_check_rewrites_unaligned_outline_before_generation(self):
         generator = _make_generator()
         context = {
@@ -1318,3 +1871,46 @@ def test_consistency_report_matches_anti_drift_golden_cases(case):
         ]
         for action in expected_actions:
             assert action in rewrite_actions
+    expected_anti_drift_details = case.get("expected_anti_drift_details", {})
+    if expected_anti_drift_details:
+        anti_drift_details = report.get("anti_drift_details", {})
+        for key, expected_value in expected_anti_drift_details.items():
+            actual_value = anti_drift_details.get(key)
+            if key in {"covered_subgoals", "missing_subgoals"}:
+                assert sorted(actual_value or []) == sorted(expected_value)
+            else:
+                assert actual_value == expected_value
+
+
+def test_consistency_report_adds_graph_diff_details_from_chapter_graph_packet():
+    report = _run_consistency_check(
+        previous_summary="上一章林渊刚在白昼环控制室确认母亲信号来自二十七年前。",
+        previous_content="""
+        林渊站在白昼环控制室，意识到信号源并不等于当前所在地点。
+        他决定下一章转去废弃港继续追查。
+        """,
+        current_content="""
+        三天后，林渊已经到了废弃港，却把大量篇幅耗在无关闲谈上。
+        他没有真正确认信号真假，也没有推进进入禁航海沟的行动。
+        """,
+        chapter_number=6,
+        context_overrides={
+            "chapter_graph_packet": {
+                "goal_lock": "确认信号真假、进入禁航海沟",
+                "goal_subgoals": ["确认信号真假", "进入禁航海沟"],
+                "must_include_events": ["救回母亲"],
+                "previous_scene_anchor": "白昼环控制室",
+                "opening_bridge_required": "开篇先接住白昼环控制室；如需切到废弃港，必须写出路径或抵达动作。",
+                "rebaseline_deltas": [],
+            }
+        },
+        plot_summary={"l2_brief_summary": "林渊在废弃港继续追查母亲信号。"},
+    )
+
+    assert report["chapter_graph_packet"]["goal_lock"] == "确认信号真假、进入禁航海沟"
+    assert report["graph_diff_details"]["schema_version"] == "graph_diff_details.v1"
+    assert report["graph_diff_details"]["recommended_action"] == "accept"
+    assert any(
+        item["type"] == "MUST_INCLUDE" and item["label"] == "救回母亲"
+        for item in report["graph_diff_details"]["planned_edges"]
+    )

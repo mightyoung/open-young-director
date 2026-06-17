@@ -26,6 +26,11 @@ ACTION_VERB_HINTS = (
     "调查",
     "追",
     "追查",
+    "确认",
+    "截获",
+    "救回",
+    "公开",
+    "进入",
     "逃",
     "守",
     "攻",
@@ -34,14 +39,64 @@ ACTION_VERB_HINTS = (
     "破",
     "潜入",
     "返回",
+    "寻找",
     "营救",
     "揭开",
     "对抗",
+    "破解",
     "达成",
     "阻止",
     "交易",
     "谈判",
     "背叛",
+)
+LOCATION_SUFFIXES = (
+    "星门控制中心",
+    "企业主控塔",
+    "主控塔",
+    "控制室",
+    "监测站",
+    "维护通道",
+    "维修通道",
+    "密封舱室",
+    "回声空域",
+    "白昼环",
+    "空间城",
+    "实验场",
+    "档案馆",
+    "舱段",
+    "舱室",
+    "舰桥",
+    "港区",
+    "空域",
+    "航道",
+    "舰队",
+    "星门",
+    "基地",
+    "要塞",
+    "通道",
+    "港",
+    "站",
+    "塔",
+    "环",
+    "城",
+)
+SEED_EVENT_SPLIT_PATTERNS = re.compile(r"(?:并且|并在|并于|并|随后|然后|接着|再|并最终|最终|于是)")
+SEED_EVENT_STOPWORDS = (
+    "的",
+    "了",
+    "着",
+    "和",
+    "与",
+    "及",
+    "并",
+    "并在",
+    "并于",
+    "然后",
+    "随后",
+    "接着",
+    "最终",
+    "于是",
 )
 
 
@@ -215,6 +270,40 @@ def _normalize_character_name(name: str) -> str:
     return re.sub(r"\s+", "", str(name or "")).strip("：:")
 
 
+def _split_character_description(description: str) -> tuple[str, str, str, str]:
+    raw = str(description or "").strip()
+    if not raw:
+        return "", "", "", ""
+    clauses = [
+        item.strip("，,；;。！？!? ")
+        for item in re.split(r"[，,；;。！？!?]", raw)
+        if item.strip("，,；;。！？!? ")
+    ]
+    role = clauses[0] if clauses else ""
+    role = role[:24]
+    voice = ""
+    if len(clauses) > 1:
+        voice = clauses[1][:24]
+    motivation = ""
+    for clause in clauses:
+        if any(
+            marker in clause
+            for marker in ("执念", "想", "要", "决心", "必须", "试图", "为了", "找回", "追查", "守住")
+        ):
+            motivation = clause[:80]
+            break
+    if not motivation:
+        motivation = raw[:160]
+    arc = ""
+    for clause in clauses[1:]:
+        if any(marker in clause for marker in ("想", "要", "决心", "必须", "试图", "从", "成为")):
+            arc = clause[:48]
+            break
+    if not arc and len(clauses) > 2:
+        arc = clauses[2][:48]
+    return role, voice, motivation, arc
+
+
 def parse_character_entries(raw_text: str) -> list[CharacterEntry]:
     text = str(raw_text or "").strip()
     if not text:
@@ -230,12 +319,17 @@ def parse_character_entries(raw_text: str) -> list[CharacterEntry]:
         protagonist = str(payload.get("protagonist", "") or "").strip()
         if protagonist:
             name = _normalize_character_name(protagonist.split("：", 1)[0].split(":", 1)[0])
+            role, voice, motivation, arc = _split_character_description(
+                protagonist.split("：", 1)[1] if "：" in protagonist else protagonist.split(":", 1)[1] if ":" in protagonist else protagonist
+            )
             entries.append(
                 CharacterEntry(
                     id=_sanitize_id(name or "protagonist", "character"),
                     name=name or "主角",
-                    role="protagonist",
-                    motivation=protagonist,
+                    role=role or "protagonist",
+                    voice=voice,
+                    motivation=motivation or protagonist,
+                    arc=arc,
                     tags=["protagonist"],
                 )
             )
@@ -246,23 +340,37 @@ def parse_character_entries(raw_text: str) -> list[CharacterEntry]:
                 if not item_text:
                     continue
                 name = _normalize_character_name(item_text.split("：", 1)[0].split(":", 1)[0])
+                role, voice, motivation, arc = _split_character_description(
+                    item_text.split("：", 1)[1] if "：" in item_text else item_text.split(":", 1)[1] if ":" in item_text else item_text
+                )
                 entries.append(
                     CharacterEntry(
                         id=_sanitize_id(name or "supporting", "character"),
                         name=name or item_text[:6],
-                        role="supporting",
-                        motivation=item_text,
+                        role=role or "supporting",
+                        voice=voice,
+                        motivation=motivation or item_text,
+                        arc=arc,
                         tags=["supporting"],
                     )
                 )
     else:
-        for raw_name in re.findall(r"([\u4e00-\u9fff]{2,8})[：:]", text):
-            name = _normalize_character_name(raw_name)
+        pattern = re.compile(
+            r"([\u4e00-\u9fffA-Za-z0-9]{2,12})\s*[：:]\s*(.+?)(?=(?:[\s。；;\n\r]*[\u4e00-\u9fffA-Za-z0-9]{2,12}\s*[：:])|$)"
+        )
+        for match in pattern.finditer(text):
+            name = _normalize_character_name(match.group(1))
+            description = str(match.group(2) or "").strip(" \t\r\n。；;")
+            role, voice, motivation, arc = _split_character_description(description)
             if name:
                 entries.append(
                     CharacterEntry(
                         id=_sanitize_id(name, "character"),
                         name=name,
+                        role=role,
+                        voice=voice,
+                        motivation=motivation,
+                        arc=arc,
                     )
                 )
 
@@ -276,11 +384,26 @@ def parse_character_entries(raw_text: str) -> list[CharacterEntry]:
 
 
 def _extract_locations(world_setting: str) -> list[str]:
-    seen: list[str] = []
-    for match in re.findall(r"([\u4e00-\u9fff]{2,12}(?:城|站|港|航道|舰队|宗|门|殿|宫|岛|谷|渊))", world_setting or ""):
-        if match not in seen:
-            seen.append(match)
-    return seen[:12]
+    text = str(world_setting or "")
+    candidates: list[str] = []
+    for suffix in LOCATION_SUFFIXES:
+        pattern = rf"([\u4e00-\u9fffA-Za-z0-9]{{1,16}}{re.escape(suffix)})"
+        for match in re.findall(pattern, text):
+            cleaned = str(match or "").strip("，,；;。！？!?：: ")
+            if len(cleaned) >= 2:
+                candidates.append(cleaned)
+    for clause in re.split(r"[。；;\n\r]", text):
+        cleaned = str(clause or "").strip("，,；;。！？!?：: ")
+        if 2 <= len(cleaned) <= 16 and any(suffix in cleaned for suffix in LOCATION_SUFFIXES):
+            candidates.append(cleaned)
+
+    deduped: list[str] = []
+    for candidate in sorted(set(candidates), key=len, reverse=True):
+        if any(candidate in existing for existing in deduped):
+            continue
+        deduped.append(candidate)
+    deduped.sort(key=text.find)
+    return deduped[:12]
 
 
 def _extract_rules(world_setting: str) -> list[str]:
@@ -307,15 +430,110 @@ def _chapter_event_has_action(event: str) -> bool:
     return any(verb in str(event or "") for verb in ACTION_VERB_HINTS)
 
 
-def _derive_seed_goal_lock(title: str, outline_sentences: list[str]) -> str:
+def _compress_seed_clause(
+    clause: str,
+    *,
+    character_names: list[str],
+    location_names: list[str],
+) -> str:
+    cleaned = str(clause or "").strip("，,；;。！？!?：: ")
+    if len(cleaned) < 4:
+        return ""
+
+    subject = next(
+        (name for name in character_names if len(name) >= 2 and name in cleaned),
+        "",
+    )
+    action = next(
+        (
+            verb
+            for verb in sorted(ACTION_VERB_HINTS, key=len, reverse=True)
+            if verb in cleaned
+        ),
+        "",
+    )
+    if not action:
+        return cleaned[:18]
+
+    action_index = cleaned.find(action)
+    object_tail = cleaned[action_index + len(action) :]
+    object_tail = re.split(r"[，,；;。！？!?]", object_tail, maxsplit=1)[0]
+    object_tail = re.sub(r"^(?:在|于|向|对|把|将|从|往|朝)", "", object_tail).strip()
+    for stopword in SEED_EVENT_STOPWORDS:
+        if object_tail.startswith(stopword):
+            object_tail = object_tail[len(stopword) :].strip()
+    object_tail = object_tail[:16]
+
+    parts: list[str] = []
+    if subject:
+        parts.append(subject)
+    parts.append(action)
+    if object_tail:
+        parts.append(object_tail)
+    compact = "".join(parts).strip()
+    return compact[:24] if compact else cleaned[:18]
+
+
+def _derive_seed_goal_lock(
+    title: str,
+    outline_sentences: list[str],
+    *,
+    character_names: list[str],
+    location_names: list[str],
+) -> str:
     for sentence in outline_sentences:
-        candidate = re.split(r"[，,；;。！？!?]", sentence, maxsplit=1)[0].strip()
-        if len(candidate) >= 4:
-            return candidate[:48]
+        clauses = [
+            item.strip()
+            for item in SEED_EVENT_SPLIT_PATTERNS.split(sentence)
+            if item.strip()
+        ]
+        for clause in clauses:
+            candidate = _compress_seed_clause(
+                clause,
+                character_names=character_names,
+                location_names=location_names,
+            )
+            if len(candidate) >= 4:
+                return candidate
     clean_title = str(title or "").strip()
     if clean_title:
         return f"推进《{clean_title}》主线"
     return "持续推进主线冲突"
+
+
+def _derive_seed_key_events(
+    summary: str,
+    *,
+    goal_lock: str,
+    character_names: list[str],
+    location_names: list[str],
+) -> list[str]:
+    del summary, character_names, location_names
+    return [goal_lock] if goal_lock else []
+
+
+def _select_chapter_locations(
+    *,
+    summary: str,
+    key_events: list[str],
+    world_locations: list[str],
+    progress: float,
+) -> list[str]:
+    if not world_locations:
+        return []
+    text = " ".join([str(summary or ""), *[str(item or "") for item in key_events]])
+    matched = [location for location in world_locations if location and location in text]
+    if matched:
+        return matched[:3]
+
+    index = min(
+        int(progress * max(len(world_locations) - 1, 0)),
+        max(len(world_locations) - 1, 0),
+    )
+    selected = [world_locations[index]]
+    if len(world_locations) > 1 and index + 1 < len(world_locations):
+        selected.append(world_locations[index + 1])
+    return selected[:3]
 
 
 def build_story_input_bundle(
@@ -327,12 +545,16 @@ def build_story_input_bundle(
     outline_sentences = _split_sentences(getattr(project, "outline", ""))
     world_setting = str(getattr(project, "world_setting", "") or "")
     world_sentences = _split_sentences(world_setting)
+    world_locations = _extract_locations(world_setting)
     characters = parse_character_entries(str(getattr(project, "character_intro", "") or ""))
     character_names = [entry.name for entry in characters]
     total_chapters = max(int(getattr(project, "total_chapters", 0) or 0), 1)
     chapters_per_volume = max(int(chapters_per_volume or 60), 1)
     seed_goal_lock = _derive_seed_goal_lock(
-        str(getattr(project, "title", "") or ""), outline_sentences
+        str(getattr(project, "title", "") or ""),
+        outline_sentences,
+        character_names=character_names,
+        location_names=world_locations,
     )
 
     project_bible = ProjectBible(
@@ -347,7 +569,7 @@ def build_story_input_bundle(
     )
     world_bible = WorldBible(
         summary=world_setting,
-        locations=_extract_locations(world_setting),
+        locations=world_locations,
         rules=_extract_rules(world_setting),
         hard_constraints=_extract_rules(world_setting)[:4],
         known_facts=_extract_rules(world_setting)[:6],
@@ -362,15 +584,30 @@ def build_story_input_bundle(
             progress,
             f"围绕{getattr(project, 'title', '主线')}推进本章冲突。",
         )
-        world_focus = _select_progressive(world_sentences, progress, world_setting[:80])
+        chapter_goal_lock = _derive_seed_goal_lock(
+            str(getattr(project, "title", "") or ""),
+            [summary] if summary else outline_sentences,
+            character_names=character_names,
+            location_names=world_locations,
+        ) or seed_goal_lock
         stage = _chapter_stage_label(progress)
         character_slice = character_names[:4]
-        key_events = [summary] if summary else []
-        if world_focus and world_focus != summary:
-            key_events.append(f"在{world_focus}中推进{stage}阶段冲突")
+        key_events = _derive_seed_key_events(
+            summary,
+            goal_lock=chapter_goal_lock,
+            character_names=character_names,
+            location_names=world_locations,
+        )
+        chapter_locations = _select_chapter_locations(
+            summary=summary,
+            key_events=key_events,
+            world_locations=world_locations,
+            progress=progress,
+        )
         continuity_in = f"承接上一章局势，继续{stage}阶段推进。"
         continuity_out = f"为下一章保留{stage}阶段后的新压力或新线索。"
         magic_parts = [f"阶段目标：{stage}"]
+        world_focus = _select_progressive(world_sentences, progress, world_setting[:80])
         if world_focus:
             magic_parts.append(f"设定约束：{world_focus}")
         if character_slice:
@@ -384,16 +621,16 @@ def build_story_input_bundle(
                 key_events=key_events,
                 realm=str(getattr(project, "genre", "") or ""),
                 purpose=f"{stage}阶段的主线推进",
-                must_include=[summary] if summary else [],
+                must_include=[chapter_goal_lock] if chapter_goal_lock else [],
                 character_ids=[entry.id for entry in characters[:4]],
                 character_names=character_slice,
                 location_ids=[
                     _sanitize_id(location, "location")
-                    for location in world_bible.locations[:3]
+                    for location in chapter_locations
                 ],
                 continuity_in=continuity_in,
                 continuity_out=continuity_out,
-                goal_lock=seed_goal_lock,
+                goal_lock=chapter_goal_lock,
                 pacing=stage,
                 emotional_turn=stage,
                 volume_number=volume_number,

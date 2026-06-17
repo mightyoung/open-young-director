@@ -41,9 +41,14 @@ REPO_ROOT_DIR = KNOWLEDGE_BASE_DIR.parents[1]
 load_dotenv(REPO_ROOT_DIR / ".env", override=False)
 load_dotenv(KNOWLEDGE_BASE_DIR / ".env", override=True)
 
-from young_writer.agents.chapter_manager import ChapterPlotSummary, get_chapter_manager  # noqa: E402
+from young_writer.agents.chapter_manager import (  # noqa: E402
+    ChapterPlotSummary,
+    get_chapter_manager,
+)
 from young_writer.agents.config_manager import get_config_manager  # noqa: E402
-from young_writer.agents.derivative_generator import get_derivative_generator  # noqa: E402
+from young_writer.agents.derivative_generator import (  # noqa: E402
+    get_derivative_generator,
+)
 from young_writer.agents.feedback_loop import (  # noqa: E402
     FeedbackMode,
     FeedbackStrategy,
@@ -57,6 +62,18 @@ from young_writer.agents.novel_generator import get_novel_generator  # noqa: E40
 from young_writer.agents.novel_orchestrator import (  # noqa: E402
     NovelOrchestrator,
     OrchestratorConfig,
+)
+from young_writer.services.chapter_artifacts import (  # noqa: E402
+    discover_saved_chapter_numbers,
+    summarize_saved_chapters,
+)
+from young_writer.services.input_assembler import InputAssembler  # noqa: E402
+from young_writer.services.experience_pool import (  # noqa: E402
+    EXPERIENCE_KIND_GENERATION,
+    GlobalExperiencePool,
+    build_case_from_review_payload,
+    build_experience_capsule,
+    format_experience_capsule,
 )
 from young_writer.services.longform_run import (  # noqa: E402
     CHECKPOINT_CHAPTER,
@@ -102,6 +119,9 @@ from young_writer.services.run_storage import (  # noqa: E402
     read_status,
     update_status,
 )
+from young_writer.services.story_graph.build import (  # noqa: E402
+    record_story_graph_after_save,
+)
 from young_writer.writing_options import (  # noqa: E402
     DEFAULT_WRITING_OPTIONS,
     WRITING_OPTION_GROUPS,
@@ -128,6 +148,41 @@ def setup_logging(level: str = "INFO"):
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
+
+
+def _contiguous_completed_chapter(chapter_numbers: set[int]) -> int:
+    expected = 1
+    while expected in chapter_numbers:
+        expected += 1
+    return expected - 1
+
+
+def _build_generation_worklist(
+    *,
+    explicit_start: int | None,
+    continue_from: int | None,
+    count: int,
+    saved_chapters: set[int],
+) -> list[int]:
+    if count <= 0:
+        return []
+    if continue_from is not None:
+        start = continue_from
+        return [start + i for i in range(count)]
+    if explicit_start is not None:
+        start = explicit_start
+        return [start + i for i in range(count)]
+
+    contiguous_completed = _contiguous_completed_chapter(saved_chapters)
+    high_watermark = max(saved_chapters) if saved_chapters else 0
+    gap_repairs = [
+        chapter for chapter in range(contiguous_completed + 1, high_watermark + 1)
+        if chapter not in saved_chapters
+    ]
+    append_after_high_watermark = list(
+        range(high_watermark + 1, high_watermark + 1 + count)
+    )
+    return (gap_repairs + append_after_high_watermark)[:count]
 
 
 def cmd_diagnose_config(args) -> int:
@@ -171,6 +226,7 @@ def _format_quality_gate_failure(report: dict[str, Any]) -> str:
     rewrite_history = [
         item for item in report.get("rewrite_history", []) if isinstance(item, dict)
     ]
+    graph_diff = dict(report.get("graph_diff_details", {}) or {})
     lines = [summary]
     if issue_types:
         lines.append(f"issue_types: {', '.join(issue_types)}")
@@ -189,6 +245,9 @@ def _format_quality_gate_failure(report: dict[str, Any]) -> str:
             lines.append(
                 f"- attempt={attempt}, mode={mode}, invalid={invalid}, issue_types={item_issues}"
             )
+    recommended_action = str(graph_diff.get("recommended_action", "") or "").strip()
+    if recommended_action:
+        lines.append(f"graph_recommended_action: {recommended_action}")
     return "\n".join(lines)
 
 
@@ -421,6 +480,10 @@ def _sync_status_longform_fields(run_dir: Path | None, state: dict[str, Any]) ->
     """Mirror lightweight longform fields into status.json for faster UI reads."""
     if run_dir is None:
         return
+    attempts_used = dict(state.get("chapter_auto_repair_attempts_used", {}) or {})
+    escalations_used = dict(
+        state.get("chapter_auto_repair_escalations_used", {}) or {}
+    )
     update_status(
         run_dir,
         longform_state_path=state.get("longform_state_path"),
@@ -430,7 +493,582 @@ def _sync_status_longform_fields(run_dir: Path | None, state: dict[str, Any]) ->
         or None,
         queued_volume_guidance_payload=state.get("next_volume_guidance_payload", {})
         or None,
+        chapter_review_mode=state.get("chapter_review_mode"),
+        chapter_auto_repair_attempts=state.get("chapter_auto_repair_attempts"),
+        chapter_auto_repair_attempts_used=attempts_used,
+        chapter_auto_repair_escalations_used=escalations_used,
+        auto_repair_status=state.get("auto_repair_status"),
+        last_auto_repair_action=state.get("last_auto_repair_action"),
+        last_auto_repair_reason=state.get("last_auto_repair_reason"),
+        last_auto_repair_chapter=state.get("last_auto_repair_chapter"),
+        repair_exhausted_reason=state.get("repair_exhausted_reason"),
+        graph_recommended_action=state.get("graph_recommended_action"),
+        repair_decision=state.get("repair_decision"),
+        repair_decision_reason=state.get("repair_decision_reason"),
+        chapters_completed_high_watermark=state.get(
+            "chapters_completed_high_watermark"
+        ),
     )
+
+
+def _chapter_auto_repair_count(state: dict[str, Any], chapter_number: int) -> int:
+    attempts = dict(state.get("chapter_auto_repair_attempts_used", {}) or {})
+    return int(attempts.get(str(int(chapter_number)), 0) or 0)
+
+
+def _set_chapter_auto_repair_count(
+    state: dict[str, Any], chapter_number: int, count: int
+) -> None:
+    attempts = dict(state.get("chapter_auto_repair_attempts_used", {}) or {})
+    attempts[str(int(chapter_number))] = max(int(count), 0)
+    state["chapter_auto_repair_attempts_used"] = attempts
+
+
+def _chapter_auto_repair_escalation_count(
+    state: dict[str, Any], chapter_number: int
+) -> int:
+    escalations = dict(state.get("chapter_auto_repair_escalations_used", {}) or {})
+    return int(escalations.get(str(int(chapter_number)), 0) or 0)
+
+
+def _set_chapter_auto_repair_escalation_count(
+    state: dict[str, Any], chapter_number: int, count: int
+) -> None:
+    escalations = dict(state.get("chapter_auto_repair_escalations_used", {}) or {})
+    escalations[str(int(chapter_number))] = max(int(count), 0)
+    state["chapter_auto_repair_escalations_used"] = escalations
+
+
+def _resolve_chapter_auto_repair_attempts(
+    explicit_value: Any,
+    fallback_value: Any,
+) -> int:
+    raw_value = fallback_value if explicit_value is None else explicit_value
+    return max(int(raw_value or 0), 0)
+
+
+def _classify_chapter_repair_decision(report: dict[str, Any]) -> tuple[str, str]:
+    """Return the controller repair decision for an invalid chapter report."""
+    graph_diff = dict(report.get("graph_diff_details", {}) or {})
+    recommended_action = str(graph_diff.get("recommended_action", "") or "").strip()
+    issue_types = {
+        str(item).strip()
+        for item in report.get("issue_types", [])
+        if str(item).strip()
+    }
+    conflicting_edges = [
+        item
+        for item in graph_diff.get("conflicting_edges", [])
+        if isinstance(item, dict)
+    ]
+    rewrite_plan = (
+        dict(report.get("rewrite_plan", {}) or {})
+        if isinstance(report.get("rewrite_plan"), dict)
+        else {}
+    )
+    operations = [
+        item for item in rewrite_plan.get("operations", []) if isinstance(item, dict)
+    ]
+    operation_actions = {
+        str(item.get("action", "") or "").strip() for item in operations if item
+    }
+    has_world_fact_conflict = "world_fact_violation" in issue_types
+    world_fact_only = bool(issue_types) and issue_types <= {"world_fact_violation"}
+    world_fact_edges_only = bool(conflicting_edges) and all(
+        str(item.get("type", "") or "").strip() == "WORLD_FACT"
+        for item in conflicting_edges
+    )
+    has_reconcile_plan = "reconcile_canon_fact" in operation_actions
+
+    if recommended_action == "rebaseline":
+        return "rebaseline", "graph_requested_rebaseline"
+    if recommended_action == "rewrite":
+        return "rewrite", "graph_requested_rewrite"
+    if (
+        recommended_action == "chapter_review"
+        and has_world_fact_conflict
+        and world_fact_only
+        and world_fact_edges_only
+        and has_reconcile_plan
+    ):
+        return "rewrite", "rewriteable_world_fact_conflict"
+    if recommended_action == "chapter_review":
+        return "chapter_review", "graph_requested_human_review"
+    if has_world_fact_conflict and has_reconcile_plan and world_fact_edges_only:
+        return "rewrite", "rewriteable_world_fact_conflict"
+    return "chapter_review", "controller_default_human_review"
+
+
+def _reconcile_pause_boundary_state(
+    *,
+    run_dir: Path,
+    state: dict[str, Any],
+) -> dict[str, Any]:
+    """Refresh progress and bounded auto-repair bookkeeping before pausing."""
+    project_dir = Path(
+        state.get("project_dir")
+        or run_dir.parent.parent
+    ).resolve()
+    saved_chapters = discover_saved_chapter_numbers(project_dir)
+    disk_contiguous = _contiguous_completed_chapter(saved_chapters)
+    disk_watermark = max(saved_chapters) if saved_chapters else 0
+    if saved_chapters:
+        state["chapters_completed"] = max(
+            int(state.get("chapters_completed", 0) or 0),
+            disk_contiguous,
+        )
+    state["chapters_completed_high_watermark"] = max(
+        int(state.get("chapters_completed_high_watermark", 0) or 0),
+        disk_watermark,
+    )
+
+    pending_validation = (
+        state.get("pending_revision_validation")
+        if isinstance(state.get("pending_revision_validation"), dict)
+        else None
+    )
+    target_chapter = int(state.get("last_auto_repair_chapter", 0) or 0)
+    if (
+        target_chapter > 0
+        and pending_validation
+        and int(pending_validation.get("chapter_number") or 0) == target_chapter
+    ):
+        current_attempt = _chapter_auto_repair_count(state, target_chapter)
+        inferred_attempt = int(pending_validation.get("auto_repair_attempt") or 0)
+        if current_attempt <= 0 and inferred_attempt > 0:
+            _set_chapter_auto_repair_count(state, target_chapter, inferred_attempt)
+    return state
+
+
+def _compile_auto_repair_guidance_with_capsule(
+    report: dict[str, Any],
+    *,
+    recommended_action: str,
+    extra_notes: str = "",
+) -> tuple[str, dict[str, Any]]:
+    rewrite_plan = (
+        dict(report.get("rewrite_plan", {}) or {})
+        if isinstance(report.get("rewrite_plan", {}), dict)
+        else {}
+    )
+    note_lines: list[str] = []
+    if recommended_action == "rebaseline":
+        note_lines.append(
+            "优先接受已发生剧情的推进结果，并重写本章使开篇承接、章节目标和后续计划基线一致。"
+        )
+    report_aware_notes = _build_report_aware_rewrite_notes(report)
+    if report_aware_notes:
+        note_lines.append(report_aware_notes)
+    experience_capsule = _load_global_experience_capsule(report)
+    experience_notes = format_experience_capsule(experience_capsule)
+    if experience_notes:
+        note_lines.append(experience_notes)
+    if str(extra_notes or "").strip():
+        note_lines.append(str(extra_notes).strip())
+    guidance = compile_chapter_rewrite_guidance(
+        rewrite_plan,
+        extra_notes="\n".join(note_lines).strip(),
+    )
+    return guidance, experience_capsule
+
+
+def _compile_auto_repair_guidance(
+    report: dict[str, Any],
+    *,
+    recommended_action: str,
+    extra_notes: str = "",
+) -> str:
+    guidance, _capsule = _compile_auto_repair_guidance_with_capsule(
+        report,
+        recommended_action=recommended_action,
+        extra_notes=extra_notes,
+    )
+    return guidance
+
+
+def _experience_query_terms(review_payload: dict[str, Any]) -> list[str]:
+    terms: list[str] = []
+    for key in ("blocking_issues", "success_criteria"):
+        value = review_payload.get(key)
+        if isinstance(value, list):
+            terms.extend(str(item).strip() for item in value if str(item).strip())
+    rewrite_plan = review_payload.get("rewrite_plan")
+    if isinstance(rewrite_plan, dict):
+        for key in ("fixes", "success_criteria"):
+            value = rewrite_plan.get(key)
+            if isinstance(value, list):
+                terms.extend(str(item).strip() for item in value if str(item).strip())
+    anti_drift = review_payload.get("anti_drift_details")
+    if isinstance(anti_drift, dict):
+        for key in ("goal_lock", "previous_tail_signal"):
+            value = str(anti_drift.get(key) or "").strip()
+            if value:
+                terms.append(value)
+    return terms[:12]
+
+
+def _load_global_experience_capsule(review_payload: dict[str, Any]) -> dict[str, Any]:
+    issue_types = [
+        str(item).strip()
+        for item in review_payload.get("issue_types", [])
+        if str(item).strip()
+    ]
+    try:
+        pool = GlobalExperiencePool()
+        capsule = build_experience_capsule(
+            pool.retrieve(
+                stage="chapter.review",
+                issue_types=issue_types,
+                query_terms=_experience_query_terms(review_payload),
+                top_k=4,
+                experience_kinds=[EXPERIENCE_KIND_GENERATION],
+            )
+        )
+        if capsule.get("loaded_ids"):
+            pool.record_usage(
+                experience_ids=list(capsule["loaded_ids"]),
+                project_id=str(review_payload.get("source_project_id") or ""),
+                run_id=str(review_payload.get("run_id") or ""),
+                stage="chapter.review",
+                chapter_number=int(review_payload.get("chapter_number") or 0),
+                outcome="loaded",
+            )
+        return capsule
+    except Exception as exc:
+        logging.getLogger(__name__).warning(
+            "Global experience retrieval skipped: %s", exc
+        )
+        return {
+            "schema_version": "young_writer.global_experience.v1",
+            "source": "young_writer_global_experience_pool",
+            "items": [],
+            "loaded_ids": [],
+            "error": str(exc),
+        }
+
+
+def _capture_global_experience_case(
+    review_payload: dict[str, Any],
+    *,
+    project_id: str,
+    run_id: str,
+) -> dict[str, Any]:
+    try:
+        pool = GlobalExperiencePool()
+        saved = pool.append_case(
+            build_case_from_review_payload(
+                review_payload,
+                project_id=project_id,
+                run_id=run_id,
+                status="captured",
+            )
+        )
+        return {
+            "schema_version": "young_writer.global_experience_capture.v1",
+            "case_id": saved.id,
+            "status": saved.status,
+            "pool_path": str(pool.cases_path),
+        }
+    except Exception as exc:
+        logging.getLogger(__name__).warning(
+            "Global experience capture skipped: %s", exc
+        )
+        return {
+            "schema_version": "young_writer.global_experience_capture.v1",
+            "status": "skipped",
+            "error": str(exc),
+        }
+
+
+def _is_continuity_escalation_candidate(
+    report: dict[str, Any], repair_decision: str
+) -> bool:
+    if repair_decision != "rewrite":
+        return False
+    issue_types = {
+        str(item).strip()
+        for item in report.get("issue_types", [])
+        if str(item).strip()
+    }
+    allowed_issue_types = {
+        "scene_or_timeline_disconnect",
+        "goal_lock_false_inheritance",
+    }
+    if not issue_types or "scene_or_timeline_disconnect" not in issue_types:
+        return False
+    if not issue_types <= allowed_issue_types:
+        return False
+    smoothness_details = [
+        item for item in report.get("smoothness_details", []) if isinstance(item, dict)
+    ]
+    if not smoothness_details:
+        return False
+    allowed_categories = {
+        "上一章后果未被承接",
+        "地点跳切无承接",
+        "时间跳跃无锚点",
+        "表面流畅但因果断裂",
+    }
+    categories = {
+        str(item.get("category", "") or "").strip() for item in smoothness_details
+    }
+    return bool(categories) and categories <= allowed_categories
+
+
+def _build_continuity_escalation_notes(report: dict[str, Any]) -> str:
+    smoothness_details = [
+        item for item in report.get("smoothness_details", []) if isinstance(item, dict)
+    ]
+    note_lines = [
+        "这是连续性定向升级修复：只重写开头承接和首个关键行动，不要把上一章后果降成背景说明。"
+    ]
+    for item in smoothness_details[:2]:
+        category = str(item.get("category", "") or "").strip()
+        previous_evidence = str(item.get("previous_evidence", "") or "").strip()
+        current_evidence = str(item.get("current_evidence", "") or "").strip()
+        if category == "上一章后果未被承接" and previous_evidence:
+            note_lines.append(
+                f"开头第一段必须先回应上一章未完成后果「{previous_evidence}」，再解释它为何把人物带到当前场景「{current_evidence or '当前场景'}」。"
+            )
+        elif category == "地点跳切无承接" and previous_evidence and current_evidence:
+            note_lines.append(
+                f"先接住上一章地点「{previous_evidence}」，再明确写出到「{current_evidence}」的路径、抵达动作或切换原因。"
+            )
+        elif category == "时间跳跃无锚点" and current_evidence:
+            note_lines.append(
+                f"若保留时间跳跃「{current_evidence}」，必须在开头两句内交代缺失时段发生了什么、角色状态为何变成现在这样。"
+            )
+        elif category == "表面流畅但因果断裂":
+            note_lines.append(
+                "开头两段必须把上一章危险、选择或代价改写成当前行动的直接原因，不能只保留表面顺接。"
+            )
+    return "\n".join(note_lines).strip()
+
+
+def _build_goal_lock_progression_notes(report: dict[str, Any]) -> str:
+    issue_types = {
+        str(item).strip()
+        for item in report.get("issue_types", [])
+        if str(item).strip()
+    }
+    if not issue_types.intersection({"missing_key_events", "goal_lock_false_inheritance"}):
+        return ""
+
+    packet = (
+        dict(report.get("chapter_graph_packet", {}) or {})
+        if isinstance(report.get("chapter_graph_packet", {}), dict)
+        else {}
+    )
+    graph_diff = (
+        dict(report.get("graph_diff_details", {}) or {})
+        if isinstance(report.get("graph_diff_details", {}), dict)
+        else {}
+    )
+    goal_lock = str(packet.get("chapter_goal", "") or packet.get("goal_lock", "") or "").strip()
+    target_destination = ""
+    for item in packet.get("target_destinations", []) or []:
+        candidate = str(item).strip()
+        if candidate:
+            target_destination = candidate
+            break
+    must_include_event = ""
+    for item in packet.get("must_include_events", []) or []:
+        candidate = str(item).strip()
+        if candidate:
+            must_include_event = candidate
+            break
+
+    static_arrival_excerpt = ""
+    for item in graph_diff.get("evidence_refs", []) or []:
+        if not isinstance(item, dict):
+            continue
+        excerpt = str(item.get("excerpt", "") or "").strip()
+        if not excerpt:
+            continue
+        if any(marker in excerpt for marker in ("抵达", "站在", "边缘", "外围", "凝视", "透过舷窗")):
+            static_arrival_excerpt = excerpt[:120]
+            break
+
+    note_lines: list[str] = []
+    if must_include_event:
+        note_lines.append(
+            f"关键事件「{must_include_event}」必须在正文里以动作加结果真实发生，不能只停留在摘要、宣言句或回想里。"
+        )
+    if goal_lock:
+        note_lines.append(
+            f"正文前半段必须围绕目标锁「{goal_lock}」推进一个可见动作链：接近阻碍、做出选择、执行动作、得到结果。"
+        )
+    if target_destination:
+        note_lines.append(
+            f"如果角色已经到达或接近「{target_destination}」，不要把正文主体停留在观察环境；必须继续写出进入、突破、核验或搜查等下一步行动。"
+        )
+    if static_arrival_excerpt:
+        note_lines.append(
+            f"当前失败样式是静态抵达开篇「{static_arrival_excerpt}」；重写时不要再次以抵达、站位、凝视或回想结束首段，首段后必须立刻进入主线动作。"
+        )
+    return "\n".join(note_lines).strip()
+
+
+def _build_report_aware_rewrite_notes(report: dict[str, Any]) -> str:
+    note_blocks: list[str] = []
+    continuity_notes = _build_continuity_escalation_notes(report)
+    if continuity_notes:
+        note_blocks.append(continuity_notes)
+    goal_lock_notes = _build_goal_lock_progression_notes(report)
+    if goal_lock_notes:
+        note_blocks.append(goal_lock_notes)
+    return "\n".join(block for block in note_blocks if block).strip()
+
+
+def _queue_chapter_auto_repair(
+    *,
+    run_dir: Path,
+    state: dict[str, Any],
+    project_id: str,
+    command: list[str],
+    run_started_at: datetime,
+    chapter_number: int,
+    title: str,
+    report: dict[str, Any],
+) -> bool:
+    mode = str(state.get("chapter_review_mode", "manual") or "manual").strip()
+    if mode != "auto":
+        return False
+    repair_decision, repair_decision_reason = _classify_chapter_repair_decision(report)
+    graph_diff = dict(report.get("graph_diff_details", {}) or {})
+    recommended_action = str(graph_diff.get("recommended_action", "") or "").strip()
+    if repair_decision not in {"rewrite", "rebaseline"}:
+        return False
+    max_attempts = max(int(state.get("chapter_auto_repair_attempts", 0) or 0), 0)
+    used_attempts = _chapter_auto_repair_count(state, chapter_number)
+    continuity_escalation_allowed = (
+        _is_continuity_escalation_candidate(report, repair_decision)
+        and _chapter_auto_repair_escalation_count(state, chapter_number) <= 0
+    )
+    escalation_notes = ""
+    if used_attempts >= max_attempts and continuity_escalation_allowed:
+        escalation_notes = _build_continuity_escalation_notes(report)
+        _set_chapter_auto_repair_escalation_count(state, chapter_number, 1)
+    elif used_attempts >= max_attempts:
+        state["auto_repair_status"] = "auto_repair_exhausted"
+        state["repair_exhausted_reason"] = (
+            f"第 {chapter_number} 章自动修复已达上限 {max_attempts} 次"
+        )
+        state["graph_recommended_action"] = recommended_action or None
+        state["repair_decision"] = repair_decision
+        state["repair_decision_reason"] = repair_decision_reason
+        state["last_auto_repair_action"] = repair_decision
+        state["last_auto_repair_reason"] = "attempt_limit_reached"
+        state["last_auto_repair_chapter"] = int(chapter_number)
+        _reconcile_pause_boundary_state(run_dir=run_dir, state=state)
+        save_longform_state(run_dir, state)
+        _sync_status_longform_fields(run_dir, state)
+        return False
+
+    guidance, experience_capsule = _compile_auto_repair_guidance_with_capsule(
+        report,
+        recommended_action=repair_decision,
+        extra_notes=escalation_notes,
+    )
+    next_attempt = used_attempts + 1
+    _set_chapter_auto_repair_count(state, chapter_number, next_attempt)
+    state["next_chapter_guidance"] = guidance
+    state["next_chapter_guidance_chapter"] = int(chapter_number)
+    state["next_chapter_experience_capsule"] = experience_capsule
+    rewrite_plan = (
+        dict(report.get("rewrite_plan", {}) or {})
+        if isinstance(report.get("rewrite_plan", {}), dict)
+        else {}
+    )
+    state["pending_revision_validation"] = {
+        "chapter_number": int(chapter_number),
+        "issue_types": [
+            str(item).strip()
+            for item in report.get("issue_types", [])
+            if str(item).strip()
+        ],
+        "success_criteria": [
+            str(item).strip()
+            for item in rewrite_plan.get("success_criteria", [])
+            if str(item).strip()
+        ],
+        "created_from_checkpoint": CHECKPOINT_CHAPTER,
+        "auto_repair_action": repair_decision,
+        "auto_repair_attempt": next_attempt,
+        "auto_repair_variant": "continuity_escalation"
+        if escalation_notes
+        else "standard",
+    }
+    state["status"] = "running"
+    state["current_checkpoint"] = None
+    state["pending_state_path"] = None
+    state["current_stage"] = STAGE_VOLUME_PLAN
+    state["auto_repair_status"] = "auto_repair_pending"
+    state["graph_recommended_action"] = recommended_action or None
+    state["repair_decision"] = repair_decision
+    state["repair_decision_reason"] = repair_decision_reason
+    state["last_auto_repair_action"] = repair_decision
+    state["last_auto_repair_reason"] = (
+        "quality_gate_invalid_continuity_escalation"
+        if escalation_notes
+        else "quality_gate_invalid"
+    )
+    state["last_auto_repair_chapter"] = int(chapter_number)
+    state["repair_exhausted_reason"] = None
+    save_longform_state(run_dir, state)
+    _sync_status_longform_fields(run_dir, state)
+    _update_run_progress(
+        run_dir,
+        project_id=project_id,
+        command=command,
+        status="running",
+        current_stage=STAGE_CHAPTER_REVIEW,
+        current_step=(
+            f"第 {chapter_number} 章进入自动修复 "
+            f"({next_attempt}/{max_attempts}): {repair_decision}"
+        ),
+        chapters_total=state.get("total_chapters", 0),
+        chapters_completed=state.get("chapters_completed", 0),
+        run_started_at=run_started_at,
+        failed_stage=None,
+        error_message=None,
+    )
+    update_status(
+        run_dir,
+        chapter_quality_report=report,
+        graph_recommended_action=recommended_action or None,
+        repair_decision=repair_decision,
+        repair_decision_reason=repair_decision_reason,
+        pending_state_path=None,
+        pause_reason=None,
+        review_disposition="auto_repair_pending",
+    )
+    return True
+
+
+def _reconcile_longform_progress(
+    config_mgr: Any,
+    state: dict[str, Any],
+) -> dict[str, Any]:
+    """Reconcile longform progress against the saved chapter artifacts on disk."""
+    project_dir = _project_dir(config_mgr)
+    saved_chapters = discover_saved_chapter_numbers(project_dir)
+    disk_contiguous = _contiguous_completed_chapter(saved_chapters)
+    disk_watermark = max(saved_chapters) if saved_chapters else 0
+    project_watermark = int(getattr(config_mgr.current_project, "current_chapter", 0) or 0)
+    if saved_chapters:
+        state["chapters_completed"] = disk_contiguous
+    else:
+        state["chapters_completed"] = max(
+            int(state.get("chapters_completed", 0) or 0),
+            project_watermark,
+        )
+    state["chapters_completed_high_watermark"] = max(
+        int(state.get("chapters_completed_high_watermark", 0) or 0),
+        disk_watermark,
+        project_watermark,
+    )
+    return state
 
 
 def _pause_for_invalid_chapter(
@@ -443,18 +1081,67 @@ def _pause_for_invalid_chapter(
     chapter,
 ) -> int:
     """Pause a longform run when a chapter remains invalid after one rewrite."""
-    report = chapter.consistency_report or {}
+    report = dict(chapter.consistency_report or {})
+    if _queue_chapter_auto_repair(
+        run_dir=run_dir,
+        state=state,
+        project_id=project_id,
+        command=command,
+        run_started_at=run_started_at,
+        chapter_number=chapter.number,
+        title=chapter.title,
+        report=report,
+    ):
+        return 0
+    repair_decision, repair_decision_reason = _classify_chapter_repair_decision(report)
+    recommended_action = str(
+        dict(report.get("graph_diff_details", {}) or {}).get("recommended_action", "")
+        or ""
+    ).strip()
+    state["graph_recommended_action"] = recommended_action or None
+    state["repair_decision"] = repair_decision
+    state["repair_decision_reason"] = repair_decision_reason
+    existing_auto_repair_status = str(state.get("auto_repair_status", "") or "").strip()
+    if existing_auto_repair_status == "auto_repair_exhausted":
+        state["auto_repair_status"] = "auto_repair_exhausted"
+        state["repair_exhausted_reason"] = (
+            report.get("summary") or f"第 {chapter.number} 章自动修复耗尽"
+        )
+    else:
+        state["auto_repair_status"] = (
+            "plan_rebaseline_required"
+            if repair_decision == "rebaseline"
+            else "human_review_required"
+        )
+    if state["auto_repair_status"] == "human_review_required":
+        state["last_auto_repair_action"] = None
+        state["last_auto_repair_reason"] = None
+        state["last_auto_repair_chapter"] = None
+    else:
+        state["last_auto_repair_chapter"] = int(chapter.number)
+    report["auto_repair_status"] = state["auto_repair_status"]
+    report["repair_decision"] = repair_decision
+    report["repair_decision_reason"] = repair_decision_reason
+    _reconcile_pause_boundary_state(run_dir=run_dir, state=state)
+    chapter_review_payload = review_payload_for_chapter(
+        chapter_number=chapter.number,
+        title=chapter.title,
+        report=report,
+        rewrite_history=chapter.metadata.get("rewrite_history", []),
+    )
+    chapter_review_payload["source_project_id"] = project_id
+    chapter_review_payload["run_id"] = str(run_dir.name)
+    chapter_review_payload["global_experience_capture"] = _capture_global_experience_case(
+        chapter_review_payload,
+        project_id=project_id,
+        run_id=str(run_dir.name),
+    )
     paused_state = record_pause(
         run_dir=run_dir,
         longform_state=state,
         checkpoint_type=CHECKPOINT_CHAPTER,
         current_stage=STAGE_CHAPTER_REVIEW,
-        review_payload=review_payload_for_chapter(
-            chapter_number=chapter.number,
-            title=chapter.title,
-            report=report,
-            rewrite_history=chapter.metadata.get("rewrite_history", []),
-        ),
+        review_payload=chapter_review_payload,
     )
     _update_run_progress(
         run_dir,
@@ -476,6 +1163,10 @@ def _pause_for_invalid_chapter(
         pause_reason=CHECKPOINT_CHAPTER,
         risk_report_path=None,
         chapter_quality_report=report,
+        graph_recommended_action=recommended_action or None,
+        repair_decision=repair_decision,
+        repair_decision_reason=repair_decision_reason,
+        review_disposition=state["auto_repair_status"],
     )
     _sync_status_longform_fields(run_dir, paused_state)
     return 0
@@ -516,7 +1207,11 @@ def _pause_for_revision_validation_failure(
         "missing_events": [],
         "continuity_issues": [],
         "world_fact_issues": [],
+        "pause_disposition": "auto_repair_exhausted",
     }
+    state["auto_repair_status"] = "auto_repair_exhausted"
+    state["repair_exhausted_reason"] = reason
+    state["last_auto_repair_chapter"] = int(chapter_number)
     paused_state = record_pause(
         run_dir=run_dir,
         longform_state=state,
@@ -543,6 +1238,7 @@ def _pause_for_revision_validation_failure(
         longform_state_path=paused_state.get("longform_state_path"),
         pause_reason=CHECKPOINT_CHAPTER,
         risk_report_path=None,
+        review_disposition="auto_repair_exhausted",
     )
     _sync_status_longform_fields(run_dir, paused_state)
     return 0
@@ -664,6 +1360,7 @@ def cmd_generate(args):
 
     # 创建 orchestrator (仅支持 FILM_DRAMA 模式)
     novel_orchestrator = _create_orchestrator(config_mgr, project_id)
+    input_assembler = InputAssembler(config_mgr)
 
     # 创建小说生成器（传入 orchestrator 以启用 FILM_DRAMA 模式）
     generator = get_novel_generator(
@@ -673,28 +1370,36 @@ def cmd_generate(args):
         allow_fallback=not getattr(args, "require_llm", False),
     )
 
-    # 处理 --continue-from 断点续传
-    continue_from = getattr(args, "continue_from", None)
-    start = args.start or config_mgr.current_project.current_chapter + 1
-    count = args.count
-    dry_run = getattr(args, "dry_run", False)
-    mode = "incremental" if continue_from is not None else "full"
-    active_writing_options = _resolve_active_writing_options(config_mgr, args)
-
-    # 读取已有的 generation_results.json 获取已成功的章节（用于断点续传）
+    # 断点续传只信任实际章节落盘；generation_results.json 仅作为审计/检查点展示
     results_file = _build_results_file(project_dir)
     existing_results = None
-    chapters_to_skip = set()
+    chapters_to_skip = discover_saved_chapter_numbers(project_dir)
     checkpoints = []
     if results_file.exists():
         with open(results_file) as f:
             existing_results = json.load(f)
-        chapters_to_skip = {
-            r["chapter_number"]
-            for r in existing_results.get("chapter_results", [])
-            if r.get("status") == "success"
-        }
         checkpoints = existing_results.get("checkpoints", [])
+    if chapters_to_skip:
+        checkpoints = sorted(set(checkpoints).union(chapters_to_skip))
+
+    # 处理 --continue-from 断点续传；启动前先用磁盘章节回写进度，避免陈旧 watermark 影响起点
+    continue_from = getattr(args, "continue_from", None)
+    reconciled_current_chapter = max(chapters_to_skip) if chapters_to_skip else 0
+    if getattr(config_mgr, "current_project", None) is not None:
+        config_mgr.current_project.current_chapter = reconciled_current_chapter
+    if hasattr(config_mgr, "update_project_progress"):
+        config_mgr.update_project_progress(reconciled_current_chapter)
+    worklist = _build_generation_worklist(
+        explicit_start=args.start,
+        continue_from=continue_from,
+        count=args.count,
+        saved_chapters=chapters_to_skip,
+    )
+    start = worklist[0] if worklist else (args.start or reconciled_current_chapter + 1)
+    count = args.count
+    dry_run = getattr(args, "dry_run", False)
+    mode = "incremental" if continue_from is not None else "full"
+    active_writing_options = _resolve_active_writing_options(config_mgr, args)
 
     if continue_from is not None:
         start = continue_from
@@ -704,6 +1409,8 @@ def cmd_generate(args):
     else:
         print(f"\n🚀 开始生成 {count} 章...")
         print(f"   起始章节: {start}")
+        if args.start is None and worklist:
+            print(f"   计划章节: {worklist}")
         print(f"   项目: {config_mgr.current_project.title}")
     _print_writing_options(active_writing_options)
 
@@ -724,8 +1431,7 @@ def cmd_generate(args):
         print("\n🔍 Dry-run 模式: 仅预览，不实际生成")
         print("   将生成章节: ", end="")
         preview = []
-        for i in range(count):
-            ch_num = start + i
+        for ch_num in worklist:
             if ch_num in chapters_to_skip:
                 preview.append(f"第{ch_num}章(已存在)")
             else:
@@ -771,8 +1477,7 @@ def cmd_generate(args):
     previous_summary = ""
     last_failed_stage: str | None = None
     skipped_existing = 0
-    for i in range(count):
-        chapter_num = start + i
+    for chapter_num in worklist:
 
         # 跳过已成功的章节（断点续传时）
         if chapter_num in chapters_to_skip:
@@ -799,8 +1504,7 @@ def cmd_generate(args):
 
             # 构建上下文
             context = chapter_mgr.build_context(chapter_num)
-            context["chapter_number"] = chapter_num
-            context["total_chapters"] = int(getattr(project, "total_chapters", 0) or 0)
+            original_context = context
             if any(queued_volume_guidance_payload.values()):
                 context["volume_guidance_payload"] = queued_volume_guidance_payload
             volume_guidance = str(getattr(args, "volume_guidance", "") or "").strip()
@@ -814,6 +1518,26 @@ def cmd_generate(args):
                 and int(chapter_guidance_target) == chapter_num
             ):
                 context["chapter_guidance"] = chapter_guidance
+            enriched_context = input_assembler.enrich_context(
+                chapter_number=chapter_num,
+                base_context=context,
+                writing_options=active_writing_options,
+                chapter_guidance_target=int(chapter_guidance_target)
+                if chapter_guidance_target is not None
+                else None,
+            )
+            if isinstance(original_context, dict):
+                original_context.clear()
+                original_context.update(enriched_context)
+                context = original_context
+            else:
+                context = enriched_context
+            validation = dict(context.get("story_input_validation", {}) or {})
+            if validation.get("blocking_issues"):
+                raise GenerationError(
+                    "结构化输入校验失败: "
+                    + "；".join(str(item) for item in validation["blocking_issues"])
+                )
 
             # 生成章节
             current_stage = STAGE_CHAPTER_GENERATE
@@ -897,6 +1621,32 @@ def cmd_generate(args):
             chapter_artifact_path = getattr(
                 getattr(chapter_save_result, "metadata", None), "file_path", ""
             )
+            if run_dir:
+                status_payload = read_status(run_dir)
+                capsule = status_payload.get("next_chapter_experience_capsule")
+                if not isinstance(capsule, dict):
+                    state_path = status_payload.get("longform_state_path")
+                    longform_state = load_longform_state(state_path) if state_path else {}
+                    capsule = (
+                        longform_state.get("next_chapter_experience_capsule")
+                        if isinstance(longform_state, dict)
+                        else {}
+                    )
+                loaded_ids = (
+                    capsule.get("loaded_ids", []) if isinstance(capsule, dict) else []
+                )
+                if isinstance(loaded_ids, list) and loaded_ids:
+                    try:
+                        GlobalExperiencePool().record_usage(
+                            experience_ids=[str(item) for item in loaded_ids],
+                            project_id=project_id,
+                            run_id=generation_run_id,
+                            stage="chapter.save",
+                            chapter_number=chapter.number,
+                            outcome="helped",
+                        )
+                    except Exception as exc:
+                        logger.warning("Global experience usage write skipped: %s", exc)
 
             # 保存情节概述（三级结构）
             if hasattr(chapter, "plot_summary") and chapter.plot_summary:
@@ -967,10 +1717,28 @@ def cmd_generate(args):
                 except Exception as e:
                     logger.warning(f"  ⚠️ Failed to save film drama content: {e}")
 
+            try:
+                story_graph_result = record_story_graph_after_save(
+                    project_dir=getattr(chapter_mgr, "novel_dir", project_dir),
+                    project_id=project_id,
+                    chapter_number=chapter.number,
+                    context=context,
+                )
+                logger.info(
+                    "  🕸️ Story graph snapshot saved: %s",
+                    story_graph_result.get("snapshot_path", ""),
+                )
+            except Exception as exc:
+                logger.warning("Story graph save skipped: %s", exc)
+
             elapsed = (datetime.now() - start_time).total_seconds()
             print(f"   ✅ {chapter.title} ({chapter.word_count} 字, {elapsed:.1f}秒)")
 
             generated.append(chapter)
+            if hasattr(config_mgr, "update_project_progress"):
+                config_mgr.update_project_progress(chapter_num)
+            elif getattr(config_mgr, "current_project", None) is not None:
+                config_mgr.current_project.current_chapter = chapter_num
             # 使用生成后的情节摘要作为下一章的上下文，而非生成前的大纲
             if hasattr(chapter, "plot_summary") and chapter.plot_summary:
                 previous_summary = chapter.plot_summary.get(
@@ -1098,6 +1866,16 @@ def cmd_generate(args):
         chapters_completed=skipped_existing + len(generated),
         run_started_at=run_started_at,
     )
+    final_saved_chapters = discover_saved_chapter_numbers(project_dir)
+    final_chapter_numbers = set(final_saved_chapters).union(
+        chapter.number for chapter in generated
+    )
+    final_current_chapter = max(final_chapter_numbers) if final_chapter_numbers else 0
+    if getattr(config_mgr, "current_project", None) is not None:
+        config_mgr.current_project.current_chapter = final_current_chapter
+    if hasattr(config_mgr, "update_project_progress"):
+        config_mgr.update_project_progress(final_current_chapter)
+
     generation_results["completed_at"] = datetime.now().isoformat()
     results_file.parent.mkdir(parents=True, exist_ok=True)
     with open(results_file, "w", encoding="utf-8") as f:
@@ -1106,8 +1884,8 @@ def cmd_generate(args):
     print("\n" + "=" * 50)
     _print_statistics(generation_results, failed_chapters, results_file, project.title)
 
-    # 同步生成衍生内容（播客、视频Prompt、角色/场景描述）
-    if generated:
+    # 按需同步生成衍生内容（播客、视频Prompt、角色/场景描述）
+    if generated and getattr(args, "sync_derivatives_after_generate", False):
         print("\n🔄 开始同步生成衍生内容...")
         _update_run_progress(
             run_dir,
@@ -1206,12 +1984,26 @@ def cmd_generate(args):
     return 0
 
 
+def _checkpoint_payload_from_disk(results_file: Path, results: dict) -> dict:
+    """Build a project-level checkpoint summary using trusted chapter artifacts."""
+    payload = dict(results)
+    disk_summary = summarize_saved_chapters(results_file.parent)
+    payload["successful"] = int(disk_summary.get("successful", 0) or 0)
+    payload["checkpoints"] = list(disk_summary.get("checkpoints", []) or [])
+    payload["total_words_generated"] = int(
+        disk_summary.get("total_words_generated", 0) or 0
+    )
+    payload["saved_chapters"] = list(disk_summary.get("saved_chapters", []) or [])
+    return payload
+
+
 def _save_checkpoint(results_file: Path, results: dict) -> None:
     """保存 checkpoint 到文件."""
     checkpoint_file = results_file.parent / "generation_checkpoint.json"
     checkpoint_file.parent.mkdir(parents=True, exist_ok=True)
+    payload = _checkpoint_payload_from_disk(results_file, results)
     with open(checkpoint_file, "w", encoding="utf-8") as f:
-        json.dump(results, f, ensure_ascii=False, indent=2)
+        json.dump(payload, f, ensure_ascii=False, indent=2)
 
 
 def _print_statistics(
@@ -1264,9 +2056,21 @@ def cmd_status(args):
     print(f"   作者: {summary.get('author')}")
     print(f"   题材: {summary.get('genre')}")
     print(
-        f"   进度: {summary.get('current_chapter')}/{summary.get('total_chapters')} 章"
+        "   进度: 成功 "
+        f"{summary.get('successful_chapter_count', 0)}/{summary.get('total_chapters')} 章"
+    )
+    print(
+        "   连续完成: 第 "
+        f"{summary.get('contiguous_completed_chapter', 0)} 章"
+    )
+    print(
+        "   最高到达: 第 "
+        f"{summary.get('high_watermark_chapter', summary.get('current_chapter', 0))} 章"
     )
     print(f"   完成度: {summary.get('progress_percent')}%")
+    failed_chapters = summary.get("failed_chapters") or []
+    if failed_chapters:
+        print(f"   失败章节: {', '.join(str(item) for item in failed_chapters)}")
     writing_options = normalize_writing_options(
         summary.get("metadata", {}).get("writing_options", {})
     )
@@ -2181,6 +2985,7 @@ def _continue_longform_run(
     writing_options = _resolve_active_writing_options(config_mgr, args)
 
     while True:
+        state = _reconcile_longform_progress(config_mgr, state)
         volume_guidance = str(state.get("next_volume_guidance", "") or "").strip()
         registry_guidance = format_longform_registry(state.get("cross_volume_registry"))
         if registry_guidance:
@@ -2311,6 +3116,30 @@ def _continue_longform_run(
             state = refreshed_state
             _sync_status_longform_fields(run_dir, state)
             return 0
+        refreshed_pending_validation = (
+            refreshed_state.get("pending_revision_validation")
+            if isinstance(refreshed_state, dict)
+            and isinstance(refreshed_state.get("pending_revision_validation"), dict)
+            else None
+        )
+        refreshed_attempt = int(
+            (refreshed_pending_validation or {}).get("auto_repair_attempt") or 0
+        )
+        active_attempt = int((pending_validation or {}).get("auto_repair_attempt") or 0)
+        refreshed_target = int(
+            (refreshed_pending_validation or {}).get("chapter_number") or 0
+        )
+        active_target = int((pending_validation or {}).get("chapter_number") or 0)
+        if refreshed_pending_validation and (
+            not pending_validation
+            or (
+                refreshed_target == active_target
+                and refreshed_attempt > active_attempt
+            )
+        ):
+            state = refreshed_state
+            _sync_status_longform_fields(run_dir, state)
+            continue
 
         refreshed_project = config_mgr.load_project(project_id) or project
         if pending_validation:
@@ -2364,6 +3193,11 @@ def _continue_longform_run(
             state["pending_revision_validation"] = None
             state["next_chapter_guidance"] = ""
             state["next_chapter_guidance_chapter"] = None
+            state["next_chapter_experience_capsule"] = {}
+            state["auto_repair_status"] = None
+            state["repair_exhausted_reason"] = None
+            state["repair_decision"] = None
+            state["repair_decision_reason"] = None
             save_longform_state(run_dir, state)
             _sync_status_longform_fields(run_dir, state)
             continue
@@ -2375,6 +3209,7 @@ def _continue_longform_run(
         state["next_volume_guidance_payload"] = {}
         state["next_chapter_guidance"] = ""
         state["next_chapter_guidance_chapter"] = None
+        state["next_chapter_experience_capsule"] = {}
 
         risk_report = build_volume_risk_report(
             project_dir=_project_dir(config_mgr),
@@ -2475,6 +3310,18 @@ def cmd_generate_full(args):
         if not state:
             print("❌ 无法加载 longform_state.v1.json")
             return 1
+        if getattr(args, "chapter_review_mode", None) is not None:
+            state["chapter_review_mode"] = str(
+                getattr(args, "chapter_review_mode", None)
+                or state.get("chapter_review_mode", "manual")
+            )
+        if getattr(args, "chapter_auto_repair_attempts", None) is not None:
+            state["chapter_auto_repair_attempts"] = _resolve_chapter_auto_repair_attempts(
+                getattr(args, "chapter_auto_repair_attempts", None),
+                state.get("chapter_auto_repair_attempts", 1),
+            )
+        save_longform_state(run_dir, state)
+        _sync_status_longform_fields(run_dir, state)
 
         action = getattr(args, "submit_approval", None) or "approve"
         approval_payload = approval_payload_from_input(
@@ -2677,12 +3524,22 @@ def cmd_generate_full(args):
             explicit_guidance = str(
                 approval_payload.get("chapter_rewrite_guidance") or ""
             ).strip()
+            experience_capsule = (
+                {}
+                if explicit_guidance
+                else _load_global_experience_capsule(review_payload)
+            )
+            experience_notes = format_experience_capsule(experience_capsule)
+            combined_notes = "\n".join(
+                item for item in (experience_notes, notes) if item
+            ).strip()
             guidance = explicit_guidance or compile_chapter_rewrite_guidance(
                 rewrite_plan,
-                extra_notes=notes,
+                extra_notes=combined_notes,
             )
             state["next_chapter_guidance"] = guidance
             state["next_chapter_guidance_chapter"] = chapter_number or None
+            state["next_chapter_experience_capsule"] = experience_capsule
             state["pending_revision_validation"] = {
                 "chapter_number": chapter_number,
                 "issue_types": [
@@ -2697,6 +3554,15 @@ def cmd_generate_full(args):
                 ),
                 "created_from_checkpoint": CHECKPOINT_CHAPTER,
             }
+            state["auto_repair_status"] = None
+            state["repair_exhausted_reason"] = None
+            state["graph_recommended_action"] = str(
+                review_payload.get("graph_recommended_action")
+                or dict(review_payload.get("graph_diff_details", {}) or {}).get(
+                    "recommended_action", ""
+                )
+                or ""
+            ).strip() or None
             state = clear_pause(run_dir, state)
             state["current_stage"] = STAGE_VOLUME_PLAN
             save_longform_state(run_dir, state)
@@ -2731,7 +3597,15 @@ def cmd_generate_full(args):
         ),
         approval_mode=getattr(args, "approval_mode", "outline+volume"),
         auto_approve=bool(getattr(args, "auto_approve", False)),
+        chapter_review_mode=str(
+            getattr(args, "chapter_review_mode", None) or "manual"
+        ),
+        chapter_auto_repair_attempts=_resolve_chapter_auto_repair_attempts(
+            getattr(args, "chapter_auto_repair_attempts", None),
+            1,
+        ),
     )
+    _sync_status_longform_fields(run_dir, state)
     _update_run_progress(
         run_dir,
         project_id=project_id,
@@ -2882,6 +3756,18 @@ def main():
         "--auto-approve", action="store_true", help="长篇模式自动跳过所有审批节点"
     )
     parser.add_argument(
+        "--chapter-review-mode",
+        choices=["manual", "auto"],
+        default=None,
+        help="章节质量复核模式；auto 仅对 recommended_action 可证明的安全分支自动修复",
+    )
+    parser.add_argument(
+        "--chapter-auto-repair-attempts",
+        type=int,
+        default=None,
+        help="章节自动修复的最大附加尝试次数（仅在 --chapter-review-mode auto 下生效）",
+    )
+    parser.add_argument(
         "--resume-state", help="恢复长篇运行时使用的 pending state 文件"
     )
     parser.add_argument(
@@ -2912,6 +3798,11 @@ def main():
     )
     parser.add_argument(
         "--no-auto-feedback", action="store_true", help="禁用自动反馈循环"
+    )
+    parser.add_argument(
+        "--sync-derivatives-after-generate",
+        action="store_true",
+        help="正文生成完成后立即同步衍生内容；默认关闭，可改用独立 --sync-derivatives 命令",
     )
     parser.add_argument(
         "--require-llm",

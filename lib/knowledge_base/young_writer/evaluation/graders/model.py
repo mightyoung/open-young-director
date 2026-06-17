@@ -225,8 +225,6 @@ REASONING: <简要解释你的评分决定，100字以内>
     def _fallback_judge(self, prompt: str) -> dict[str, Any]:
         """当没有 API key 时的 fallback 评判"""
         # 简单的启发式检查
-        prompt_lower = prompt.lower()
-
         # 检查基本质量指标
         issues = []
 
@@ -240,7 +238,6 @@ REASONING: <简要解释你的评分决定，100字以内>
 
         # 检查是否包含基本叙事元素
         has_dialogue = '"' in prompt or '"' in prompt or '"' in prompt
-        has_paragraphs = "\n\n" in prompt
 
         if not has_dialogue and len(prompt) > 500:
             issues.append("缺乏对话")

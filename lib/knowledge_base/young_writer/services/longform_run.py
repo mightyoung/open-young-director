@@ -508,6 +508,8 @@ def initial_longform_state(
     chapters_per_volume: int,
     approval_mode: str,
     auto_approve: bool,
+    chapter_review_mode: str = "manual",
+    chapter_auto_repair_attempts: int = 1,
 ) -> dict[str, Any]:
     plan = volume_plan(
         total_chapters=int(getattr(project, "total_chapters", 0)),
@@ -525,6 +527,16 @@ def initial_longform_state(
         "status": "running",
         "approval_mode": approval_mode,
         "auto_approve": auto_approve,
+        "chapter_review_mode": str(chapter_review_mode or "manual"),
+        "chapter_auto_repair_attempts": max(int(chapter_auto_repair_attempts), 0),
+        "chapter_auto_repair_attempts_used": {},
+        "chapter_auto_repair_escalations_used": {},
+        "auto_repair_status": None,
+        "last_auto_repair_action": None,
+        "last_auto_repair_reason": None,
+        "last_auto_repair_chapter": None,
+        "repair_exhausted_reason": None,
+        "graph_recommended_action": None,
         "chapters_per_volume": chapters_per_volume,
         "total_chapters": int(getattr(project, "total_chapters", 0)),
         "chapters_completed": int(getattr(project, "current_chapter", 0)),
@@ -553,6 +565,7 @@ def initial_longform_state(
         "cross_volume_registry": normalize_longform_registry(None),
         "next_chapter_guidance": "",
         "next_chapter_guidance_chapter": None,
+        "next_chapter_experience_capsule": {},
         "approval_history": [],
         "created_at": _now_iso(),
         "updated_at": _now_iso(),
@@ -765,6 +778,25 @@ def review_payload_for_chapter(
     blocking_issues = [
         str(item) for item in report.get("blocking_issues", []) if str(item).strip()
     ]
+    graph_diff_details = dict(report.get("graph_diff_details", {}) or {})
+    recommended_action = str(graph_diff_details.get("recommended_action", "") or "").strip()
+    repair_decision = str(report.get("repair_decision", "") or "").strip()
+    repair_decision_reason = str(report.get("repair_decision_reason", "") or "").strip()
+    effective_decision = repair_decision or recommended_action
+    pause_disposition = str(report.get("auto_repair_status", "") or "").strip() or "human_review_required"
+    if bool(report.get("rewrite_attempted")) and not bool(report.get("rewrite_succeeded")):
+        if effective_decision == "rebaseline":
+            next_action = "自动重写后仍失败；请优先检查计划是否已过期，并按重基线建议修正后续章节。"
+            if pause_disposition != "auto_repair_exhausted":
+                pause_disposition = "plan_rebaseline_required"
+        else:
+            next_action = "自动整章重写后仍未通过质量门，请按结构化重写方案选择重试、带备注重试或保持暂停。"
+    elif effective_decision == "rebaseline":
+        next_action = "本章暴露出计划与已发生剧情脱节，请结合图差分和重基线建议处理。"
+        if pause_disposition != "auto_repair_exhausted":
+            pause_disposition = "plan_rebaseline_required"
+    else:
+        next_action = "章节未通过质量门，请按结构化重写方案处理。"
     return {
         "chapter_number": chapter_number,
         "title": title,
@@ -782,17 +814,18 @@ def review_payload_for_chapter(
         "chapter_intent_contract": dict(
             report.get("chapter_intent_contract", {}) or {}
         ),
+        "chapter_graph_packet": dict(report.get("chapter_graph_packet", {}) or {}),
+        "graph_diff_details": graph_diff_details,
+        "graph_recommended_action": recommended_action or None,
+        "repair_decision": repair_decision or None,
+        "repair_decision_reason": repair_decision_reason or None,
         "rewrite_plan": dict(report.get("rewrite_plan", {}) or {}),
         "rewrite_guidance": str(report.get("rewrite_guidance", "") or "").strip(),
         "rewrite_attempted": bool(report.get("rewrite_attempted")),
         "rewrite_succeeded": bool(report.get("rewrite_succeeded")),
         "rewrite_history": list(rewrite_history or []),
-        "quality_gate_next_action": (
-            "自动整章重写后仍未通过质量门，请按结构化重写方案选择重试、带备注重试或保持暂停。"
-            if bool(report.get("rewrite_attempted"))
-            and not bool(report.get("rewrite_succeeded"))
-            else "章节未通过质量门，请按结构化重写方案处理。"
-        ),
+        "pause_disposition": pause_disposition,
+        "quality_gate_next_action": next_action,
     }
 
 

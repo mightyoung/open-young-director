@@ -5,6 +5,8 @@ import logging
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
+from young_writer.services.story_input import chapter_plan_to_outline_info, load_chapter_plan
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,6 +34,11 @@ class OutlineLoader:
 
     def get_chapter_outline(self, chapter_number: int) -> Optional[Dict[str, Any]]:
         """Get outline for a specific chapter."""
+        project_dir = self.outline_dir.parent
+        chapter_plan = load_chapter_plan(project_dir, chapter_number)
+        if chapter_plan is not None:
+            return chapter_plan_to_outline_info(chapter_plan)
+
         volume_num = ((chapter_number - 1) // 60) + 1
 
         outline_file = self.volume_outlines.get(volume_num)
@@ -50,7 +57,7 @@ class OutlineLoader:
             lines = content.split("\n")
 
             # Try table format first (e.g., "| 001 | 标题 | 境界 | 事件 |")
-            for i, line in enumerate(lines):
+            for _, line in enumerate(lines):
                 if f"| {chapter_number:03d} |" in line or f"| {chapter_number} |" in line:
                     parts = [p.strip() for p in line.split("|")]
                     parts = [p for p in parts if p]
@@ -129,8 +136,6 @@ class OutlineLoader:
             summary = ""
             key_events = []
             events_mode = False
-            found_core_event = False
-
             # Scan lines after the chapter header
             for i in range(chapter_idx + 1, min(chapter_idx + 30, len(lines))):
                 line = lines[i].strip()
@@ -148,7 +153,6 @@ class OutlineLoader:
                             summary = parts[-1].strip()
                         else:
                             summary = line.replace("**核心事件**", "").replace("核心事件", "").strip()
-                    found_core_event = True
                     # Also add as first key event
                     if summary and len(summary) > 2:
                         key_events.append(summary)
@@ -186,8 +190,6 @@ class OutlineLoader:
 
     def _parse_volume_outline(self, outline_file: Path) -> Dict[str, Any]:
         """Parse entire volume outline."""
-        content = outline_file.read_text(encoding="utf-8")
-
         return {
             "file": str(outline_file),
             "chapters": [],

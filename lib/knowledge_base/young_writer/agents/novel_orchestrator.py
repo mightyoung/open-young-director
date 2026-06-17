@@ -149,8 +149,8 @@ class NovelOrchestrator:
         characters = self._extract_characters_from_context(context)
 
         # Extract location and time from outline/context
-        location = context.get("location", "太虚宗")
-        time_of_day = context.get("time_of_day", "morning")
+        location = self._resolve_location_from_context(context)
+        time_of_day = self._resolve_time_of_day_from_context(context)
 
         # Get previous context for progressive disclosure
         previous_context = context.get("previous_summary", "")
@@ -161,7 +161,6 @@ class NovelOrchestrator:
 
         # If no explicit constraint, try to determine protagonist from characters
         if not protagonist_constraint:
-            characters = context.get("characters", {})
             protagonist = None
             for name, char_data in characters.items():
                 if isinstance(char_data, dict) and char_data.get("role") == "protagonist":
@@ -222,6 +221,10 @@ class NovelOrchestrator:
         return {
             "chapter_number": chapter_number,
             "outline": chapter_outline,
+            "beats": [
+                {"beat_id": b.beat_id, "type": b.beat_type, "desc": b.description}
+                for b in script.scene.beats
+            ],
             "plot_outline": {
                 "scene_id": script.scene.scene_id,
                 "beats": [
@@ -243,6 +246,45 @@ class NovelOrchestrator:
             "content": final_content,
         }
 
+    def _resolve_location_from_context(self, context: Dict[str, Any]) -> str:
+        location = str(context.get("location", "") or "").strip()
+        if location:
+            return location
+        packet = context.get("generation_packet") or {}
+        if isinstance(packet, dict):
+            plan = packet.get("chapter_plan") or {}
+            world = packet.get("world_bible") or {}
+            location_ids = [
+                str(item or "").strip().lower()
+                for item in plan.get("location_ids", []) or []
+                if str(item or "").strip()
+            ]
+            for location in world.get("locations", []) or []:
+                normalized = f"location:{str(location or '').strip().lower()}"
+                if normalized in location_ids:
+                    return str(location or "").strip()
+            locations = [str(item or "").strip() for item in world.get("locations", []) or []]
+            for location in locations:
+                if location:
+                    return location
+        return "未指定场景"
+
+    def _resolve_time_of_day_from_context(self, context: Dict[str, Any]) -> str:
+        time_of_day = str(context.get("time_of_day", "") or "").strip()
+        if time_of_day:
+            return time_of_day
+        outline = " ".join(
+            [
+                str(context.get("outline", "") or ""),
+                str(context.get("generation_outline", "") or ""),
+                str(context.get("previous_summary", "") or ""),
+            ]
+        )
+        for token in ("清晨", "早晨", "上午", "中午", "黄昏", "傍晚", "夜晚", "深夜", "凌晨"):
+            if token in outline:
+                return token
+        return "未指定时段"
+
     def _extract_characters_from_context(self, context: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
         """Extract character information from context.
 
@@ -254,6 +296,16 @@ class NovelOrchestrator:
         """
         # Try to get characters from knowledge base
         knowledge_chars = context.get("characters", [])
+        if not knowledge_chars:
+            packet = context.get("generation_packet") or {}
+            if isinstance(packet, dict):
+                knowledge_chars = packet.get("characters", []) or []
+        if not knowledge_chars and context.get("character_names"):
+            knowledge_chars = [
+                {"name": name, "identity": "关键角色"}
+                for name in context.get("character_names", [])
+                if str(name or "").strip()
+            ]
 
         if knowledge_chars:
             characters = {}
@@ -267,50 +319,34 @@ class NovelOrchestrator:
                         char_data_with_name = {"name": name}
                     name = char_data_with_name.get("name", name)
                     characters[name] = {
-                        "identity": char_data_with_name.get("identity", "太虚宗弟子"),
-                        "realm": char_data_with_name.get("cultivation_realm", "炼气期"),
-                        "personality": char_data_with_name.get("personality", "坚毅果敢"),
-                        "speaking_style": char_data_with_name.get("speaking_style", "简洁有力"),
-                        "backstory": char_data_with_name.get("backstory", ""),
+                        "identity": char_data_with_name.get("identity", "关键角色"),
+                        "realm": char_data_with_name.get("cultivation_realm", ""),
+                        "personality": char_data_with_name.get("personality", "目标明确"),
+                        "speaking_style": char_data_with_name.get("speaking_style", "简洁清晰"),
+                        "backstory": char_data_with_name.get("backstory", char_data_with_name.get("motivation", "")),
                         "objective": char_data_with_name.get("objective_this_chapter", ""),
                         "relationships": char_data_with_name.get("relationships", {}),
                     }
             elif isinstance(knowledge_chars, list):
                 # List format: [{"name": "韩林", ...}]
                 for char in knowledge_chars:
+                    if not isinstance(char, dict):
+                        continue
                     name = char.get("name", "未知角色")
+                    if not str(name or "").strip():
+                        continue
                     characters[name] = {
-                        "identity": char.get("identity", "太虚宗弟子"),
-                        "realm": char.get("cultivation_realm", "炼气期"),
-                        "personality": char.get("personality", "坚毅果敢"),
-                        "speaking_style": char.get("speaking_style", "简洁有力"),
-                        "backstory": char.get("backstory", ""),
-                        "objective": char.get("objective_this_chapter", ""),
+                        "identity": char.get("identity") or char.get("role", "关键角色"),
+                        "realm": char.get("cultivation_realm", ""),
+                        "personality": char.get("personality") or char.get("motivation", "目标明确"),
+                        "speaking_style": char.get("speaking_style", "简洁清晰"),
+                        "backstory": char.get("backstory") or char.get("arc", ""),
+                        "objective": char.get("objective_this_chapter") or char.get("motivation", ""),
                         "relationships": char.get("relationships", {}),
                     }
             return characters
 
-        # Default characters for 太古魔帝传
-        return {
-            "韩林": {
-                "identity": "太虚宗外门弟子",
-                "realm": "炼气期",
-                "personality": "坚毅果敢，隐忍不发",
-                "speaking_style": "简洁有力",
-                "backstory": "父亲韩啸天曾为太虚宗天才，后被逐出宗门",
-                "objective": "三年之约，证明自己",
-                "relationships": {"柳如烟": "未婚妻（已退婚）", "叶尘": "情敌"},
-            },
-            "柳如烟": {
-                "identity": "太虚宗第一美人，柳家千金",
-                "realm": "炼气期十层",
-                "personality": "冷傲，但内心复杂",
-                "speaking_style": "清冷犀利",
-                "backstory": "玄灵根天才，内门长老弟子",
-                "objective": "宗门大比",
-                "relationships": {"韩林": "退婚对象", "叶尘": "追求者"},
-            },
-        }
+        return {}
 
     def _format_bible_constraint(self, bible_section: Any) -> str:
         """Format BibleSection constraints into a string for prompt injection.
@@ -385,7 +421,6 @@ class NovelOrchestrator:
 
             # If no explicit constraint, try to determine protagonist from characters
             if not protagonist_constraint:
-                characters = context.get("characters", {})
                 protagonist = None
                 for name, char_data in characters.items():
                     if isinstance(char_data, dict) and char_data.get("role") == "protagonist":

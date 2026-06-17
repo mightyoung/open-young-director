@@ -11,6 +11,10 @@ import re
 from typing import Any
 
 from young_writer.services.paths import WorkspacePaths, safe_project_slug
+from young_writer.services.story_graph.packet import (
+    build_chapter_graph_packet,
+    render_chapter_graph_packet_summary,
+)
 from young_writer.services.story_input import load_story_input_bundle
 
 
@@ -385,7 +389,16 @@ class ChapterManager:
                     f"{item.get('memory_type')}: {item.get('summary') or item.get('content_excerpt')}"
                 )
                 for item in longform_memory
-            )
+                )
+            rendered_text = "\n".join(rendered_lines)
+        chapter_graph_packet = build_chapter_graph_packet(
+            self.novel_dir,
+            chapter_number=chapter_num,
+        )
+        chapter_graph_summary = render_chapter_graph_packet_summary(chapter_graph_packet)
+        if chapter_graph_summary:
+            rendered_lines.append("剧情状态图摘要:")
+            rendered_lines.extend(chapter_graph_summary.splitlines())
             rendered_text = "\n".join(rendered_lines)
         return ChapterContext(
             rendered_text,
@@ -398,6 +411,8 @@ class ChapterManager:
             outline=outline,
             world_name=world_name,
             character_names=character_names,
+            chapter_graph_packet=chapter_graph_packet,
+            chapter_graph_summary=chapter_graph_summary,
             story_input_bundle=story_input_bundle,
         )
 
@@ -698,7 +713,11 @@ class ChapterManager:
 
     def export_to_text(self, output_path: str, start: int = 1, end: int | None = None) -> int:
         """Export chapter content into a single text file."""
-        chapters = [chapter for chapter in self.get_chapter_list() if chapter.number >= start and (end is None or chapter.number <= end)]
+        chapters = [
+            chapter
+            for chapter in self.get_chapter_list()
+            if chapter.number >= start and (end is None or chapter.number <= end)
+        ]
         if not chapters:
             output_file = Path(output_path)
             if output_file.exists():
@@ -716,7 +735,7 @@ class ChapterManager:
         output_file = Path(output_path)
         output_file.parent.mkdir(parents=True, exist_ok=True)
         output_file.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
-        return len(lines)
+        return len(chapters)
 
     def save_film_drama_content(
         self,

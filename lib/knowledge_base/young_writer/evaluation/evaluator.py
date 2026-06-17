@@ -154,8 +154,7 @@ class RuleBasedEvaluator:
             "therefore", "因此", "所以", "于是", "从而",
             "meanwhile", "与此同时", "这时候", "这时",
             "suddenly", "突然", "忽然", "猛然", "骤然",
-            "finally", "终于", "最终", "最后", "最后",
-            "previously", "之前", "此前", "在此之前",
+            "finally", "终于", "最终", "最后", "previously", "之前", "此前", "在此之前",
         }
 
         # 用于检测情感词汇的模式
@@ -556,7 +555,7 @@ class RuleBasedEvaluator:
 
         # 统计情感词汇
         emotion_count = 0
-        for category, words in self.emotion_words.items():
+        for _, words in self.emotion_words.items():
             for word in words:
                 emotion_count += content.count(word)
 

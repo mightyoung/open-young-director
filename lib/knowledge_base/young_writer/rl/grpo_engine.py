@@ -351,8 +351,6 @@ class GiGPOEngine(GRPOEngine):
         # Step 层: 对每个 episode 内的 step 计算 GAE
         all_step_advantages = []
         all_step_rewards = []
-        policy_losses = []
-
         for i, exp in enumerate(experiences):
             # 计算内在奖励
             intrinsic_reward = self.compute_intrinsic_reward(exp, experiences)

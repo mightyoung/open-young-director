@@ -218,7 +218,7 @@ class BaseCrawler(ABC):
             f"{start_chapter + len(chapters_to_crawl) - 1}"
         )
 
-        for i, chapter in enumerate(chapters_to_crawl):
+        for _, chapter in enumerate(chapters_to_crawl):
             try:
                 self.logger.debug(f"Crawling chapter {chapter.number}: {chapter.title}")
                 content = self.extract_chapter_content(chapter.url)

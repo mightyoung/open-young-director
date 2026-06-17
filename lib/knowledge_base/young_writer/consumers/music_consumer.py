@@ -189,8 +189,6 @@ class MusicConsumer(BaseConsumer):
         character_states = raw_data.get("character_states", {})
         scene_descriptions = raw_data.get("scene_descriptions", [])
         chapter_info = raw_data.get("chapter_info", {})
-        background = raw_data.get("background", "")
-
         genre = kwargs.get("genre", "xianxia")
         include_cues = kwargs.get("include_cues", True)
         generate_media = kwargs.get("generate_media", True)
@@ -459,8 +457,6 @@ class MusicConsumer(BaseConsumer):
             Music prompt string for AI generation (direct format)
         """
         instrument_str = "、".join(instruments[:4])  # Use top 4 instruments
-        chapter_title = chapter_info.get("title", "太古魔帝传") if chapter_info else "太古魔帝传"
-
         # Format emotional journey
         arc_text = ""
         if emotional_arc:

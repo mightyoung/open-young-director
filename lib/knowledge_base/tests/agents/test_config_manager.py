@@ -250,11 +250,15 @@ class TestCreateProject:
         summary = manager.get_project_summary()
 
         assert summary["current_chapter"] == 7
-        assert summary["progress_percent"] == pytest.approx(7 / 12 * 100)
+        assert summary["high_watermark_chapter"] == 7
+        assert summary["successful_chapter_count"] == 2
+        assert summary["contiguous_completed_chapter"] == 1
+        assert summary["progress_percent"] == pytest.approx(2 / 12 * 100)
+        assert manager.current_project.current_chapter == 0
         reloaded = json.loads(
             (temp_config_dir / f"project_{project.id}.json").read_text(encoding="utf-8")
         )
-        assert reloaded["current_chapter"] == 7
+        assert reloaded["current_chapter"] == 0
 
     def test_get_project_summary_ignores_incomplete_chapter_files(
         self, temp_config_dir, mock_env_vars
@@ -279,10 +283,13 @@ class TestCreateProject:
         summary = manager.get_project_summary()
 
         assert summary["current_chapter"] == 1
+        assert summary["successful_chapter_count"] == 1
+        assert summary["contiguous_completed_chapter"] == 1
+        assert manager.current_project.current_chapter == 0
         reloaded = json.loads(
             (temp_config_dir / f"project_{project.id}.json").read_text(encoding="utf-8")
         )
-        assert reloaded["current_chapter"] == 1
+        assert reloaded["current_chapter"] == 0
 
     def test_create_project_materializes_seed_outline_files(
         self, temp_config_dir, mock_env_vars
@@ -626,8 +633,42 @@ class TestGetProjectSummary:
         assert summary["status"] == "ok"
         assert summary["title"] == "摘要测试"
         assert summary["current_chapter"] == 25
+        assert summary["high_watermark_chapter"] == 25
+        assert summary["successful_chapter_count"] == 0
+        assert summary["contiguous_completed_chapter"] == 0
         assert summary["total_chapters"] == 100
-        assert summary["progress_percent"] == 25.0
+        assert summary["progress_percent"] == 0.0
+
+    def test_get_summary_reads_failed_chapters_from_generation_results(
+        self, temp_config_dir, mock_env_vars
+    ):
+        manager = ConfigManager(config_dir=str(temp_config_dir))
+        project = manager.create_project(
+            title="失败摘要测试",
+            author="作者",
+            genre="类型",
+            outline="大纲",
+            total_chapters=10,
+        )
+
+        project_dir = Path(manager.generation.output_dir)
+        (project_dir / "generation_results.json").write_text(
+            json.dumps(
+                {
+                    "failed_chapters": [
+                        {"chapter_number": 2, "error": "invalid"},
+                        {"chapter_number": 5, "error": "invalid"},
+                    ]
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
+        summary = manager.get_project_summary()
+
+        assert summary["title"] == project.title
+        assert summary["failed_chapters"] == [2, 5]
 
 
 class TestSetCurrentProject:

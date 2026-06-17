@@ -39,6 +39,11 @@ def test_story_input_bundle_round_trips(temp_project_dir):
     assert reloaded.project_bible.title == "深渊归航"
     assert reloaded.chapter_plans[0].summary
     assert reloaded.style_profile.style == "dramatic"
+    assert reloaded.chapter_plans[0].goal_lock != reloaded.chapter_plans[0].summary
+    assert all(
+        "推进开场阶段冲突" not in event
+        for event in reloaded.chapter_plans[0].key_events
+    )
 
 
 def test_validate_generation_packet_blocks_unknown_character_ids():
@@ -139,6 +144,8 @@ def test_input_assembler_enriches_context_with_generation_packet(temp_project_di
     assert context["generation_packet"]["chapter_number"] == 2
     assert context["project_outline"]
     assert context["character_names"][0] == "沈夜"
+    assert context["characters"][0]["name"] == "沈夜"
+    assert context["characters"][0]["objective_this_chapter"]
     assert context["story_input_validation"]["blocking_issues"] == []
     assert context["canonical_input_policy"]["story_input_json"] == "canonical"
     assert context["goal_lock_resolution"]["effective_source"] == "chapter_plan.goal_lock"
@@ -178,3 +185,119 @@ def test_input_assembler_marks_runtime_goal_lock_conflict_as_plan_first(temp_pro
     assert resolution["effective_source"] == "chapter_plan.goal_lock"
     assert resolution["conflict"] is True
     assert "watch_items" in context["story_input_validation"]
+
+
+def test_input_assembler_does_not_mutate_base_context(temp_project_dir):
+    project_dir = temp_project_dir / "runtime" / "projects" / "深渊归航_demo123"
+    project_dir.mkdir(parents=True, exist_ok=True)
+    project = SimpleNamespace(
+        id="demo123",
+        title="深渊归航",
+        author="作者",
+        genre="科幻修真",
+        outline="沈夜带着异质核心归来，调查母舰失踪真相。",
+        world_setting="空间城与深渊航道构成主要舞台。",
+        character_intro="沈夜：主角。顾砚青：工程师。",
+        total_chapters=3,
+        metadata={},
+    )
+    config = SimpleNamespace(
+        current_project=project,
+        generation=SimpleNamespace(output_dir=str(project_dir), chapters_per_volume=60),
+    )
+
+    assembler = InputAssembler(config)
+    base_context = {"previous_summary": "上一章沈夜返回空间城。", "time_of_day": "夜晚"}
+
+    context = assembler.enrich_context(chapter_number=2, base_context=base_context)
+
+    assert context is not base_context
+    assert base_context == {
+        "previous_summary": "上一章沈夜返回空间城。",
+        "time_of_day": "夜晚",
+    }
+    assert context["chapter_number"] == 2
+    assert context["time_of_day"] == "夜晚"
+
+
+def test_story_input_bundle_compacts_seed_goal_lock_and_key_events():
+    project = SimpleNamespace(
+        title="回声航道",
+        author="作者",
+        genre="科幻悬疑",
+        outline="林渊追查失踪舰队回声真相并在白昼环截获异常信号。",
+        world_setting="白昼环。回声空域。星门。",
+        character_intro="林渊：主角。顾岚：舰长。",
+        total_chapters=1,
+    )
+
+    bundle = build_story_input_bundle(project)
+    plan = bundle.chapter_plans[0]
+
+    assert plan.goal_lock == "林渊追查失踪舰队回声真相"
+    assert plan.key_events[0] == "林渊追查失踪舰队回声真相"
+    assert plan.key_events == ["林渊追查失踪舰队回声真相"]
+    assert all("推进开场阶段冲突" not in event for event in plan.key_events)
+
+
+def test_story_input_bundle_derives_goal_lock_per_chapter():
+    project = SimpleNamespace(
+        title="回声航道",
+        author="作者",
+        genre="科幻悬疑",
+        outline="林渊追查失踪舰队回声真相并在白昼环截获异常信号。林渊确认信号来自二十七年前的远征舰队。",
+        world_setting="白昼环。回声空域。",
+        character_intro="林渊：主角。",
+        total_chapters=2,
+    )
+
+    bundle = build_story_input_bundle(project)
+
+    assert bundle.chapter_plans[0].goal_lock == "林渊追查失踪舰队回声真相"
+    assert bundle.chapter_plans[1].goal_lock == "林渊确认信号来自二十七年前的远征舰队"
+
+
+def test_story_input_bundle_preserves_character_descriptions_and_scifi_locations():
+    project = SimpleNamespace(
+        title="回声航道",
+        author="作者",
+        genre="科幻悬疑",
+        outline=(
+            "林渊在白昼环监测站确认异常信号来自二十七年前。"
+            "随后前往企业主控塔夺取开启星门的权限。"
+        ),
+        world_setting="白昼环监测站。企业主控塔。回声空域。星门。",
+        character_intro=(
+            "林渊：空间语言学工程师，习惯先验证后行动，执念是找回母亲。"
+            "顾岚：舰长，语气冷静克制，必须掩护林渊离开白昼环。"
+        ),
+        total_chapters=2,
+    )
+
+    bundle = build_story_input_bundle(project)
+
+    assert bundle.characters[0].role == "空间语言学工程师"
+    assert bundle.characters[0].motivation == "执念是找回母亲"
+    assert bundle.characters[1].voice == "语气冷静克制"
+    assert "白昼环监测站" in bundle.world_bible.locations
+    assert "企业主控塔" in bundle.world_bible.locations
+    assert bundle.chapter_plans[0].location_ids == ["location:白昼环监测站"]
+    assert bundle.chapter_plans[1].location_ids == ["location:企业主控塔", "location:星门"]
+
+
+def test_story_input_bundle_compacts_terminal_rescue_goal_lock():
+    project = SimpleNamespace(
+        title="回声航道",
+        author="作者",
+        genre="科幻悬疑",
+        outline="林渊进入回声空域救回母亲并公开星门真相。",
+        world_setting="白昼环。回声空域。星门。",
+        character_intro="林渊：主角。顾岚：舰长。",
+        total_chapters=1,
+    )
+
+    bundle = build_story_input_bundle(project)
+    plan = bundle.chapter_plans[0]
+
+    assert plan.goal_lock == "林渊救回母亲"
+    assert plan.key_events == ["林渊救回母亲"]

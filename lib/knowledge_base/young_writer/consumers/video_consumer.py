@@ -721,7 +721,6 @@ class VideoConsumer(BaseConsumer):
         # Simple parsing - split by scene markers
         # In production, could use more sophisticated parsing
         current_scene = None
-        current_key = None
 
         lines = script_text.split("\n")
         scene_count = 0
@@ -742,8 +741,6 @@ class VideoConsumer(BaseConsumer):
                     duration=15,  # Default duration
                     visual="",
                 )
-                current_key = None
-
             elif current_scene is not None:
                 # Parse key-value pairs
                 if "时长:" in line:

@@ -219,7 +219,6 @@ class EmotionalStateMiddleware(CharacterMiddleware):
         conflict_active = memory.get("conflict_active", False)
 
         # Validate emotional consistency based on beat type
-        modified = False
         warnings = []
 
         if beat.beat_type == BeatType.OPENING.value:
@@ -291,11 +290,11 @@ class SubagentLimitMiddleware(CharacterMiddleware):
 
     def __init__(self, max_concurrent: int = 3):
         self.max_concurrent = max_concurrent
-        self._current_batch: List[str] = []
+        self._observed_max_batch_size = 0
 
     def clear_batch(self) -> None:
         """Clear the current batch. Call this at the end of each beat."""
-        self._current_batch.clear()
+        self._observed_max_batch_size = 0
 
     async def process(
         self,
@@ -305,22 +304,26 @@ class SubagentLimitMiddleware(CharacterMiddleware):
         context: Dict[str, Any],
     ) -> MiddlewareResult:
         """Track concurrent processing and warn if limit exceeded."""
-        self._current_batch.append(character_name)
-
-        exceeded = len(self._current_batch) > self.max_concurrent
+        batch_size = int(context.get("subagent_batch_size", 1) or 1)
+        batch_members = list(context.get("subagent_batch_members", []) or [])
+        self._observed_max_batch_size = max(self._observed_max_batch_size, batch_size)
+        exceeded = batch_size > self.max_concurrent
 
         if exceeded:
             logger.warning(
-                f"[SubagentLimit] Batch size {len(self._current_batch)} "
-                f"exceeds limit {self.max_concurrent}"
+                f"[SubagentLimit] Batch size {batch_size} exceeds limit "
+                f"{self.max_concurrent}: {batch_members}"
             )
 
         return MiddlewareResult(
             modified_output=output,
             metadata={
-                "batch_size": len(self._current_batch),
+                "batch_size": batch_size,
                 "limit": self.max_concurrent,
                 "exceeded": exceeded,
+                "within_limit": not exceeded,
+                "batch_members": batch_members,
+                "observed_max_batch_size": self._observed_max_batch_size,
             }
         )
 

@@ -48,3 +48,50 @@ def test_deepseek_client_raises_on_api_error():
 
         with pytest.raises(RuntimeError, match="DeepSeek API error"):
             client.generate([{"role": "user", "content": "test"}])
+
+
+def test_deepseek_client_retries_on_empty_content():
+    client = DeepSeekClient(api_key="test-key", empty_content_retries=2, retry_delay=0)
+
+    empty_response = Mock()
+    empty_response.status_code = 200
+    empty_response.json.return_value = {
+        "choices": [{"message": {"content": ""}}],
+        "model": "deepseek-v4-flash",
+    }
+
+    ok_response = Mock()
+    ok_response.status_code = 200
+    ok_response.json.return_value = {
+        "choices": [{"message": {"content": "重试成功"}}],
+        "model": "deepseek-v4-flash",
+    }
+
+    with patch("llm.deepseek_client.httpx.Client") as client_cls:
+        http_client = client_cls.return_value.__enter__.return_value
+        http_client.post.side_effect = [empty_response, ok_response]
+
+        result = client.generate([{"role": "user", "content": "test"}])
+
+    assert result == "重试成功"
+    assert http_client.post.call_count == 2
+
+
+def test_deepseek_client_raises_after_empty_content_retries_exhausted():
+    client = DeepSeekClient(api_key="test-key", empty_content_retries=1, retry_delay=0)
+
+    empty_response = Mock()
+    empty_response.status_code = 200
+    empty_response.json.return_value = {
+        "choices": [{"message": {"content": ""}}],
+        "model": "deepseek-v4-flash",
+    }
+
+    with patch("llm.deepseek_client.httpx.Client") as client_cls:
+        http_client = client_cls.return_value.__enter__.return_value
+        http_client.post.side_effect = [empty_response, empty_response]
+
+        with pytest.raises(RuntimeError, match="empty content"):
+            client.generate([{"role": "user", "content": "test"}])
+
+    assert http_client.post.call_count == 2

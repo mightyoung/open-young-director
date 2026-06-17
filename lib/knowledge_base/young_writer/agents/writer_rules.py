@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Any
 
 
-ROOT_DIR = Path(__file__).resolve().parents[3]
-RULES_PATH = Path(__file__).resolve().parents[1] / "config" / "writer_rules.json"
+ROOT_DIR = Path(__file__).resolve().parents[4]
+RULES_PATH = Path(__file__).resolve().parents[2] / "config" / "writer_rules.json"
 WRITER_PATH = ROOT_DIR / "WRITER.md"
 
 

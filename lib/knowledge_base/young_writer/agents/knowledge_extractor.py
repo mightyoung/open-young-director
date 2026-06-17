@@ -280,16 +280,6 @@ class KnowledgeExtractor:
         characters = []
         seen = set()
 
-        # Known character patterns - cultivation realm mentions
-        realm_patterns = [
-            (r"韩林.*?(凝元境|灵海境|筑基|炼气)", "韩林"),
-            (r"叶尘.*?(凝元境|灵海境|筑基|炼气)", "叶尘"),
-            (r"韩烈.*?(筑基|凝元境|金丹)", "韩烈"),
-            (r"玄袍魔尊|魔尊.*?(残魂|三千年)", "玄袍魔尊"),
-            (r"柳如烟", "柳如烟"),
-            (r"韩家.*?家主", "韩烈"),
-        ]
-
         # Character name mentions with context
         character_contexts = {
             "韩林": {
