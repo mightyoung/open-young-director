@@ -57,7 +57,7 @@ COMPLETE_CUSTOM_TITLED_CHAPTER_ARTIFACT = """# 星火初燃
 class _Project:
     def __init__(self):
         self.id = "project-123"
-        self.title = "demo"
+        self.title = "演示项目"
         self.total_chapters = 120
         self.current_chapter = 3
         self.outline = "outline"
@@ -1137,7 +1137,7 @@ def test_cmd_generate_only_applies_chapter_guidance_to_target_chapter(
 
     project = SimpleNamespace(
         id="project-123",
-        title="demo",
+        title="演示项目",
         current_chapter=0,
         total_chapters=120,
         metadata={},
@@ -1172,9 +1172,6 @@ def test_cmd_generate_only_applies_chapter_guidance_to_target_chapter(
         def save_plot_summary(self, _plot_summary):
             return None
 
-        def save_film_drama_content(self, **_kwargs):
-            return None
-
     class _FakeGenerator:
         def generate_chapter(
             self, chapter_number, context, previous_summary="", writing_options=None
@@ -1196,17 +1193,6 @@ def test_cmd_generate_only_applies_chapter_guidance_to_target_chapter(
                 },
                 consistency_report={},
             )
-
-    class _FakeDerivativeGenerator:
-        def sync_derivatives(self, _chapter_range):
-            return {
-                "video_prompts": [],
-                "character_descriptions": [],
-                "scene_descriptions": [],
-                "podcasts": [],
-                "errors": [],
-            }
-
     class _FakeMemoryStore:
         pass
 
@@ -1244,11 +1230,6 @@ def test_cmd_generate_only_applies_chapter_guidance_to_target_chapter(
     )
     monkeypatch.setattr(
         run_novel_generation, "_update_run_progress", lambda *args, **kwargs: None
-    )
-    monkeypatch.setattr(
-        run_novel_generation,
-        "get_derivative_generator",
-        lambda *args, **kwargs: _FakeDerivativeGenerator(),
     )
     monkeypatch.setattr(
         run_novel_generation,
@@ -1301,238 +1282,6 @@ def test_cmd_generate_only_applies_chapter_guidance_to_target_chapter(
     assert status["longform_memory_error"] is None
 
 
-def test_cmd_generate_does_not_auto_sync_derivatives_by_default(
-    temp_project_dir, monkeypatch
-):
-    project_dir = temp_project_dir / "project"
-    project_dir.mkdir(parents=True, exist_ok=True)
-    run_dir = temp_project_dir / "runs" / "run-001"
-    run_dir.mkdir(parents=True, exist_ok=True)
-
-    project = SimpleNamespace(
-        id="project-123",
-        title="demo",
-        current_chapter=0,
-        total_chapters=3,
-        metadata={},
-        outline="沈夜归来",
-        world_setting="空间城",
-        character_intro="沈夜：主角",
-        genre="科幻修真",
-    )
-    fake_config = SimpleNamespace(
-        current_project=project,
-        generation=SimpleNamespace(
-            output_dir=str(project_dir), scripts_dir=str(temp_project_dir / "scripts")
-        ),
-        update_project_metadata=lambda payload: project.metadata.update(payload),
-        update_project_progress=lambda chapter: setattr(project, "current_chapter", chapter),
-    )
-
-    class _FakeChapterManager:
-        def build_context(self, chapter_number):
-            return {"chapter_number": chapter_number}
-
-        def save_consistency_report(self, **_kwargs):
-            return None
-
-        def save_chapter(self, **kwargs):
-            return SimpleNamespace(
-                metadata=SimpleNamespace(
-                    file_path=str(project_dir / f"chapter_{kwargs['number']}.md")
-                )
-            )
-
-        def save_plot_summary(self, _plot_summary):
-            return None
-
-        def save_film_drama_content(self, **_kwargs):
-            return None
-
-    class _FakeGenerator:
-        def generate_chapter(
-            self, chapter_number, context, previous_summary="", writing_options=None
-        ):
-            return GeneratedChapter(
-                number=chapter_number,
-                title=f"第{chapter_number}章",
-                content="沈夜返回空间城。" * 80,
-                word_count=1200,
-                metadata={"outline_summary": "沈夜返回空间城。", "key_events": []},
-                plot_summary={"l2_brief_summary": "沈夜返回空间城。"},
-                consistency_report={},
-            )
-
-    def _unexpected_derivative_generator(*args, **kwargs):
-        raise AssertionError("默认正文生成不应自动同步衍生内容")
-
-    monkeypatch.setattr(run_novel_generation, "get_config_manager", lambda: fake_config)
-    monkeypatch.setattr(run_novel_generation, "_build_llm_clients", lambda _cfg: (None, None))
-    monkeypatch.setattr(run_novel_generation, "_create_orchestrator", lambda _cfg, _project_id: object())
-    monkeypatch.setattr(
-        run_novel_generation,
-        "get_chapter_manager",
-        lambda _project_id, base_dir_override=None: _FakeChapterManager(),
-    )
-    monkeypatch.setattr(
-        run_novel_generation,
-        "get_novel_generator",
-        lambda config_manager, novel_orchestrator, llm_client, **_kwargs: _FakeGenerator(),
-    )
-    monkeypatch.setattr(
-        run_novel_generation,
-        "_initialize_telemetry_run",
-        lambda _run_dir, run_id, project_id, command: run_dir,
-    )
-    monkeypatch.setattr(run_novel_generation, "_update_run_progress", lambda *args, **kwargs: None)
-    monkeypatch.setattr(run_novel_generation, "get_derivative_generator", _unexpected_derivative_generator)
-    monkeypatch.setattr(run_novel_generation, "create_longform_memory_store", lambda project_dir: None)
-    monkeypatch.setattr(run_novel_generation, "record_memory_after_save", lambda *args, **kwargs: 0)
-    monkeypatch.setattr(run_novel_generation, "_print_statistics", lambda *args, **kwargs: None)
-
-    args = argparse.Namespace(
-        count=1,
-        start=1,
-        run_id="run-001",
-        run_dir=str(run_dir),
-        continue_from=None,
-        dry_run=False,
-        no_auto_feedback=True,
-        sync_derivatives_after_generate=False,
-        volume_guidance="",
-        chapter_guidance="",
-        chapter_guidance_target=None,
-        log_level="INFO",
-    )
-
-    result = run_novel_generation.cmd_generate(args)
-
-    assert result == 0
-    assert project.current_chapter == 1
-
-
-def test_cmd_generate_can_opt_in_to_sync_derivatives(
-    temp_project_dir, monkeypatch
-):
-    project_dir = temp_project_dir / "project"
-    project_dir.mkdir(parents=True, exist_ok=True)
-    run_dir = temp_project_dir / "runs" / "run-001"
-    run_dir.mkdir(parents=True, exist_ok=True)
-
-    project = SimpleNamespace(
-        id="project-123",
-        title="demo",
-        current_chapter=0,
-        total_chapters=3,
-        metadata={},
-        outline="沈夜归来",
-        world_setting="空间城",
-        character_intro="沈夜：主角",
-        genre="科幻修真",
-    )
-    fake_config = SimpleNamespace(
-        current_project=project,
-        generation=SimpleNamespace(
-            output_dir=str(project_dir), scripts_dir=str(temp_project_dir / "scripts")
-        ),
-        update_project_metadata=lambda payload: project.metadata.update(payload),
-        update_project_progress=lambda chapter: setattr(project, "current_chapter", chapter),
-    )
-
-    derivative_calls = []
-
-    class _FakeChapterManager:
-        def build_context(self, chapter_number):
-            return {"chapter_number": chapter_number}
-
-        def save_consistency_report(self, **_kwargs):
-            return None
-
-        def save_chapter(self, **kwargs):
-            return SimpleNamespace(
-                metadata=SimpleNamespace(
-                    file_path=str(project_dir / f"chapter_{kwargs['number']}.md")
-                )
-            )
-
-        def save_plot_summary(self, _plot_summary):
-            return None
-
-        def save_film_drama_content(self, **_kwargs):
-            return None
-
-    class _FakeGenerator:
-        def generate_chapter(
-            self, chapter_number, context, previous_summary="", writing_options=None
-        ):
-            return GeneratedChapter(
-                number=chapter_number,
-                title=f"第{chapter_number}章",
-                content="沈夜返回空间城。" * 80,
-                word_count=1200,
-                metadata={"outline_summary": "沈夜返回空间城。", "key_events": []},
-                plot_summary={"l2_brief_summary": "沈夜返回空间城。"},
-                consistency_report={},
-            )
-
-    class _FakeDerivativeGenerator:
-        def sync_derivatives(self, chapter_range):
-            derivative_calls.append(chapter_range)
-            return {
-                "video_prompts": [],
-                "character_descriptions": [],
-                "scene_descriptions": [],
-                "podcasts": [],
-                "errors": [],
-            }
-
-    monkeypatch.setattr(run_novel_generation, "get_config_manager", lambda: fake_config)
-    monkeypatch.setattr(run_novel_generation, "_build_llm_clients", lambda _cfg: (None, None))
-    monkeypatch.setattr(run_novel_generation, "_create_orchestrator", lambda _cfg, _project_id: object())
-    monkeypatch.setattr(
-        run_novel_generation,
-        "get_chapter_manager",
-        lambda _project_id, base_dir_override=None: _FakeChapterManager(),
-    )
-    monkeypatch.setattr(
-        run_novel_generation,
-        "get_novel_generator",
-        lambda config_manager, novel_orchestrator, llm_client, **_kwargs: _FakeGenerator(),
-    )
-    monkeypatch.setattr(
-        run_novel_generation,
-        "_initialize_telemetry_run",
-        lambda _run_dir, run_id, project_id, command: run_dir,
-    )
-    monkeypatch.setattr(run_novel_generation, "_update_run_progress", lambda *args, **kwargs: None)
-    monkeypatch.setattr(
-        run_novel_generation, "get_derivative_generator", lambda *args, **kwargs: _FakeDerivativeGenerator()
-    )
-    monkeypatch.setattr(run_novel_generation, "create_longform_memory_store", lambda project_dir: None)
-    monkeypatch.setattr(run_novel_generation, "record_memory_after_save", lambda *args, **kwargs: 0)
-    monkeypatch.setattr(run_novel_generation, "_print_statistics", lambda *args, **kwargs: None)
-
-    args = argparse.Namespace(
-        count=1,
-        start=1,
-        run_id="run-001",
-        run_dir=str(run_dir),
-        continue_from=None,
-        dry_run=False,
-        no_auto_feedback=True,
-        sync_derivatives_after_generate=True,
-        volume_guidance="",
-        chapter_guidance="",
-        chapter_guidance_target=None,
-        log_level="INFO",
-    )
-
-    result = run_novel_generation.cmd_generate(args)
-
-    assert result == 0
-    assert derivative_calls == ["1-1"]
-
-
 def test_cmd_generate_continue_from_uses_saved_chapter_files_as_source_of_truth(
     temp_project_dir, monkeypatch
 ):
@@ -1558,7 +1307,7 @@ def test_cmd_generate_continue_from_uses_saved_chapter_files_as_source_of_truth(
 
     project = SimpleNamespace(
         id="project-123",
-        title="demo",
+        title="演示项目",
         current_chapter=0,
         total_chapters=3,
         metadata={},
@@ -1593,9 +1342,6 @@ def test_cmd_generate_continue_from_uses_saved_chapter_files_as_source_of_truth(
             )
 
         def save_plot_summary(self, _plot_summary):
-            return None
-
-        def save_film_drama_content(self, **_kwargs):
             return None
 
     class _FakeGenerator:
@@ -1643,7 +1389,6 @@ def test_cmd_generate_continue_from_uses_saved_chapter_files_as_source_of_truth(
         continue_from=1,
         dry_run=False,
         no_auto_feedback=True,
-        sync_derivatives_after_generate=False,
         volume_guidance="",
         chapter_guidance="",
         chapter_guidance_target=None,
@@ -1669,7 +1414,7 @@ def test_cmd_generate_reconciles_start_from_saved_chapter_files(
 
     project = SimpleNamespace(
         id="project-123",
-        title="demo",
+        title="演示项目",
         current_chapter=5,
         total_chapters=8,
         metadata={},
@@ -1706,9 +1451,6 @@ def test_cmd_generate_reconciles_start_from_saved_chapter_files(
         def save_plot_summary(self, _plot_summary):
             return None
 
-        def save_film_drama_content(self, **_kwargs):
-            return None
-
     class _FakeGenerator:
         def generate_chapter(
             self, chapter_number, context, previous_summary="", writing_options=None
@@ -1754,7 +1496,6 @@ def test_cmd_generate_reconciles_start_from_saved_chapter_files(
         continue_from=None,
         dry_run=False,
         no_auto_feedback=True,
-        sync_derivatives_after_generate=False,
         volume_guidance="",
         chapter_guidance="",
         chapter_guidance_target=None,
@@ -1786,7 +1527,7 @@ def test_cmd_generate_repairs_sparse_saved_chapter_gap_before_appending_new_work
 
     project = SimpleNamespace(
         id="project-123",
-        title="demo",
+        title="演示项目",
         current_chapter=0,
         total_chapters=8,
         metadata={},
@@ -1823,9 +1564,6 @@ def test_cmd_generate_repairs_sparse_saved_chapter_gap_before_appending_new_work
         def save_plot_summary(self, _plot_summary):
             return None
 
-        def save_film_drama_content(self, **_kwargs):
-            return None
-
     class _FakeGenerator:
         def generate_chapter(
             self, chapter_number, context, previous_summary="", writing_options=None
@@ -1871,7 +1609,6 @@ def test_cmd_generate_repairs_sparse_saved_chapter_gap_before_appending_new_work
         continue_from=None,
         dry_run=False,
         no_auto_feedback=True,
-        sync_derivatives_after_generate=False,
         volume_guidance="",
         chapter_guidance="",
         chapter_guidance_target=None,
@@ -1902,7 +1639,7 @@ def test_cmd_generate_resyncs_final_progress_after_mixed_skip_and_regenerate(
 
     project = SimpleNamespace(
         id="project-123",
-        title="demo",
+        title="演示项目",
         current_chapter=0,
         total_chapters=8,
         metadata={},
@@ -1941,9 +1678,6 @@ def test_cmd_generate_resyncs_final_progress_after_mixed_skip_and_regenerate(
             return SimpleNamespace(metadata=SimpleNamespace(file_path=str(chapter_file)))
 
         def save_plot_summary(self, _plot_summary):
-            return None
-
-        def save_film_drama_content(self, **_kwargs):
             return None
 
     class _FakeGenerator:
@@ -1991,7 +1725,6 @@ def test_cmd_generate_resyncs_final_progress_after_mixed_skip_and_regenerate(
         continue_from=None,
         dry_run=False,
         no_auto_feedback=True,
-        sync_derivatives_after_generate=False,
         volume_guidance="",
         chapter_guidance="",
         chapter_guidance_target=None,
@@ -2016,7 +1749,7 @@ def test_cmd_generate_invalid_goal_lock_chapter_does_not_promote_raw_summary_or_
 
     project = SimpleNamespace(
         id="project-123",
-        title="demo",
+        title="演示项目",
         current_chapter=0,
         total_chapters=120,
         metadata={},
@@ -2049,9 +1782,6 @@ def test_cmd_generate_invalid_goal_lock_chapter_does_not_promote_raw_summary_or_
         def save_plot_summary(self, plot_summary):
             saved_plot_summaries.append(plot_summary)
             return
-
-        def save_film_drama_content(self, **_kwargs):
-            return None
 
     class _FakeGenerator:
         def generate_chapter(
@@ -2119,9 +1849,6 @@ def test_cmd_generate_invalid_goal_lock_chapter_does_not_promote_raw_summary_or_
         run_novel_generation, "_update_run_progress", lambda *args, **kwargs: None
     )
     monkeypatch.setattr(
-        run_novel_generation, "get_derivative_generator", lambda *args, **kwargs: None
-    )
-    monkeypatch.setattr(
         run_novel_generation, "_print_statistics", lambda *args, **kwargs: None
     )
 
@@ -2183,7 +1910,7 @@ def test_cmd_generate_plain_invalid_chapter_records_structured_quality_failure(
     project_dir.mkdir(parents=True, exist_ok=True)
     project = SimpleNamespace(
         id="project-plain",
-        title="demo",
+        title="演示项目",
         current_chapter=0,
         total_chapters=120,
         metadata={},
@@ -2209,9 +1936,6 @@ def test_cmd_generate_plain_invalid_chapter_records_structured_quality_failure(
             saved_chapters.append(kwargs)
 
         def save_plot_summary(self, _plot_summary):
-            return None
-
-        def save_film_drama_content(self, **_kwargs):
             return None
 
     class _FakeGenerator:
@@ -2284,9 +2008,6 @@ def test_cmd_generate_plain_invalid_chapter_records_structured_quality_failure(
         run_novel_generation, "_update_run_progress", lambda *args, **kwargs: None
     )
     monkeypatch.setattr(
-        run_novel_generation, "get_derivative_generator", lambda *args, **kwargs: None
-    )
-    monkeypatch.setattr(
         run_novel_generation, "_print_statistics", lambda *args, **kwargs: None
     )
 
@@ -2328,7 +2049,7 @@ def test_cmd_generate_memory_write_failure_is_non_fatal(
 
     project = SimpleNamespace(
         id="project-memory",
-        title="demo",
+        title="演示项目",
         current_chapter=0,
         total_chapters=120,
         metadata={},
@@ -2358,9 +2079,6 @@ def test_cmd_generate_memory_write_failure_is_non_fatal(
             )
 
         def save_plot_summary(self, _plot_summary):
-            return None
-
-        def save_film_drama_content(self, **_kwargs):
             return None
 
     class _FakeGenerator:
@@ -2412,9 +2130,6 @@ def test_cmd_generate_memory_write_failure_is_non_fatal(
     )
     monkeypatch.setattr(
         run_novel_generation, "_update_run_progress", lambda *args, **kwargs: None
-    )
-    monkeypatch.setattr(
-        run_novel_generation, "get_derivative_generator", lambda *args, **kwargs: None
     )
     monkeypatch.setattr(
         run_novel_generation,

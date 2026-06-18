@@ -28,12 +28,9 @@ class BeatType(str, Enum):
 
 
 class ConsumptionType(str, Enum):
-    """Types of downstream content consumption."""
+    """Types of main workflow content consumption."""
 
     NOVEL = "novel"
-    PODCAST = "podcast"
-    VIDEO = "video"
-    MUSIC = "music"
 
 
 @dataclass

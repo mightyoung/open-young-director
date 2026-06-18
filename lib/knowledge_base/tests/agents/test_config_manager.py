@@ -45,28 +45,6 @@ class TestConfigManagerInit:
 
         assert manager.config_dir == temp_config_dir
         assert manager.config_dir.exists()
-
-    def test_init_loads_fanqie_config(self, temp_config_dir, mock_env_vars):
-        """Test that initialization loads fanqie config."""
-        # Pre-create fanqie config file
-        fanqie_data = {
-            "book_id": "test_book_123",
-            "volume_id": "test_vol_456",
-            "author_name": "测试作者",
-            "cookies_path": "./cookies/fanqie_cookies.json",
-            "upload_delay_seconds": 10,
-            "retry_times": 5,
-            "enabled": True,
-        }
-        fanqie_file = temp_config_dir / "fanqie.json"
-        fanqie_file.write_text(json.dumps(fanqie_data, ensure_ascii=False), encoding="utf-8")
-
-        manager = ConfigManager(config_dir=str(temp_config_dir))
-
-        assert manager.fanqie.book_id == "test_book_123"
-        assert manager.fanqie.upload_delay_seconds == 10
-        assert manager.fanqie.enabled is True
-
     def test_init_loads_generation_config(self, temp_config_dir, mock_env_vars):
         """Test that initialization loads generation config."""
         # Pre-create generation config file
@@ -182,7 +160,7 @@ class TestCreateProject:
     def test_existing_legacy_project_directory_is_preserved(
         self, temp_config_dir, mock_env_vars
     ):
-        """Test that loaded old projects keep the legacy novels directory."""
+        """Test loaded projects preserve the legacy novels directory."""
         manager = ConfigManager(config_dir=str(temp_config_dir))
         legacy_project_dir = temp_config_dir.parent / "novels" / "旧项目_legacy001"
         legacy_project_dir.mkdir(parents=True)
@@ -198,11 +176,6 @@ class TestCreateProject:
         manager.set_current_project(project)
 
         assert manager.generation.output_dir == str(legacy_project_dir.resolve())
-        assert manager.generation.scripts_dir == str(
-            (
-                temp_config_dir.parent / "generated_scripts" / "旧项目_legacy001"
-            ).resolve()
-        )
 
     def test_create_project_generates_id(self, temp_config_dir, mock_env_vars):
         """Test that project ID is generated correctly."""
@@ -568,42 +541,6 @@ class TestVolumeConfig:
         volumes = config.plan_volumes(total_chapters=300)
 
         assert len(volumes) == 6
-
-
-class TestFanqieConfig:
-    """Test Fanqie publishing configuration."""
-
-    def test_configure_fanqie(self, temp_config_dir, mock_env_vars):
-        """Test configuring Fanqie publishing."""
-        manager = ConfigManager(config_dir=str(temp_config_dir))
-
-        manager.configure_fanqie(
-            book_id="fanqie_book_123",
-            volume_id="fanqie_vol_456",
-            author_name="番茄作者",
-            upload_delay=15,
-        )
-
-        assert manager.fanqie.book_id == "fanqie_book_123"
-        assert manager.fanqie.volume_id == "fanqie_vol_456"
-        assert manager.fanqie.author_name == "番茄作者"
-        assert manager.fanqie.upload_delay_seconds == 15
-        assert manager.fanqie.enabled is True
-
-    def test_save_fanqie_config(self, temp_config_dir, mock_env_vars):
-        """Test saving Fanqie config to disk."""
-        manager = ConfigManager(config_dir=str(temp_config_dir))
-
-        manager.configure_fanqie(book_id="save_test_book")
-        manager.save_fanqie_config()
-
-        fanqie_file = temp_config_dir / "fanqie.json"
-        assert fanqie_file.exists()
-
-        data = json.loads(fanqie_file.read_text(encoding="utf-8"))
-        assert data["book_id"] == "save_test_book"
-
-
 class TestGetProjectSummary:
     """Test project summary functionality."""
 
@@ -774,8 +711,6 @@ class TestConfigDiagnostics:
             "DATABASE_URL",
             "REDIS_URL",
             "REDIS_HOST",
-            "FANQIE_BOOK_ID",
-            "FANQIE_VOLUME_ID",
         ]:
             monkeypatch.delenv(key, raising=False)
 

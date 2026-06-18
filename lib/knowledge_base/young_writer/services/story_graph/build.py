@@ -10,7 +10,6 @@ from young_writer.services.story_input import load_story_input_bundle
 
 from .extractors import (
     extract_chapter_markdown_graph,
-    extract_film_drama_graph,
     extract_planned_graph,
     extract_plot_summary_graph,
 )
@@ -61,8 +60,6 @@ def build_story_graph_snapshot(
         )
     summary_path = project_path / "plot_summaries" / f"ch{int(chapter_number):03d}_summary.json"
     parts.append(extract_plot_summary_graph(summary_path, chapter_number=chapter_number))
-    film_drama_path = project_path / "film_drama" / f"ch{int(chapter_number):03d}_film_drama.json"
-    parts.append(extract_film_drama_graph(film_drama_path, chapter_number=chapter_number))
 
     nodes, edges, state, metadata = _merge_graph_parts(parts)
     state.setdefault("chapter_summary", "")

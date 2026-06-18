@@ -1,4 +1,4 @@
-"""Tests for FILM_DRAMA orchestrator input compatibility."""
+"""Tests for novel orchestrator input compatibility."""
 
 from young_writer.agents.novel_orchestrator import NovelOrchestrator, OrchestratorConfig
 

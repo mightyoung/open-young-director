@@ -114,7 +114,7 @@ class InputAssembler:
     def _legacy_orchestrator_characters(
         self, packet: GenerationPacket
     ) -> list[dict[str, Any]]:
-        """Expose structured characters in the legacy shape used by FILM_DRAMA."""
+        """Expose structured characters in the legacy shape used by the novel orchestrator."""
         objective = str(packet.chapter_plan.goal_lock or "").strip()
         characters: list[dict[str, Any]] = []
         for character in packet.characters:

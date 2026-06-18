@@ -20,6 +20,7 @@ CANONICAL_INPUT_POLICY = {
     "outline_markdown": "export_compatibility_only",
     "goal_lock": "chapter_plan_first",
 }
+CHINESE_TEXT_RE = re.compile(r"[\u4e00-\u9fff]")
 
 ACTION_VERB_HINTS = (
     "查",
@@ -430,6 +431,31 @@ def _chapter_event_has_action(event: str) -> bool:
     return any(verb in str(event or "") for verb in ACTION_VERB_HINTS)
 
 
+def _has_chinese_text(value: Any) -> bool:
+    return bool(CHINESE_TEXT_RE.search(str(value or "")))
+
+
+def _require_chinese_text(
+    report: InputValidationReport,
+    field_path: str,
+    value: Any,
+) -> None:
+    text = str(value or "").strip()
+    if text and not _has_chinese_text(text):
+        report.blocking_issues.append(f"{field_path} 必须使用中文输入")
+
+
+def _require_chinese_list(
+    report: InputValidationReport,
+    field_path: str,
+    values: list[Any],
+) -> None:
+    for index, value in enumerate(values):
+        text = str(value or "").strip()
+        if text and not _has_chinese_text(text):
+            report.blocking_issues.append(f"{field_path}[{index}] 必须使用中文输入")
+
+
 def _compress_seed_clause(
     clause: str,
     *,
@@ -738,6 +764,35 @@ def render_outline_markdown(volume_number: int, plans: list[ChapterPlan]) -> str
 def validate_generation_packet(packet: GenerationPacket) -> InputValidationReport:
     report = InputValidationReport()
     plan = packet.chapter_plan
+    _require_chinese_text(report, "project_bible.title", packet.project_bible.title)
+    _require_chinese_text(report, "project_bible.genre", packet.project_bible.genre)
+    _require_chinese_text(report, "project_bible.premise", packet.project_bible.premise)
+    _require_chinese_text(report, "project_bible.synopsis", packet.project_bible.synopsis)
+    _require_chinese_text(report, "world_bible.summary", packet.world_bible.summary)
+    _require_chinese_list(report, "world_bible.locations", packet.world_bible.locations)
+    _require_chinese_list(report, "world_bible.factions", packet.world_bible.factions)
+    _require_chinese_list(report, "world_bible.rules", packet.world_bible.rules)
+    _require_chinese_list(
+        report, "world_bible.hard_constraints", packet.world_bible.hard_constraints
+    )
+    _require_chinese_list(report, "world_bible.known_facts", packet.world_bible.known_facts)
+    for index, character in enumerate(packet.characters):
+        _require_chinese_text(report, f"characters[{index}].name", character.name)
+    _require_chinese_text(report, "chapter_plan.title", plan.title)
+    _require_chinese_text(report, "chapter_plan.summary", plan.summary)
+    _require_chinese_list(report, "chapter_plan.key_events", plan.key_events)
+    _require_chinese_text(report, "chapter_plan.realm", plan.realm)
+    _require_chinese_text(report, "chapter_plan.purpose", plan.purpose)
+    _require_chinese_list(report, "chapter_plan.must_include", plan.must_include)
+    _require_chinese_list(report, "chapter_plan.must_not_include", plan.must_not_include)
+    _require_chinese_list(report, "chapter_plan.character_names", plan.character_names)
+    _require_chinese_text(report, "chapter_plan.continuity_in", plan.continuity_in)
+    _require_chinese_text(report, "chapter_plan.continuity_out", plan.continuity_out)
+    _require_chinese_text(report, "chapter_plan.goal_lock", plan.goal_lock)
+    _require_chinese_text(report, "chapter_plan.pacing", plan.pacing)
+    _require_chinese_text(report, "chapter_plan.emotional_turn", plan.emotional_turn)
+    _require_chinese_text(report, "chapter_plan.volume_label", plan.volume_label)
+    _require_chinese_text(report, "chapter_plan.magic_line", plan.magic_line)
     if not str(plan.summary or "").strip():
         report.blocking_issues.append("chapter_plan.summary 不能为空")
     if not str(plan.goal_lock or "").strip():

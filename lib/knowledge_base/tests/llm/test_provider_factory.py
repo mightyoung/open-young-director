@@ -53,40 +53,6 @@ def test_build_doubao_client_normalizes_messages(monkeypatch):
     assert captured["call"]["system"] == "系统提示"
     assert captured["call"]["temperature"] == 0.2
     assert captured["call"]["max_tokens"] == 512
-
-
-def test_build_minimax_client_supports_helper_methods(monkeypatch):
-    class FakeMiniMaxClient:
-        def __init__(self, **kwargs):
-            self.model = kwargs["model"]
-
-        def generate(self, messages, temperature=None, max_tokens=None):
-            return f"{messages[0]['content']}|{temperature}|{max_tokens}"
-
-    monkeypatch.setattr("llm.provider_factory.MiniMaxClient", FakeMiniMaxClient)
-
-    client = build_llm_client(
-        "minimax",
-        {
-            "api_key": "demo-key",
-            "base_url": "https://api.example.com/anthropic",
-            "model_name": "MiniMax-M2.5",
-            "temperature": 0.9,
-            "max_tokens": 8192,
-            "system_prompt": "",
-        },
-    )
-
-    result = client.generate_scene_visualization(
-        scene_setting="古城雨夜",
-        time_of_day="夜晚",
-        mood="压抑",
-        key_elements=["旧城门", "火把"],
-    )
-
-    assert "古城雨夜" in result
-
-
 def test_build_deepseek_client(monkeypatch):
     captured = {}
 

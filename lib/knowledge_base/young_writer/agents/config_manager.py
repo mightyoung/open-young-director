@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import socket
+import sys
 from typing import Any, ClassVar
 from urllib.parse import urlparse
 
@@ -85,18 +86,6 @@ class VolumeConfig:
     volume_name: str = ""
     start_chapter: int = 1
     end_chapter: int = 60
-
-
-@dataclass
-class FanqieConfig:
-    """Fanqie publishing configuration."""
-    book_id: str = ""
-    volume_id: str = ""
-    author_name: str = ""
-    cookies_path: str = "./cookies/fanqie_cookies.json"
-    upload_delay_seconds: int = 10
-    retry_times: int = 3
-    enabled: bool = False
 
 
 def _default_provider_settings() -> dict[str, dict[str, Any]]:
@@ -186,8 +175,6 @@ class GenerationConfig:
     volume_enabled: bool = False
     volumes: list[VolumeConfig] = field(default_factory=list)
     output_dir: str = "./novels"
-    scripts_dir: str = "./generated_scripts"  # Separate directory for video_prompts, podcasts, etc.
-    film_drama_dir: str = "./film_drama_scripts"  # Separate directory for FILM_DRAMA mode output
     providers: dict[str, LLMProviderConfig] = field(default_factory=lambda: {
         name: LLMProviderConfig(**values)
         for name, values in _default_provider_settings().items()
@@ -244,7 +231,6 @@ class ConfigManager:
         self.root_dir = self.config_dir.parent
         self.paths = WorkspacePaths.from_config_dir(self.config_dir)
 
-        self.fanqie = FanqieConfig()
         self.generation = GenerationConfig()
         self.current_project: NovelProject | None = None
         self._initialized = True
@@ -253,14 +239,6 @@ class ConfigManager:
 
     def _load_configs(self):
         """Load configuration files."""
-        fanqie_file = self.config_dir / "fanqie.json"
-        if fanqie_file.exists():
-            try:
-                data = json.loads(fanqie_file.read_text(encoding="utf-8"))
-                self.fanqie = FanqieConfig(**data)
-            except Exception:
-                logger.warning("Failed to load fanqie config from %s", fanqie_file, exc_info=True)
-
         gen_file = self.config_dir / "generation.json"
         if gen_file.exists():
             try:
@@ -528,7 +506,7 @@ class ConfigManager:
         try:
             data = json.loads(project_file.read_text(encoding="utf-8"))
             self.current_project = NovelProject(**data)
-            # Also set up output_dir and scripts_dir
+        # Also set up output_dir
             self.set_current_project(self.current_project)
             return self.current_project
         except Exception:
@@ -549,8 +527,6 @@ class ConfigManager:
         )
         paths.ensure_runtime_dirs()
         self.generation.output_dir = str(paths.project_dir)
-        self.generation.scripts_dir = str(paths.scripts_dir)
-        self.generation.film_drama_dir = str(paths.film_drama_dir)
         self._materialize_seed_outline_files(project, paths.project_dir)
 
     def _materialize_seed_outline_files(
@@ -687,28 +663,6 @@ class ConfigManager:
             "progress_percent": progress,
             "metadata": p.metadata,
         }
-
-    def configure_fanqie(
-        self,
-        book_id: str = "",
-        volume_id: str = "",
-        author_name: str = "",
-        upload_delay: int = 10,
-    ):
-        """Configure Fanqie publishing."""
-        self.fanqie.book_id = book_id
-        self.fanqie.volume_id = volume_id
-        self.fanqie.author_name = author_name
-        self.fanqie.upload_delay_seconds = upload_delay
-        self.fanqie.enabled = True
-
-    def save_fanqie_config(self):
-        """Save Fanqie config to disk."""
-        self.config_dir.mkdir(parents=True, exist_ok=True)
-        fanqie_file = self.config_dir / "fanqie.json"
-        with open(fanqie_file, "w", encoding="utf-8") as f:
-            json.dump(asdict(self.fanqie), f, ensure_ascii=False, indent=2)
-
     def save_generation_config(self):
         """Save generation config to disk."""
         self._sync_generation_provider_defaults()
@@ -795,7 +749,6 @@ class ConfigManager:
             "firecrawl": self._diagnose_env_key("FIRECRAWL_API_KEY"),
             "postgres": self._diagnose_postgres(),
             "redis": self._diagnose_redis(),
-            "fanqie": self._diagnose_fanqie(),
         }
 
     def _diagnose_kimi(self) -> dict[str, Any]:
@@ -849,15 +802,18 @@ class ConfigManager:
         except OSError:
             reachable = False
         return {"configured": True, "source": source, "reachable": reachable}
-
-    def _diagnose_fanqie(self) -> dict[str, Any]:
-        if os.getenv("FANQIE_BOOK_ID") or os.getenv("FANQIE_VOLUME_ID"):
-            return {"configured": True, "source": "env"}
-        if self.fanqie.book_id or self.fanqie.volume_id:
-            return {"configured": True, "source": "config"}
-        return {"configured": False, "source": "missing"}
-
-
 def get_config_manager(config_dir: str | None = None) -> ConfigManager:
     """Get the global ConfigManager instance."""
     return ConfigManager(config_dir=config_dir)
+
+
+_CURRENT_MODULE = sys.modules[__name__]
+for _ALIAS in (
+    "young_writer.agents.config_manager",
+    "agents.config_manager",
+    "knowledge_base.agents.config_manager",
+):
+    sys.modules[_ALIAS] = _CURRENT_MODULE
+    _PARENT, _, _CHILD = _ALIAS.rpartition(".")
+    if _PARENT in sys.modules:
+        setattr(sys.modules[_PARENT], _CHILD, _CURRENT_MODULE)

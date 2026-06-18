@@ -47,8 +47,19 @@ class _AliasFinder(MetaPathFinder, Loader):
         del module
 
 
+def _sync_loaded_aliases(legacy_prefix: str, canonical_prefix: str) -> None:
+    for module_name, module in list(sys.modules.items()):
+        if module_name == canonical_prefix or module_name.startswith(f"{canonical_prefix}."):
+            suffix = module_name[len(canonical_prefix) :]
+            sys.modules.setdefault(f"{legacy_prefix}{suffix}", module)
+        elif module_name == legacy_prefix or module_name.startswith(f"{legacy_prefix}."):
+            suffix = module_name[len(legacy_prefix) :]
+            sys.modules.setdefault(f"{canonical_prefix}{suffix}", module)
+
+
 def install_alias_prefix(legacy_prefix: str, canonical_prefix: str) -> None:
     _ALIAS_PREFIXES[legacy_prefix] = canonical_prefix
+    _sync_loaded_aliases(legacy_prefix, canonical_prefix)
     if not any(isinstance(finder, _AliasFinder) for finder in sys.meta_path):
         sys.meta_path.insert(0, _AliasFinder())
 

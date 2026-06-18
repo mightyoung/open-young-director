@@ -182,7 +182,7 @@ def test_create_memory_store_auto_uses_reachable_database(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "postgresql://user:secret@127.0.0.1:5432/db")
     monkeypatch.setattr("scene_db.schema.check_connection", lambda _url: True)
     monkeypatch.setattr("scene_db.schema.init_schema", lambda _url: True)
-    monkeypatch.setattr("agents.longform_memory.PgLongformMemoryStore", FakePgStore)
+    monkeypatch.setattr("young_writer.agents.longform_memory.PgLongformMemoryStore", FakePgStore)
 
     store = create_longform_memory_store()
 

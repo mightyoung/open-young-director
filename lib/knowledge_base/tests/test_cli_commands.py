@@ -14,7 +14,6 @@ def test_build_generate_command_includes_options_and_control_flags():
         start=5,
         dry_run=True,
         no_auto_feedback=True,
-        sync_derivatives_after_generate=True,
         writing_options={"style": "快节奏", "unknown": "ignored"},
     )
 
@@ -27,7 +26,6 @@ def test_build_generate_command_includes_options_and_control_flags():
         "5",
         "--dry-run",
         "--no-auto-feedback",
-        "--sync-derivatives-after-generate",
         "--style",
         "快节奏",
     ]

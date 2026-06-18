@@ -1,10 +1,10 @@
 ---
 name: novel_generation
 version: 1.0.0
-description: 将场景数据生成为小说正文，支持玄幻、修仙等题材
+description: 将章节规划生成为小说正文，支持玄幻、修仙等题材
 consumer_type: novel
 inputs:
-  - scene_id
+  - chapter_id
   - chapter_info
   - characters
   - beats
@@ -15,16 +15,16 @@ outputs:
 
 # Skill: novel_generation
 
-将 FILM_DRAMA 场景数据转换为小说正文。
+将 结构化章节规划转换为小说正文。
 
 ## Overview
 
-novel_generation 技能负责将结构化的场景数据（beats、角色状态、场景描述、情感弧线）转换为连贯的中文小说文本。支持多种写作风格和叙事视角。
+novel_generation 技能负责将结构化的章节规划（beats、角色状态、场景描述、情感弧线）转换为连贯的中文小说文本。支持多种写作风格和叙事视角。
 
 ## When to Use
 
 - 用户请求生成小说章节
-- 需要将场景数据转换为小说正文
+- 需要将章节规划转换为小说正文
 - 触发短语：`生成小说`、`写小说`、`创作小说`
 
 ---
@@ -44,7 +44,7 @@ novel_generation 技能负责将结构化的场景数据（beats、角色状态�
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| scene_id | str | Yes | 场景唯一标识符 |
+| chapter_id | str | Yes | 章节唯一标识符 |
 | chapter_info | dict | Yes | 章节信息（章节号、标题等） |
 | characters | dict/list | Yes | 角色信息（支持 dict 或 list 格式） |
 | beats | list | Yes | 情节发展 beats 列表 |
@@ -104,7 +104,7 @@ novel_generation 技能由 `NovelOrchestrator` 驱动：
 ```python
 from agents.novel_orchestrator import NovelOrchestrator, OrchestratorConfig
 
-config = OrchestratorConfig(mode="FILM_DRAMA")
+config = OrchestratorConfig(mode="STANDARD")
 orchestrator = NovelOrchestrator(config=config, llm_client=llm_client)
 
 # 设置上下文

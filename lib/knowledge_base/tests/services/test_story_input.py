@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 from young_writer.services.input_assembler import InputAssembler
 from young_writer.services.story_input import (
+    CharacterEntry,
     ChapterPlan,
     GenerationPacket,
     InputValidationReport,
@@ -301,3 +302,85 @@ def test_story_input_bundle_compacts_terminal_rescue_goal_lock():
 
     assert plan.goal_lock == "林渊救回母亲"
     assert plan.key_events == ["林渊救回母亲"]
+
+
+def test_validate_generation_packet_requires_chinese_narrative_fields():
+    packet = GenerationPacket(
+        chapter_number=1,
+        total_chapters=3,
+        project_bible=ProjectBible(
+            title="Echo Route",
+            author="author",
+            genre="science fiction",
+            premise="A captain investigates a missing fleet.",
+            synopsis="The story follows a signal across the ring.",
+        ),
+        world_bible=WorldBible(
+            summary="A ring station and echo space.",
+            locations=["Ring Station"],
+        ),
+        characters=[
+            CharacterEntry(
+                id="character:linyuan",
+                name="Lin Yuan",
+            )
+        ],
+        chapter_plan=ChapterPlan(
+            chapter_number=1,
+            title="Chapter One",
+            summary="Lin Yuan investigates the signal.",
+            key_events=["Lin Yuan intercepts the abnormal signal"],
+            character_ids=["character:linyuan"],
+            character_names=["Lin Yuan"],
+            continuity_in="Start from the port.",
+            continuity_out="Leave a signal clue.",
+            goal_lock="Investigate the missing fleet echo.",
+        ),
+        style_profile=StyleProfile(),
+    )
+
+    report = validate_generation_packet(packet)
+
+    assert report.invalid is True
+    assert any("必须使用中文输入" in issue for issue in report.blocking_issues)
+
+
+def test_validate_generation_packet_accepts_chinese_narrative_fields():
+    packet = GenerationPacket(
+        chapter_number=1,
+        total_chapters=3,
+        project_bible=ProjectBible(
+            title="回声航道",
+            author="作者",
+            genre="科幻悬疑",
+            premise="林渊追查失踪舰队回声真相。",
+            synopsis="林渊在白昼环截获异常信号，并确认线索来自旧远征舰队。",
+        ),
+        world_bible=WorldBible(
+            summary="白昼环与回声空域构成主要舞台。",
+            locations=["白昼环"],
+        ),
+        characters=[
+            CharacterEntry(
+                id="character:linyuan",
+                name="林渊",
+            )
+        ],
+        chapter_plan=ChapterPlan(
+            chapter_number=1,
+            title="第一章 回声信号",
+            summary="林渊追查失踪舰队回声真相。",
+            key_events=["林渊截获异常信号"],
+            character_ids=["character:linyuan"],
+            character_names=["林渊"],
+            continuity_in="林渊抵达白昼环。",
+            continuity_out="异常信号指向旧远征舰队。",
+            goal_lock="林渊追查失踪舰队回声真相",
+            purpose="开场阶段的主线推进",
+        ),
+        style_profile=StyleProfile(),
+    )
+
+    report = validate_generation_packet(packet)
+
+    assert not any("必须使用中文输入" in issue for issue in report.blocking_issues)

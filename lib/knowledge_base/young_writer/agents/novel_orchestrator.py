@@ -1,15 +1,12 @@
-"""Novel Orchestrator for FILM_DRAMA mode generation."""
+"""Novel-first orchestrator for chapter generation."""
 
-import asyncio
+from __future__ import annotations
+
 import logging
+import re
 from dataclasses import dataclass
-from typing import Dict, Any, List, Optional
+from typing import Any
 
-from .film_drama import (
-    DirectorAgent,
-    DirectorConfig,
-    InMemoryMessageQueue,
-)
 from .reality_checker import RealityChecker, RealityCheckerConfig, ValidationResult
 
 logger = logging.getLogger(__name__)
@@ -18,643 +15,235 @@ logger = logging.getLogger(__name__)
 @dataclass
 class OrchestratorConfig:
     """Configuration for the novel orchestrator."""
+
     max_subagent_concurrent: int = 5
     max_concurrent_scenes: int = 3
     enable_verification: bool = True
     max_retry: int = 2
     max_verification_retries: int = 3
-    mode: str = "FILM_DRAMA"  # FILM_DRAMA or STANDARD
+    mode: str = "STANDARD"
     num_subagents: int = 3
-    use_directorial_guidance: bool = True
+    use_directorial_guidance: bool = False
     enable_plot_evolution: bool = True
-    enable_npc_simulation: bool = True
-    # RealityChecker integration
+    enable_npc_simulation: bool = False
     enable_reality_checker: bool = True
-    reality_checker_config: RealityCheckerConfig = None
+    reality_checker_config: RealityCheckerConfig | None = None
 
 
 class NovelOrchestrator:
-    """Orchestrates novel generation using multi-agent approach.
+    """Orchestrates novel chapter content without derivative asset generation."""
 
-    FILM_DRAMA mode uses:
-    - DirectorAgent: Plans scenes and narrative structure
-    - SubAgentPool: Manages character perspectives
-    - NovelWriterAgent: Assembles final narrative
-
-    STANDARD mode uses:
-    - Single LLM call for content generation
-
-    Quality Gates:
-    - RealityChecker: Validates content quality before approval
-    - Default status is "NEEDS_WORK" requiring overwhelming evidence to pass
-    """
-
-    def __init__(self, config: OrchestratorConfig = None, llm_client=None):
+    def __init__(self, config: OrchestratorConfig | None = None, llm_client=None):
         self.config = config or OrchestratorConfig()
         self.llm_client = llm_client
-        self.mode = self.config.mode
-
+        self.mode = "STANDARD"
         self.director_agent = None
-        self.sub_agent_pool = []
+        self.sub_agent_pool: list[Any] = []
         self.novel_writer_agent = None
         self.message_queue = None
+        self._initialized = False
+        self._reality_checker: RealityChecker | None = None
 
-        # RealityChecker for quality validation
-        self._reality_checker = None
         if self.config.enable_reality_checker:
-            checker_config = self.config.reality_checker_config or RealityCheckerConfig()
             self._reality_checker = RealityChecker(
                 llm_client=llm_client,
-                config=checker_config,
+                config=self.config.reality_checker_config or RealityCheckerConfig(),
             )
+            logger.info("NovelOrchestrator initialized with RealityChecker")
 
-        self._initialized = False
-
-    def setup(self, context: Dict[str, Any]) -> bool:
-        """Set up the orchestrator with given context."""
-        try:
-            if self.mode == "FILM_DRAMA":
-                # Initialize FILM_DRAMA components
-                self.message_queue = InMemoryMessageQueue()
-                director_config = DirectorConfig(
-                    enable_npc_simulation=self.config.enable_npc_simulation,
-                )
-                self.director_agent = DirectorAgent(
-                    agent_name="director",
-                    llm_client=self.llm_client,
-                    config=director_config,
-                    message_queue=self.message_queue,
-                )
-                logger.info("FILM_DRAMA mode: DirectorAgent initialized")
-
-            logger.info("Orchestrator setup complete")
-            self._initialized = True
-            return True
-        except Exception as e:
-            logger.error(f"Orchestrator setup failed: {e}")
-            return False
+    def setup(self, context: dict[str, Any]) -> bool:
+        """Initialize the novel-only orchestration surface."""
+        self._initialized = True
+        return True
 
     def orchestrate_chapter(
         self,
         chapter_number: int,
         chapter_outline: str,
-        context: Dict[str, Any],
+        context: dict[str, Any],
         bible_section: Any = None,
-    ) -> Dict[str, Any]:
-        """Orchestrate chapter generation.
-
-        In FILM_DRAMA mode, uses DirectorAgent for multi-agent scene generation.
-        In STANDARD mode, falls back to simple orchestration.
-
-        Args:
-            chapter_number: Current chapter number
-            chapter_outline: Chapter outline/summary
-            context: Additional context dict
-            bible_section: Optional BibleSection with world rules and constraints
-        """
+    ) -> dict[str, Any]:
+        """Build a novel chapter draft packet from outline and context."""
         if not self._initialized:
             self.setup(context)
 
-        result = {
-            "chapter_number": chapter_number,
-            "outline": chapter_outline,
-            "plot_outline": None,
-            "cast": [],
-            "scenes": [],
-            "final_plot": None,
-            "content": None,
-        }
-
-        if self.mode == "FILM_DRAMA" and self.director_agent:
-            result = self._orchestrate_film_drama(chapter_number, chapter_outline, context, bible_section)
-
-        return result
-
-    def _orchestrate_film_drama(
-        self,
-        chapter_number: int,
-        chapter_outline: str,
-        context: Dict[str, Any],
-        bible_section: Any = None,
-    ) -> Dict[str, Any]:
-        """Orchestrate chapter using FILM_DRAMA mode.
-
-        Args:
-            chapter_number: Current chapter number
-            chapter_outline: Chapter outline/summary
-            context: Additional context dict
-            bible_section: Optional BibleSection with world rules and constraints
-        """
-        # Extract character info from context
         characters = self._extract_characters_from_context(context)
-
-        # Extract location and time from outline/context
         location = self._resolve_location_from_context(context)
         time_of_day = self._resolve_time_of_day_from_context(context)
+        previous_summary = str(context.get("previous_summary") or "")
 
-        # Get previous context for progressive disclosure
-        previous_context = context.get("previous_summary", "")
-
-        # P0 FIX: Extract protagonist constraint to prevent protagonist hallucination
-        # Dynamically determine protagonist from context or use generic default
-        protagonist_constraint = context.get("protagonist_constraint")
-
-        # If no explicit constraint, try to determine protagonist from characters
-        if not protagonist_constraint:
-            protagonist = None
-            for name, char_data in characters.items():
-                if isinstance(char_data, dict) and char_data.get("role") == "protagonist":
-                    protagonist = name
-                    break
-                # Also check for protagonist field directly
-                if isinstance(char_data, dict) and char_data.get("protagonist"):
-                    protagonist = name
-                    break
-            if protagonist:
-                protagonist_constraint = f"【强制约束】本章主角：{protagonist}\n" \
-                    f"- {protagonist}必须是主角，所有场景以{protagonist}视角展开\n" \
-                    f"- 禁止互换角色身份"
-            else:
-                protagonist_constraint = "【强制约束】请确保叙事视角清晰，以主要角色视角展开" \
-                    if protagonist_constraint is None else ""
-
-        # Format bible constraint from bible_section
-        bible_constraint = ""
+        content_parts = [
+            f"第{chapter_number}章",
+            "",
+            str(chapter_outline or "").strip(),
+        ]
+        if previous_summary:
+            content_parts.extend(["", f"承接前情：{previous_summary}"])
+        if location or time_of_day:
+            scene_hint = "，".join(part for part in (time_of_day, location) if part)
+            content_parts.extend(["", f"场景推进：{scene_hint}。"])
+        if characters:
+            names = "、".join(characters.keys())
+            content_parts.extend(["", f"本章角色：{names}。"])
         if bible_section:
-            bible_constraint = self._format_bible_constraint(bible_section)
+            content_parts.extend(["", f"设定约束：{bible_section}"])
 
-        # Plan scene
-        script = self.director_agent.plan_scene(
-            chapter_number=chapter_number,
-            scene_outline=chapter_outline,
-            characters=characters,
-            location=location,
-            time_of_day=time_of_day,
-            previous_context=previous_context,
-            protagonist_constraint=protagonist_constraint,
-            bible_constraint=bible_constraint,
-        )
-
-        # Execute scene
-        # Use asyncio.run() which handles event loop properly
-        try:
-            scene_result = asyncio.run(
-                self.director_agent.execute_scene(script)
-            )
-        except RuntimeError as e:
-            # If asyncio.run fails, fall back to getting existing loop
-            if "asyncio.run() cannot be called from a running event loop" in str(e):
-                loop = asyncio.get_event_loop()
-                scene_result = loop.run_until_complete(
-                    self.director_agent.execute_scene(script)
-                )
-            else:
-                raise
-
-        # Assemble output using the captured results (instance variables were cleaned after execute_scene)
-        final_content = self.director_agent.assemble_scene_output(
-            script,
-            beat_outputs=scene_result.get("beat_outputs", {}),
-            npc_outputs_by_beat=scene_result.get("npc_outputs_by_beat", {}),
-        )
-
+        content = "\n".join(part for part in content_parts if part is not None).strip()
+        final_plot = self.assemble_plot([], {"outline": chapter_outline, "context": context})
         return {
             "chapter_number": chapter_number,
             "outline": chapter_outline,
-            "beats": [
-                {"beat_id": b.beat_id, "type": b.beat_type, "desc": b.description}
-                for b in script.scene.beats
-            ],
-            "plot_outline": {
-                "scene_id": script.scene.scene_id,
-                "beats": [
-                    {"beat_id": b.beat_id, "type": b.beat_type, "desc": b.description}
-                    for b in script.scene.beats
-                ],
-            },
+            "plot_outline": {"beats": [chapter_outline]} if chapter_outline else {},
             "cast": [
-                {
-                    "name": cb.name,
-                    "role": cb.role,
-                    "identity": cb.identity,
-                    "realm": cb.realm,
-                }
-                for cb in script.cast
+                {"name": name, **profile}
+                for name, profile in characters.items()
             ],
-            "scenes": [script.scene.scene_id],
-            "final_plot": script.scene.narration,
-            "content": final_content,
-        }
-
-    def _resolve_location_from_context(self, context: Dict[str, Any]) -> str:
-        location = str(context.get("location", "") or "").strip()
-        if location:
-            return location
-        packet = context.get("generation_packet") or {}
-        if isinstance(packet, dict):
-            plan = packet.get("chapter_plan") or {}
-            world = packet.get("world_bible") or {}
-            location_ids = [
-                str(item or "").strip().lower()
-                for item in plan.get("location_ids", []) or []
-                if str(item or "").strip()
-            ]
-            for location in world.get("locations", []) or []:
-                normalized = f"location:{str(location or '').strip().lower()}"
-                if normalized in location_ids:
-                    return str(location or "").strip()
-            locations = [str(item or "").strip() for item in world.get("locations", []) or []]
-            for location in locations:
-                if location:
-                    return location
-        return "未指定场景"
-
-    def _resolve_time_of_day_from_context(self, context: Dict[str, Any]) -> str:
-        time_of_day = str(context.get("time_of_day", "") or "").strip()
-        if time_of_day:
-            return time_of_day
-        outline = " ".join(
-            [
-                str(context.get("outline", "") or ""),
-                str(context.get("generation_outline", "") or ""),
-                str(context.get("previous_summary", "") or ""),
-            ]
-        )
-        for token in ("清晨", "早晨", "上午", "中午", "黄昏", "傍晚", "夜晚", "深夜", "凌晨"):
-            if token in outline:
-                return token
-        return "未指定时段"
-
-    def _extract_characters_from_context(self, context: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
-        """Extract character information from context.
-
-        Supports two formats:
-        1. List format: [{"name": "韩林", ...}, ...]
-        2. Dict format: {"韩林": {...}, ...}
-
-        Falls back to default characters if no character info available.
-        """
-        # Try to get characters from knowledge base
-        knowledge_chars = context.get("characters", [])
-        if not knowledge_chars:
-            packet = context.get("generation_packet") or {}
-            if isinstance(packet, dict):
-                knowledge_chars = packet.get("characters", []) or []
-        if not knowledge_chars and context.get("character_names"):
-            knowledge_chars = [
-                {"name": name, "identity": "关键角色"}
-                for name in context.get("character_names", [])
-                if str(name or "").strip()
-            ]
-
-        if knowledge_chars:
-            characters = {}
-            # Support both list and dict formats
-            if isinstance(knowledge_chars, dict):
-                # Dict format: {"韩林": {...}} -> convert to list format
-                for name, char_data in knowledge_chars.items():
-                    if isinstance(char_data, dict):
-                        char_data_with_name = {"name": name, **char_data}
-                    else:
-                        char_data_with_name = {"name": name}
-                    name = char_data_with_name.get("name", name)
-                    characters[name] = {
-                        "identity": char_data_with_name.get("identity", "关键角色"),
-                        "realm": char_data_with_name.get("cultivation_realm", ""),
-                        "personality": char_data_with_name.get("personality", "目标明确"),
-                        "speaking_style": char_data_with_name.get("speaking_style", "简洁清晰"),
-                        "backstory": char_data_with_name.get("backstory", char_data_with_name.get("motivation", "")),
-                        "objective": char_data_with_name.get("objective_this_chapter", ""),
-                        "relationships": char_data_with_name.get("relationships", {}),
-                    }
-            elif isinstance(knowledge_chars, list):
-                # List format: [{"name": "韩林", ...}]
-                for char in knowledge_chars:
-                    if not isinstance(char, dict):
-                        continue
-                    name = char.get("name", "未知角色")
-                    if not str(name or "").strip():
-                        continue
-                    characters[name] = {
-                        "identity": char.get("identity") or char.get("role", "关键角色"),
-                        "realm": char.get("cultivation_realm", ""),
-                        "personality": char.get("personality") or char.get("motivation", "目标明确"),
-                        "speaking_style": char.get("speaking_style", "简洁清晰"),
-                        "backstory": char.get("backstory") or char.get("arc", ""),
-                        "objective": char.get("objective_this_chapter") or char.get("motivation", ""),
-                        "relationships": char.get("relationships", {}),
-                    }
-            return characters
-
-        return {}
-
-    def _format_bible_constraint(self, bible_section: Any) -> str:
-        """Format BibleSection constraints into a string for prompt injection.
-
-        Args:
-            bible_section: BibleSection from crewai's ProductionBible system
-
-        Returns:
-            Formatted constraint string for inclusion in prompts
-        """
-        if not bible_section:
-            logger.warning(
-                "BibleSection is None, bible constraints will be ignored. "
-                "This may cause world rules inconsistency."
-            )
-            return ""
-
-        lines = []
-
-        # World rules summary
-        if hasattr(bible_section, 'world_rules_summary') and bible_section.world_rules_summary:
-            lines.append("【世界观规则】")
-            lines.append(bible_section.world_rules_summary)
-            lines.append("")
-
-        # Canonical facts
-        if hasattr(bible_section, 'canonical_facts_this_volume') and bible_section.canonical_facts_this_volume:
-            lines.append("【本卷必须遵守的事实】")
-            for fact in bible_section.canonical_facts_this_volume:
-                lines.append(f"  • {fact}")
-            lines.append("")
-
-        # Open foreshadowing
-        if hasattr(bible_section, 'open_foreshadowing') and bible_section.open_foreshadowing:
-            lines.append("【伏笔约束】（必须正确铺设和回收）")
-            for fs in bible_section.open_foreshadowing:
-                setup_desc = getattr(fs, 'setup_description', '')
-                payoff_desc = getattr(fs, 'payoff_description', '')
-                setup_ch = getattr(fs, 'setup_chapter', '?')
-                payoff_ch = getattr(fs, 'payoff_chapter', '?')
-                if setup_desc and payoff_desc:
-                    lines.append(f"  • 第{setup_ch}章埋下伏笔：{setup_desc}")
-                    lines.append(f"    → 应在第{payoff_ch}章回收：{payoff_desc}")
-            lines.append("")
-
-        # Relationship states at start
-        if hasattr(bible_section, 'relationship_states_at_start') and bible_section.relationship_states_at_start:
-            lines.append("【开篇角色关系状态】")
-            for char, relations in bible_section.relationship_states_at_start.items():
-                if isinstance(relations, dict):
-                    for other, state in relations.items():
-                        lines.append(f"  • {char}与{other}：{state}")
-            lines.append("")
-
-        return "\n".join(lines)
-
-    def create_plot_outline(
-        self,
-        chapter_number: int,
-        outline: str,
-        previous_summary: str,
-        context: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        """Create detailed plot outline for a chapter."""
-        if self.mode == "FILM_DRAMA" and self.director_agent:
-            # In FILM_DRAMA mode, plan_scene already creates the outline
-            characters = self._extract_characters_from_context(context)
-
-            # P0 FIX: Extract protagonist constraint to prevent protagonist hallucination
-            # Dynamically determine protagonist from context or use generic default
-            protagonist_constraint = context.get("protagonist_constraint")
-
-            # If no explicit constraint, try to determine protagonist from characters
-            if not protagonist_constraint:
-                protagonist = None
-                for name, char_data in characters.items():
-                    if isinstance(char_data, dict) and char_data.get("role") == "protagonist":
-                        protagonist = name
-                        break
-                    # Also check for protagonist field directly
-                    if isinstance(char_data, dict) and char_data.get("protagonist"):
-                        protagonist = name
-                        break
-                if protagonist:
-                    protagonist_constraint = f"【强制约束】本章主角：{protagonist}\n" \
-                        f"- {protagonist}必须是主角，所有场景以{protagonist}视角展开\n" \
-                        f"- 禁止互换角色身份"
-                else:
-                    protagonist_constraint = "【强制约束】请确保叙事视角清晰，以主要角色视角展开" \
-                        if protagonist_constraint is None else ""
-
-            script = self.director_agent.plan_scene(
-                chapter_number=chapter_number,
-                scene_outline=outline,
-                characters=characters,
-                location=context.get("location", "太虚宗"),
-                time_of_day=context.get("time_of_day", "morning"),
-                previous_context=previous_summary,
-                protagonist_constraint=protagonist_constraint,
-            )
-            return {
-                "chapter_number": chapter_number,
-                "scene_id": script.scene.scene_id,
-                "scenes": [
-                    {
-                        "scene_id": script.scene.scene_id,
-                        "location": script.scene.location,
-                        "beats": [
-                            {
-                                "beat_id": b.beat_id,
-                                "type": b.beat_type,
-                                "description": b.description,
-                                "characters": b.expected_chars,
-                            }
-                            for b in script.scene.beats
-                        ],
-                    }
-                ],
-                "narrative_arc": outline,
-                "cast": [
-                    {
-                        "name": cb.name,
-                        "realm": cb.realm,
-                        "role": cb.role,
-                        "objective": cb.objective_this_chapter,
-                    }
-                    for cb in script.cast
-                ],
-            }
-
-        return {
-            "chapter_number": chapter_number,
             "scenes": [],
-            "narrative_arc": outline,
+            "final_plot": final_plot or chapter_outline,
+            "content": content,
         }
-
-    def determine_cast(
-        self,
-        chapter_outline: str,
-        context: Dict[str, Any],
-    ) -> List[str]:
-        """Determine character cast for the chapter."""
-        characters = self._extract_characters_from_context(context)
-        return list(characters.keys())
-
-    def setup_subagents(self, cast: List[str]) -> bool:
-        """Set up sub-agents for each character.
-
-        In FILM_DRAMA mode, this is handled by DirectorAgent.
-        """
-        return True
 
     def orchestrate_scenes(
         self,
-        plot_outline: Dict[str, Any],
-        context: Dict[str, Any],
-    ) -> List[Dict[str, Any]]:
-        """Orchestrate scene generation.
-
-        In FILM_DRAMA mode, uses DirectorAgent.execute_scene().
-        """
-        if self.mode == "FILM_DRAMA" and self.director_agent:
-            # scenes are orchestrated by director
-            return []
-
+        plot_outline: dict[str, Any],
+        context: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """Scene-level derivative generation is intentionally disabled."""
         return []
 
     def assemble_plot(
         self,
-        scenes: List[Dict[str, Any]],
-        context: Dict[str, Any],
+        scenes: list[dict[str, Any]],
+        context: dict[str, Any],
     ) -> str:
-        """Assemble scenes into final plot.
+        """Assemble a concise plot statement from novel context."""
+        outline = str(context.get("outline") or "").strip()
+        if outline:
+            return outline
+        scene_summaries = [str(scene.get("summary") or "") for scene in scenes]
+        return "\n".join(summary for summary in scene_summaries if summary)
 
-        In FILM_DRAMA mode, uses DirectorAgent.assemble_scene_output().
-        """
-        if self.mode == "FILM_DRAMA" and self.director_agent:
-            # Director handles assembly
-            return ""
+    def _resolve_location_from_context(self, context: dict[str, Any]) -> str:
+        packet = context.get("generation_packet")
+        if isinstance(packet, dict):
+            plan = packet.get("chapter_plan")
+            world = packet.get("world_bible")
+            location_ids = plan.get("location_ids", []) if isinstance(plan, dict) else []
+            locations = world.get("locations", []) if isinstance(world, dict) else []
+            for raw_id in location_ids:
+                location_name = str(raw_id).split(":", 1)[-1]
+                for location in locations:
+                    if location_name and location_name in str(location):
+                        return str(location)
+                if location_name:
+                    return location_name
 
+        outline = str(context.get("generation_outline") or context.get("outline") or "")
+        match = re.search(r"(?:在|潜入|抵达|前往)([^，。！？\s]{2,20})", outline)
+        return match.group(1) if match else ""
+
+    def _resolve_time_of_day(self, text: str) -> str:
+        for keyword in ("凌晨", "清晨", "早晨", "上午", "正午", "午后", "傍晚", "黄昏", "夜晚", "深夜"):
+            if keyword in text:
+                return keyword
         return ""
+
+    def _resolve_time_of_day_from_context(self, context: dict[str, Any]) -> str:
+        packet = context.get("generation_packet")
+        if isinstance(packet, dict):
+            plan = packet.get("chapter_plan")
+            if isinstance(plan, dict):
+                explicit = str(plan.get("time_of_day") or plan.get("time") or "")
+                if explicit:
+                    return explicit
+        return self._resolve_time_of_day(
+            str(context.get("generation_outline") or context.get("outline") or "")
+        )
+
+    def _extract_characters_from_context(self, context: dict[str, Any]) -> dict[str, dict[str, Any]]:
+        packet = context.get("generation_packet")
+        characters: dict[str, dict[str, Any]] = {}
+        if isinstance(packet, dict) and isinstance(packet.get("characters"), list):
+            for item in packet["characters"]:
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("name") or "").strip()
+                if not name:
+                    continue
+                characters[name] = {
+                    "identity": str(item.get("role") or item.get("identity") or "关键角色"),
+                    "objective": str(item.get("motivation") or item.get("objective") or ""),
+                    "arc": str(item.get("arc") or ""),
+                }
+
+        raw_characters = context.get("characters")
+        if isinstance(raw_characters, dict):
+            for name, profile in raw_characters.items():
+                if isinstance(profile, dict):
+                    characters.setdefault(str(name), dict(profile))
+
+        for name in context.get("character_names") or []:
+            clean_name = str(name).strip()
+            if clean_name:
+                characters.setdefault(clean_name, {"identity": "关键角色"})
+        return characters
 
     def evaluate_evolution(
         self,
         original_outline: str,
         generated_content: str,
-    ) -> Dict[str, Any]:
-        """Evaluate if plot evolved significantly from outline."""
+    ) -> dict[str, Any]:
+        """Evaluate whether generated content preserves the outline direction."""
+        missing_outline = bool(original_outline and original_outline[:12] not in generated_content)
         return {
-            "evolved": False,
-            "changes": [],
-            "score": 0.0,
+            "evolved": not missing_outline,
+            "issues": ["content does not visibly preserve the outline"] if missing_outline else [],
         }
-
-    # ==================== QUALITY GATE ====================
 
     def quality_gate(
         self,
         content: str,
-        criteria: Dict[str, Any],
+        criteria: dict[str, Any],
     ) -> ValidationResult:
-        """Run content through RealityChecker quality gate.
-
-        This is the main quality validation method. It returns a ValidationResult
-        that indicates whether the content passes or needs more work.
-
-        Default status is "NEEDS_WORK" - only overwhelming evidence earns "PASS".
-
-        Args:
-            content: The generated content to validate
-            criteria: Validation criteria including:
-                - characters: Character profiles for consistency check
-                - previous_summary: Previous plot summary for coherence
-                - required_elements: List of required plot elements
-                - prohibited_elements: List of prohibited content
-
-        Returns:
-            ValidationResult with status, score, issues, and evidence requirements
-        """
+        """Run content through RealityChecker quality gate."""
         if not self._reality_checker:
-            # RealityChecker disabled - auto-pass
-            return ValidationResult(
-                status="PASS",
-                score=1.0,
-                issues=[],
-                evidence_required=[],
-            )
-
-        result = self._reality_checker.validate_content(content, criteria)
-        logger.info(
-            f"[QualityGate] status={result.status}, "
-            f"score={result.score:.2f}, "
-            f"issues={len(result.issues)}, "
-            f"evidence_required={len(result.evidence_required)}"
-        )
-        return result
+            return ValidationResult(status="PASS", score=1.0)
+        return self._reality_checker.validate_content(content, criteria)
 
     def validate_chapter(
         self,
         chapter_content: str,
-        context: Dict[str, Any],
+        context: dict[str, Any],
     ) -> ValidationResult:
-        """Validate a generated chapter against all quality criteria.
-
-        Convenience method that builds criteria from context.
-
-        Args:
-            chapter_content: The chapter content to validate
-            context: Generation context with characters, previous_summary, etc.
-
-        Returns:
-            ValidationResult from RealityChecker
-        """
+        """Validate generated chapter content."""
         criteria = {
             "characters": context.get("characters", {}),
             "previous_summary": context.get("previous_summary", ""),
             "required_elements": context.get("required_elements", []),
             "prohibited_elements": context.get("prohibited_elements", []),
         }
-
         return self.quality_gate(chapter_content, criteria)
 
     def check_character_consistency(
         self,
         content: str,
-        characters: Dict[str, Dict[str, Any]],
-    ) -> Dict[str, Any]:
-        """Check character consistency without full validation.
-
-        Use this for quick character checks during generation.
-
-        Args:
-            content: Content to check
-            characters: Character profiles
-
-        Returns:
-            Dict with consistent, issues, and evidence_required
-        """
+        characters: dict[str, dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Check character consistency through RealityChecker."""
         if not self._reality_checker:
             return {"consistent": True, "issues": [], "evidence_required": []}
-
         return self._reality_checker.check_character_consistency(content, characters)
 
     def check_plot_coherence(
         self,
         content: str,
         previous_summary: str,
-    ) -> Dict[str, Any]:
-        """Check plot coherence without full validation.
-
-        Use this for quick coherence checks during generation.
-
-        Args:
-            content: Content to check
-            previous_summary: Previous chapter's summary
-
-        Returns:
-            Dict with coherent, issues, and evidence_required
-        """
+    ) -> dict[str, Any]:
+        """Check plot coherence through RealityChecker."""
         if not self._reality_checker:
             return {"coherent": True, "issues": [], "evidence_required": []}
-
         return self._reality_checker.check_plot_coherence(content, previous_summary)
 
-    def get_reality_checker(self) -> Optional[RealityChecker]:
-        """Get the RealityChecker instance for direct access.
-
-        Returns:
-            RealityChecker instance or None if disabled
-        """
+    def get_reality_checker(self) -> RealityChecker | None:
+        """Get the RealityChecker instance."""
         return self._reality_checker

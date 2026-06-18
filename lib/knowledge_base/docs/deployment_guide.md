@@ -109,5 +109,4 @@ uv run python -m py_compile \
 如果回归失败：
 
 - 先单独跑 `test_kimi_client.py`
-- 再跑 `test_film_drama.py`
 - 最后跑全量 `knowledge_base/tests`

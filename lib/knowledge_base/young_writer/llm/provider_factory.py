@@ -77,45 +77,6 @@ class UnifiedLLMClient:
                 context_lines.append(f"- {key}: {value}")
         full_prompt = "\n".join([prompt, *context_lines]).strip()
         return self.generate([{"role": "user", "content": full_prompt}])
-
-    def generate_character_description(
-        self,
-        *,
-        character_name: str,
-        character_role: str,
-        cultivation_realm: str,
-        personality: str,
-        appearance: str,
-        background: str,
-    ) -> str:
-        prompt = (
-            f"角色名: {character_name}\n"
-            f"角色定位: {character_role}\n"
-            f"境界: {cultivation_realm}\n"
-            f"性格: {personality}\n"
-            f"外貌: {appearance}\n"
-            f"背景: {background}\n\n"
-            "请输出简洁但具体的人物描述。"
-        )
-        return self.generate([{"role": "user", "content": prompt}])
-
-    def generate_scene_visualization(
-        self,
-        *,
-        scene_setting: str,
-        time_of_day: str,
-        mood: str,
-        key_elements: list[str],
-    ) -> str:
-        prompt = (
-            f"场景: {scene_setting}\n"
-            f"时间: {time_of_day}\n"
-            f"氛围: {mood}\n"
-            f"关键元素: {', '.join(key_elements)}\n\n"
-            "请输出适合小说衍生创作的场景可视化描述。"
-        )
-        return self.generate([{"role": "user", "content": prompt}])
-
     def _flatten_messages(self, messages: list[dict[str, Any]]) -> tuple[str, str]:
         system_parts: list[str] = []
         prompt_parts: list[str] = []

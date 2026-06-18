@@ -526,7 +526,7 @@ class SceneStore:
 
         Args:
             scene_id: Scene UUID string.
-            consumer_type: Type of consumer (novel/podcast/video/music).
+            consumer_type: Content consumer type; main workflow uses novel.
             content: Generated content from consumption.
             metadata: Additional metadata about the consumption.
 

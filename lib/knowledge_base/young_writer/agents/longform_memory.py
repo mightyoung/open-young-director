@@ -9,6 +9,7 @@ import json
 import logging
 import math
 import os
+import sys
 from pathlib import Path
 import sqlite3
 from typing import Any, Protocol
@@ -578,3 +579,15 @@ def record_memory_after_save(
         unresolved_goals=unresolved_goals,
     )
     return store.write_memories(records)
+
+
+_CURRENT_MODULE = sys.modules[__name__]
+for _ALIAS in (
+    "young_writer.agents.longform_memory",
+    "agents.longform_memory",
+    "knowledge_base.agents.longform_memory",
+):
+    sys.modules[_ALIAS] = _CURRENT_MODULE
+    _PARENT, _, _CHILD = _ALIAS.rpartition(".")
+    if _PARENT in sys.modules:
+        setattr(sys.modules[_PARENT], _CHILD, _CURRENT_MODULE)

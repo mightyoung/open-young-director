@@ -25,11 +25,7 @@ class ProjectPaths:
     project_id: str
     title: str
     project_dir: Path
-    scripts_dir: Path
-    film_drama_dir: Path
     legacy_novel_dir: Path
-    legacy_scripts_dir: Path
-    legacy_film_drama_dir: Path
     layout: str
 
     @property
@@ -54,8 +50,6 @@ class ProjectPaths:
 
     def ensure_runtime_dirs(self) -> None:
         self.project_dir.mkdir(parents=True, exist_ok=True)
-        self.scripts_dir.mkdir(parents=True, exist_ok=True)
-        self.film_drama_dir.mkdir(parents=True, exist_ok=True)
 
 
 @dataclass(frozen=True)
@@ -66,8 +60,6 @@ class WorkspacePaths:
     runtime_dir: Path
     projects_dir: Path
     legacy_novels_dir: Path
-    legacy_generated_scripts_dir: Path
-    legacy_film_drama_scripts_dir: Path
     config_dir: Path
 
     @classmethod
@@ -98,8 +90,6 @@ class WorkspacePaths:
             runtime_dir=runtime_dir,
             projects_dir=runtime_dir / "projects",
             legacy_novels_dir=root_path / "novels",
-            legacy_generated_scripts_dir=root_path / "generated_scripts",
-            legacy_film_drama_scripts_dir=root_path / "film_drama_scripts",
             config_dir=config_path,
         )
 
@@ -129,14 +119,6 @@ class WorkspacePaths:
         legacy_novel_dir = self.legacy_novels_dir / basename
         legacy_slug = safe_project_slug(title, fallback=project_id)
         legacy_title_dir = self.legacy_novels_dir / legacy_slug
-        legacy_dir_names = (basename, legacy_slug, project_id)
-        legacy_scripts_dir = self._existing_or_default(
-            tuple(self.legacy_generated_scripts_dir / name for name in legacy_dir_names)
-        )
-        legacy_film_drama_dir = self._existing_or_default(
-            tuple(self.legacy_film_drama_scripts_dir / name for name in legacy_dir_names)
-        )
-
         if prefer_existing_legacy:
             existing_legacy = next(
                 (
@@ -151,11 +133,7 @@ class WorkspacePaths:
                     project_id=project_id,
                     title=title,
                     project_dir=existing_legacy,
-                    scripts_dir=legacy_scripts_dir,
-                    film_drama_dir=legacy_film_drama_dir,
                     legacy_novel_dir=legacy_novel_dir,
-                    legacy_scripts_dir=legacy_scripts_dir,
-                    legacy_film_drama_dir=legacy_film_drama_dir,
                     layout="legacy",
                 )
 
@@ -164,10 +142,6 @@ class WorkspacePaths:
             project_id=project_id,
             title=title,
             project_dir=project_dir,
-            scripts_dir=project_dir / "derivatives",
-            film_drama_dir=project_dir / "film_drama",
             legacy_novel_dir=legacy_novel_dir,
-            legacy_scripts_dir=legacy_scripts_dir,
-            legacy_film_drama_dir=legacy_film_drama_dir,
             layout="runtime",
         )

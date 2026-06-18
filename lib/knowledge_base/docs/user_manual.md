@@ -381,7 +381,6 @@ UI 允许直接编辑这三类字段；每行一条。若某个 bucket 留空并
 - `context.build`
 - `chapter.generate`
 - `chapter.save`
-- `derivatives.sync`
 - `feedback.auto`
 - `finalize`
 
@@ -519,10 +518,9 @@ uv run python lib/knowledge_base/run_novel_generation.py --help
 
 ```bash
 uv run pytest lib/knowledge_base/tests/llm/test_kimi_client.py -q
-uv run pytest lib/knowledge_base/tests/film_drama/test_film_drama.py -q
 ```
 
-这两组是本轮修过的高风险区域。
+这些是主线生成与 LLM 适配的高风险区域。
 
 ## 12. 推荐工作流
 

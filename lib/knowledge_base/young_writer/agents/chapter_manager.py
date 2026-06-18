@@ -173,13 +173,6 @@ class ChapterManager:
         self.consistency_dir = self.novel_dir / "consistency_reports"
         self.plot_summary_dir = self.novel_dir / "plot_summaries"
         self.plot_summaries_dir = self.plot_summary_dir
-        if self._is_unified_runtime_project_dir(self.novel_dir):
-            self.film_drama_dir = self.novel_dir / "film_drama"
-        else:
-            self.film_drama_dir = (
-                self.root_dir / "film_drama_scripts" / project_dir_basename
-            )
-
         self._chapters_index: dict[int, ChapterMetadata] | None = None
         self._ensure_directories()
         self._chapters_index = self._load_chapters_index()
@@ -192,7 +185,6 @@ class ChapterManager:
         self.chapters_dir.mkdir(parents=True, exist_ok=True)
         self.consistency_dir.mkdir(parents=True, exist_ok=True)
         self.plot_summary_dir.mkdir(parents=True, exist_ok=True)
-        self.film_drama_dir.mkdir(parents=True, exist_ok=True)
 
     def _coerce_datetime(self, value: Any) -> datetime:
         """Parse persisted timestamps into datetimes."""
@@ -736,49 +728,6 @@ class ChapterManager:
         output_file.parent.mkdir(parents=True, exist_ok=True)
         output_file.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
         return len(chapters)
-
-    def save_film_drama_content(
-        self,
-        chapter_number: int,
-        film_drama_data: dict[str, Any],
-    ) -> str:
-        """Save FILM_DRAMA content for a chapter.
-
-        FILM_DRAMA content includes:
-        - plot_outline: scene structure with beats
-        - cast: character cast information
-        - scenes: scene IDs
-        - final_plot: narrative text
-        - content: final assembled chapter content
-
-        Args:
-            chapter_number: Chapter number
-            film_drama_data: Dict with plot_outline, cast, scenes, final_plot, content
-
-        Returns:
-            Path to the saved file
-        """
-        self._ensure_directories()
-
-        film_drama_file = self.film_drama_dir / f"ch{chapter_number:03d}_film_drama.json"
-
-        save_data = {
-            "chapter_number": chapter_number,
-            "project_title": self.project_title,
-            "plot_outline": film_drama_data.get("plot_outline", {}),
-            "cast": film_drama_data.get("cast", []),
-            "scenes": film_drama_data.get("scenes", []),
-            "final_plot": film_drama_data.get("final_plot", ""),
-            "content": film_drama_data.get("content", ""),
-            "outline": film_drama_data.get("outline", ""),
-            "saved_at": datetime.now().isoformat(),
-        }
-
-        with open(film_drama_file, "w", encoding="utf-8") as f:
-            json.dump(save_data, f, ensure_ascii=False, indent=2)
-
-        logger.info(f"Film drama content saved for chapter {chapter_number}: {film_drama_file}")
-        return str(film_drama_file)
 
     def verify_project_integrity(self, declared_latest: int) -> dict[str, Any]:
         """Verify project integrity."""

@@ -431,7 +431,7 @@ class GeneratedChapter:
     plot_summary: dict[str, Any] | None = None
     consistency_report: dict[str, Any] | None = None
     generation_time: str = ""
-    # FILM_DRAMA mode data - includes scenes, cast, beats, narrative structure
+    # Optional novel orchestrator diagnostics.
     orchestrator_result: dict[str, Any] | None = None
 
 
@@ -1196,7 +1196,7 @@ class NovelGeneratorAgent:
         Returns:
             Dict with:
                 - content: str - the generated chapter content
-                - orchestrator_result: Optional[Dict] - full result from orchestrator (FILM_DRAMA mode)
+                - orchestrator_result: Optional[Dict] - full result from the novel orchestrator
         """
         default_result = {
             "content": "",

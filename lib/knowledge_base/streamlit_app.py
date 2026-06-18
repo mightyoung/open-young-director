@@ -351,35 +351,19 @@ def _chapter_detail(number: int) -> tuple[str, str, str, str]:
     return "\n".join(detail_lines), plot_text, report_text, content
 
 
-def _derivative_summary() -> tuple[str, list[list[Any]]]:
+def _export_summary() -> tuple[str, list[list[Any]]]:
     root = _project_root()
     if not root:
         return "当前没有已加载项目。", []
 
-    config_mgr = get_config_manager()
-    scripts_dir = Path(config_mgr.generation.scripts_dir)
-    film_drama_dir = Path(config_mgr.generation.film_drama_dir)
-    rows: list[list[Any]] = []
-    if scripts_dir.exists():
-        rows.extend(
-            [file.parent.name, file.name, file.stat().st_size, str(file)]
-            for file in sorted(scripts_dir.rglob("*"))
-            if file.is_file()
-        )
-    if film_drama_dir.exists():
-        rows.extend(
-            ["film_drama", file.name, file.stat().st_size, str(file)]
-            for file in sorted(film_drama_dir.glob("*.json"))
-            if file.is_file()
-        )
+    files: list[Path] = []
+    export_dir = root / "exports"
+    if export_dir.exists():
+        files.extend(file for file in sorted(export_dir.rglob("*")) if file.is_file())
+    files.extend(file for pattern in ("*.txt", "*.md") for file in sorted(root.glob(pattern)))
 
-    text = [
-        "### 衍生内容",
-        f"- 脚本目录: `{scripts_dir}`",
-        f"- 剧情目录: `{film_drama_dir}`",
-        f"- 文件数: `{len(rows)}`",
-    ]
-    return "\n".join(text), rows
+    rows = [["导出文件", file.name, file.stat().st_size, str(file)] for file in files]
+    return f"### 导出\n共 {len(rows)} 个导出文件。", rows
 
 
 def _load_chapter_manager() -> ChapterManager | None:
@@ -882,7 +866,7 @@ def _render_provider_tab(st_mod: Any) -> None:
 
     st_mod.markdown("### LLM Provider")
     st_mod.markdown(
-        "这里配置生成主链路使用的文本模型，同时保留 Doubao 的视频提示词增强配置。"
+        "这里配置生成主链路使用的文本模型。"
     )
 
     with st_mod.form("provider_settings_form", border=True):
@@ -2169,7 +2153,7 @@ def _render_chapters_tab(st_mod: Any) -> None:
 
 
 def _render_export_tab(st_mod: Any) -> None:
-    st_mod.markdown("### 导出与衍生内容")
+    st_mod.markdown("### 导出")
     config_mgr = get_config_manager()
     if not config_mgr.current_project:
         st_mod.info("先创建或加载项目。")
@@ -2202,9 +2186,9 @@ def _render_export_tab(st_mod: Any) -> None:
             st_mod.rerun()
 
     st_mod.markdown(st_mod.session_state.get("yw_export_message", ""))
-    derivative_text, derivative_rows = _derivative_summary()
-    st_mod.markdown(derivative_text)
-    st_mod.dataframe(derivative_rows, use_container_width=True, hide_index=True)
+    export_text, export_rows = _export_summary()
+    st_mod.markdown(export_text)
+    st_mod.dataframe(export_rows, use_container_width=True, hide_index=True)
 
 
 def build_app() -> None:
@@ -2223,7 +2207,7 @@ def build_app() -> None:
 
     _render_project_sidebar(st_mod)
 
-    tabs = st_mod.tabs(["生成控制台", "写作参数", "模型配置", "章节阅读", "导出与衍生"])
+    tabs = st_mod.tabs(["生成控制台", "写作参数", "模型配置", "章节阅读", "导出"])
     with tabs[0]:
         _render_generation_tab(st_mod)
     with tabs[1]:

@@ -46,8 +46,8 @@ class NovelPipelineStep:
 
 # Standard novel generation pipeline steps
 STANDARD_NOVEL_PIPELINE = [
-    NovelPipelineStep(agent_name="director", step_type="plan"),
-    NovelPipelineStep(agent_name="character", step_type="generate"),
+    NovelPipelineStep(agent_name="novel_orchestrator", step_type="plan"),
+    NovelPipelineStep(agent_name="novel_orchestrator", step_type="generate"),
     NovelPipelineStep(agent_name="reality_checker", step_type="validate"),
     NovelPipelineStep(agent_name="assembler", step_type="assemble"),
 ]
@@ -133,14 +133,6 @@ class NovelWorkflowOrchestrator:
         self._agents: Dict[str, Any] = {
             "novel_orchestrator": novel_orchestrator,
         }
-
-        # Add film_drama agents if available
-        if hasattr(novel_orchestrator, "director_agent") and novel_orchestrator.director_agent:
-            self._agents["director"] = novel_orchestrator.director_agent
-
-        if hasattr(novel_orchestrator, "sub_agent_pool"):
-            for i, agent in enumerate(novel_orchestrator.sub_agent_pool):
-                self._agents[f"character_{i}"] = agent
 
         logger.info(
             f"[NovelWorkflow] Initialized with agents: {list(self._agents.keys())}"
@@ -366,8 +358,8 @@ class NovelWorkflowOrchestrator:
         # Scene-level pipeline
         scene_config = NovelWorkflowConfig(
             pipeline_steps=[
-                NovelPipelineStep(agent_name="director", step_type="plan"),
-                NovelPipelineStep(agent_name="character", step_type="generate"),
+                NovelPipelineStep(agent_name="novel_orchestrator", step_type="plan"),
+                NovelPipelineStep(agent_name="novel_orchestrator", step_type="generate"),
                 NovelPipelineStep(agent_name="reality_checker", step_type="validate"),
             ],
             enable_quality_gate=True,

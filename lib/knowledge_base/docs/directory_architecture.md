@@ -32,8 +32,6 @@ lib/knowledge_base/runtime/projects/<title>_<project_id>/
   consistency_reports/
   plot_summaries/
   runs/
-  derivatives/
-  film_drama/
 ```
 
 The runtime root can be redirected with `YOUNG_WRITER_DATA_DIR` or
@@ -45,8 +43,6 @@ Older projects may already exist under:
 
 ```text
 lib/knowledge_base/novels/<title>_<project_id>/
-lib/knowledge_base/generated_scripts/<title>_<project_id>/
-lib/knowledge_base/film_drama_scripts/<title>_<project_id>/
 ```
 
 When an existing legacy novel directory is present, path resolution keeps using
@@ -58,7 +54,7 @@ and Streamlit run history readable without a destructive migration.
 Generated project data is ignored for future writes:
 
 - `lib/knowledge_base/runtime/`
-- legacy `novels/`, `generated_scripts/`, `film_drama_scripts/`
+- legacy `novels/`
 - local config state such as `config/current_project.txt` and
   `config/project_*.json`
 - local caches, cookies, logs, and crawled web novel resources
@@ -79,5 +75,4 @@ local project state.
 - UI command construction lives in `services/cli_commands.py` so it can be tested
   without launching Streamlit.
 - Runtime path decisions live in `services/paths.py`; writers should use that
-  service instead of hand-building `novels/`, `generated_scripts/`, or
-  `film_drama_scripts/` paths.
+  service instead of hand-building legacy `novels/` paths.

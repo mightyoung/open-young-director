@@ -1,9 +1,7 @@
-"""Quality Gate for content quality validation after Consumer output.
+"""Quality Gate for novel content quality validation.
 
-QualityGate acts as a content quality gate that validates content produced
-by Consumers (NovelConsumer, PodcastConsumer, VideoConsumer, MusicConsumer).
-
-It integrates with RuleBasedEvaluator and LLMasJudgeEvaluator to provide
+QualityGate validates generated novel content. It integrates RuleBasedEvaluator
+and LLM-as-Judge evaluation for quality assessment.
 comprehensive quality assessment and supports three quality levels:
 - PASS: Content meets quality standards, proceed directly
 - REVIEW: Content needs human review before proceeding
@@ -14,11 +12,8 @@ Quality Thresholds:
 - REVIEW: 0.6 <= overall_score < 0.75
 - REJECT: overall_score < 0.6
 
-Consumer-Specific Check Dimensions:
-- NovelConsumer: coherence, character_consistency (weighted higher)
-- VideoConsumer: dialogue_quality, plot_coherence (weighted higher)
-- PodcastConsumer: dialogue_quality, language_quality (weighted higher)
-- MusicConsumer: coherence, emotional_depth (weighted higher)
+Novel Check Dimensions:
+- Novel content: coherence, character_consistency, plot_coherence, language_quality
 """
 
 from dataclasses import dataclass
@@ -100,9 +95,6 @@ class QualityGateResult:
 # These dimensions are weighted higher for each consumer type
 CONSUMER_CRITICAL_DIMENSIONS: Dict[str, List[str]] = {
     "novel": ["coherence", "character_consistency"],
-    "video": ["dialogue_quality", "plot_coherence"],
-    "podcast": ["dialogue_quality", "language_quality"],
-    "music": ["coherence", "emotional_depth"],
 }
 
 
@@ -161,7 +153,7 @@ class QualityGate:
 
         Args:
             content: The content to evaluate (usually string or dict from Consumer)
-            consumer_type: Type of consumer ("novel", "podcast", "video", "music")
+            consumer_type: Content type; only "novel" is supported in the main workflow
             context: Optional context information (e.g., scene_id, character_profiles)
             llm_client: Optional LLM client for hybrid evaluation
 
@@ -213,7 +205,7 @@ class QualityGate:
 
     def check_and_retry(
         self,
-        consumer: Any,  # BaseConsumer
+        consumer: Any,  # Novel content producer
         scene_id: str,
         max_retries: int = 2,
     ) -> Dict[str, Any]:
@@ -223,7 +215,7 @@ class QualityGate:
         through the quality gate, and retries if the quality is below threshold.
 
         Args:
-            consumer: BaseConsumer instance (NovelConsumer, PodcastConsumer, etc.)
+            consumer: Novel content producer
             scene_id: The scene identifier to process
             max_retries: Maximum number of retry attempts (default: 2)
 
@@ -337,20 +329,10 @@ class QualityGate:
         if isinstance(content, str):
             return content
         elif isinstance(content, dict):
-            # Handle different consumer output formats
-            # NovelConsumer: returns str directly (already handled above)
-            # PodcastConsumer: dict {title, script, duration_estimate, speakers}
-            if "script" in content:
-                return content["script"]
-            # VideoConsumer: dict {title, scenes, narration, music_suggestions}
-            if "narration" in content:
-                return content["narration"]
-            if "scenes" in content and isinstance(content["scenes"], list):
-                return " ".join(str(s) for s in content["scenes"])
-            # MusicConsumer: dict {style, mood, tempo, instruments, prompt}
-            if "prompt" in content:
-                return content["prompt"]
-            # Fallback: try to stringify
+            if "content" in content:
+                return str(content["content"])
+            if "text" in content:
+                return str(content["text"])
             return str(content)
         else:
             return str(content)
@@ -564,18 +546,6 @@ class QualityGate:
             "novel": [
                 "Focus on narrative coherence and character consistency",
                 "Ensure descriptions are vivid and consistent",
-            ],
-            "video": [
-                "Emphasize dialogue clarity and plot coherence for visual medium",
-                "Ensure scenes are clearly distinguished",
-            ],
-            "podcast": [
-                "Prioritize dialogue quality and language clarity for audio",
-                "Ensure script flows well when spoken",
-            ],
-            "music": [
-                "Focus on emotional coherence throughout the piece",
-                "Ensure the emotional arc is clear and consistent",
             ],
         }
 

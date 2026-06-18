@@ -300,51 +300,6 @@ class KimiClient:
             system_prompt="You are a novel writing assistant.",
             messages=[{"role": "user", "content": f"{prompt}\n\nContext:\n{context_text}"}],
         ).content
-
-    def generate_character_description(
-        self,
-        *,
-        character_name: str,
-        character_role: str,
-        cultivation_realm: str,
-        personality: str,
-        appearance: str,
-        background: str,
-    ) -> str:
-        return self.chat(
-            system_prompt="You write concise but vivid novel character descriptions.",
-            messages=[
-                {
-                    "role": "user",
-                    "content": (
-                        f"角色名: {character_name}\n角色定位: {character_role}\n境界: {cultivation_realm}\n"
-                        f"性格: {personality}\n外貌: {appearance}\n背景: {background}"
-                    ),
-                }
-            ],
-        ).content
-
-    def generate_scene_visualization(
-        self,
-        *,
-        scene_setting: str,
-        time_of_day: str,
-        mood: str,
-        key_elements: list[str],
-    ) -> str:
-        return self.chat(
-            system_prompt="You create vivid scene visualization prompts for fiction.",
-            messages=[
-                {
-                    "role": "user",
-                    "content": (
-                        f"场景: {scene_setting}\n时间: {time_of_day}\n氛围: {mood}\n"
-                        f"关键元素: {', '.join(key_elements)}"
-                    ),
-                }
-            ],
-        ).content
-
     def close(self) -> None:
         if self._client is not None:
             self._client.close()

@@ -46,9 +46,6 @@ from young_writer.agents.chapter_manager import (  # noqa: E402
     get_chapter_manager,
 )
 from young_writer.agents.config_manager import get_config_manager  # noqa: E402
-from young_writer.agents.derivative_generator import (  # noqa: E402
-    get_derivative_generator,
-)
 from young_writer.agents.feedback_loop import (  # noqa: E402
     FeedbackMode,
     FeedbackStrategy,
@@ -260,7 +257,6 @@ STAGE_INIT = "init"
 STAGE_CONTEXT_BUILD = "context.build"
 STAGE_CHAPTER_GENERATE = "chapter.generate"
 STAGE_CHAPTER_SAVE = "chapter.save"
-STAGE_DERIVATIVES_SYNC = "derivatives.sync"
 STAGE_FEEDBACK_AUTO = "feedback.auto"
 STAGE_FINALIZE = "finalize"
 
@@ -425,7 +421,6 @@ def _estimate_eta_seconds(
         STAGE_CONTEXT_BUILD: 20,
         STAGE_CHAPTER_GENERATE: 45,
         STAGE_CHAPTER_SAVE: 10,
-        STAGE_DERIVATIVES_SYNC: 60,
         STAGE_FEEDBACK_AUTO: 90,
         STAGE_FINALIZE: 15,
     }.get(current_stage, 15)
@@ -1272,7 +1267,7 @@ def cmd_new_project(args):
 
 
 def _create_orchestrator(config_mgr, project_id: str) -> NovelOrchestrator:
-    """创建小说编排器（仅支持FILM_DRAMA模式）.
+    """创建小说编排器（小说主线模式）.
 
     Args:
         config_mgr: 配置管理器
@@ -1307,7 +1302,7 @@ def _create_orchestrator(config_mgr, project_id: str) -> NovelOrchestrator:
         config=config,
     )
 
-    logger.info("NovelOrchestrator created for FILM_DRAMA mode")
+    logger.info("NovelOrchestrator created for novel generation")
     return orchestrator
 
 
@@ -1358,11 +1353,11 @@ def cmd_generate(args):
             else None,
         )
 
-    # 创建 orchestrator (仅支持 FILM_DRAMA 模式)
+    # 创建 orchestrator（小说主线模式）
     novel_orchestrator = _create_orchestrator(config_mgr, project_id)
     input_assembler = InputAssembler(config_mgr)
 
-    # 创建小说生成器（传入 orchestrator 以启用 FILM_DRAMA 模式）
+    # 创建小说生成器（传入 orchestrator 以启用主线编排）
     generator = get_novel_generator(
         config_manager=config_mgr,
         novel_orchestrator=novel_orchestrator,
@@ -1706,17 +1701,6 @@ def cmd_generate(args):
                             longform_memory_error=str(exc),
                         )
 
-            # 保存 FILM_DRAMA 内容（场景、角色、情节结构等）
-            if hasattr(chapter, "orchestrator_result") and chapter.orchestrator_result:
-                try:
-                    film_drama_file = chapter_mgr.save_film_drama_content(
-                        chapter_number=chapter.number,
-                        film_drama_data=chapter.orchestrator_result,
-                    )
-                    logger.info(f"  🎬 Film drama content saved: {film_drama_file}")
-                except Exception as e:
-                    logger.warning(f"  ⚠️ Failed to save film drama content: {e}")
-
             try:
                 story_graph_result = record_story_graph_after_save(
                     project_dir=getattr(chapter_mgr, "novel_dir", project_dir),
@@ -1884,50 +1868,6 @@ def cmd_generate(args):
     print("\n" + "=" * 50)
     _print_statistics(generation_results, failed_chapters, results_file, project.title)
 
-    # 按需同步生成衍生内容（播客、视频Prompt、角色/场景描述）
-    if generated and getattr(args, "sync_derivatives_after_generate", False):
-        print("\n🔄 开始同步生成衍生内容...")
-        _update_run_progress(
-            run_dir,
-            project_id=project_id,
-            command=command,
-            status="running",
-            current_stage=STAGE_DERIVATIVES_SYNC,
-            current_step="同步衍生内容",
-            chapters_total=count,
-            chapters_completed=skipped_existing + len(generated),
-            run_started_at=run_started_at,
-        )
-        try:
-            scripts_dir = config_mgr.generation.scripts_dir
-            derivative_gen = get_derivative_generator(
-                project_id,
-                kimi_client=llm_client,
-                doubao_client=doubao_client,
-                base_dir_override=base_dir_override,
-                scripts_dir_override=scripts_dir,
-            )
-            # 使用已生成章节的范围
-            chapter_range = f"{generated[0].number}-{generated[-1].number}"
-            sync_results = derivative_gen.sync_derivatives(chapter_range)
-            print("   ✅ 衍生内容同步完成:")
-            print(
-                f"      - 视频Prompt: {len(sync_results.get('video_prompts', []))} 个"
-            )
-            print(
-                f"      - 角色描述: {len(sync_results.get('character_descriptions', []))} 个"
-            )
-            print(
-                f"      - 场景描述: {len(sync_results.get('scene_descriptions', []))} 个"
-            )
-            print(f"      - 播客脚本: {len(sync_results.get('podcasts', []))} 个")
-            if sync_results.get("errors"):
-                print(f"      - 错误: {len(sync_results['errors'])} 个")
-        except Exception as e:
-            logger.warning(f"Failed to sync derivatives: {e}")
-            print(f"   ⚠️ 衍生内容同步失败: {e}")
-
-    # 自动反馈循环（根据策略触发）
     no_auto_feedback = getattr(args, "no_auto_feedback", False)
     if generated and not no_auto_feedback:
         # 获取当前项目总章节数
@@ -2078,11 +2018,6 @@ def cmd_status(args):
         f"   写作参数: {', '.join(f'{k}={v}' for k, v in writing_options.items() if v)}"
     )
 
-    if summary.get("fanqie_enabled"):
-        print(f"   番茄发布: ✅ 已配置 (书号: {summary.get('fanqie_book_id')})")
-    else:
-        print("   番茄发布: ❌ 未配置")
-
     return 0
 
 
@@ -2171,170 +2106,6 @@ def cmd_load_project(args):
     return 1
 
 
-def cmd_publish(args):
-    """发布章节到番茄小说网."""
-    config_mgr = get_config_manager()
-
-    if not config_mgr.current_project:
-        print("❌ 未设置当前项目. 请先使用 --new 或 --load")
-        return 1
-
-    # 获取配置的书号
-    fanqie_config = config_mgr.fanqie
-    if not fanqie_config.book_id:
-        print("❌ 未配置番茄书号. 请在 .env 中设置 FANQIE_BOOK_ID")
-        return 1
-
-    print("❌ 当前版本未提供可用的番茄发布器实现")
-    print(f"   书号配置存在: {fanqie_config.book_id}")
-    print(
-        "   原有 cmd_publish 依赖的 FanqiePublisher 实现已不存在，继续执行会误报运行期成功路径。"
-    )
-    print("   请先恢复/重建番茄发布器，再重新启用 --publish / --publish-all。")
-    return 1
-
-
-def cmd_sync_derivatives(args):
-    """同步衍生内容."""
-    config_mgr = get_config_manager()
-
-    if not config_mgr.current_project:
-        print("❌ 未设置当前项目. 请先使用 --new 或 --load")
-        return 1
-
-    llm_client, doubao_client = _build_llm_clients(config_mgr)
-
-    print("\n🔄 开始同步衍生内容...")
-    print(f"   项目: {config_mgr.current_project.title}")
-    print("-" * 50)
-
-    derivative_gen = get_derivative_generator(
-        config_mgr.current_project.id,
-        kimi_client=llm_client,
-        doubao_client=doubao_client,
-        scripts_dir_override=config_mgr.generation.scripts_dir,
-    )
-
-    try:
-        results = derivative_gen.sync_derivatives(args.range)
-
-        print("\n📊 同步结果:")
-        print(f"   固定章节: {len(results['fixed_chapters'])} 章")
-        print(f"   视频Prompt: {len(results['video_prompts'])} 个")
-        print(f"   角色描述: {len(results['character_descriptions'])} 个")
-        print(f"   场景描述: {len(results['scene_descriptions'])} 个")
-        print(f"   播客脚本: {len(results['podcasts'])} 个")
-
-        if results["errors"]:
-            print(f"\n   错误: {len(results['errors'])} 个")
-            for err in results["errors"][:5]:
-                print(f"      - {err}")
-
-        print("\n✅ 同步完成!")
-        return 0
-
-    except Exception as e:
-        print(f"❌ 同步失败: {e}")
-        return 1
-
-
-def cmd_list_derivatives(args):
-    """列出衍生内容."""
-    config_mgr = get_config_manager()
-
-    if not config_mgr.current_project:
-        print("❌ 未设置当前项目")
-        return 1
-
-    llm_client, doubao_client = _build_llm_clients(config_mgr)
-    derivative_gen = get_derivative_generator(
-        config_mgr.current_project.id,
-        kimi_client=llm_client,
-        doubao_client=doubao_client,
-        scripts_dir_override=config_mgr.generation.scripts_dir,
-    )
-    info = derivative_gen.list_derivatives()
-
-    print("\n📚 衍生内容列表")
-    print("-" * 50)
-    print(f"   固定章节: {len(info['fixed_chapters'])} 章")
-    print(f"   视频Prompt: {info['video_prompt_count']} 个")
-    print(f"   角色描述: {info['character_count']} 个")
-    print(f"   场景描述: {info['scene_count']} 个")
-    print(f"   播客脚本: {info['podcast_count']} 个")
-    print(f"   最后同步: {info['last_sync'] or '从未同步'}")
-
-    return 0
-
-
-def cmd_generate_podcast(args):
-    """生成播客脚本."""
-    config_mgr = get_config_manager()
-
-    if not config_mgr.current_project:
-        print("❌ 未设置当前项目")
-        return 1
-
-    llm_client, doubao_client = _build_llm_clients(config_mgr)
-
-    print("\n🎙️ 生成播客脚本...")
-    print(f"   章节范围: {args.range}")
-    print("-" * 50)
-
-    derivative_gen = get_derivative_generator(
-        config_mgr.current_project.id,
-        kimi_client=llm_client,
-        doubao_client=doubao_client,
-        scripts_dir_override=config_mgr.generation.scripts_dir,
-    )
-
-    try:
-        script = derivative_gen.generate_podcast_script(args.range)
-        print("\n✅ 播客脚本生成成功!")
-        print(f"   标题: {script.title}")
-        print(f"   时长: {script.duration_minutes} 分钟")
-        print(f"   主持人: {', '.join(script.speakers)}")
-        return 0
-    except Exception as e:
-        print(f"❌ 生成失败: {e}")
-        return 1
-
-
-def cmd_generate_video_prompt(args):
-    """生成视频提示词."""
-    config_mgr = get_config_manager()
-
-    if not config_mgr.current_project:
-        print("❌ 未设置当前项目")
-        return 1
-
-    llm_client, doubao_client = _build_llm_clients(config_mgr)
-
-    print("\n🎬 生成视频提示词...")
-    print(f"   章节: 第{args.chapter}章")
-    print("-" * 50)
-
-    derivative_gen = get_derivative_generator(
-        config_mgr.current_project.id,
-        kimi_client=llm_client,
-        doubao_client=doubao_client,
-        scripts_dir_override=config_mgr.generation.scripts_dir,
-    )
-
-    try:
-        prompt = derivative_gen.generate_video_prompt(args.chapter)
-        print("\n✅ 视频提示词生成成功!")
-        print(f"   场景: {prompt.scene_name}")
-        print(f"   风格: {', '.join(prompt.style_tags)}")
-        print(f"   人物: {', '.join(prompt.characters)}")
-        print(f"   氛围: {prompt.mood}")
-        print(f"\n   Prompt:\n   {prompt.prompt_text[:200]}...")
-        return 0
-    except Exception as e:
-        print(f"❌ 生成失败: {e}")
-        return 1
-
-
 def cmd_verify(args):
     """验证项目完整性."""
     config_mgr = get_config_manager()
@@ -2406,42 +2177,6 @@ def cmd_verify(args):
         return 0
     print("\n⚠️ 项目验证发现问题，请检查上述信息")
     return 1
-
-
-def cmd_generate_character(args):
-    """生成角色描述."""
-    config_mgr = get_config_manager()
-
-    if not config_mgr.current_project:
-        print("❌ 未设置当前项目")
-        return 1
-
-    llm_client, doubao_client = _build_llm_clients(config_mgr)
-
-    print("\n👤 生成角色描述...")
-    print(f"   角色: {args.name}")
-    print("-" * 50)
-
-    derivative_gen = get_derivative_generator(
-        config_mgr.current_project.id,
-        kimi_client=llm_client,
-        doubao_client=doubao_client,
-        scripts_dir_override=config_mgr.generation.scripts_dir,
-    )
-
-    try:
-        char = derivative_gen.generate_character_description(args.name)
-        print("\n✅ 角色描述生成成功!")
-        print(f"   姓名: {char.name}")
-        print(f"   外貌: {char.appearance[:100]}...")
-        print(f"   性格: {char.personality[:100]}...")
-        print(f"   出场: 第{', '.join(str(n) for n in char.key_appearances)}章")
-        return 0
-    except Exception as e:
-        print(f"❌ 生成失败: {e}")
-        return 1
-
-
 def cmd_feedback_loop(args):
     """反馈循环命令.
 
@@ -3702,14 +3437,7 @@ def main():
   # 加载已有项目
   python run_novel_generation.py --load abc123def456
 
-  # 衍生内容生成
-  python run_novel_generation.py --sync-derivatives 1-10  # 同步第1-10章的衍生内容
-  python run_novel_generation.py --list-derivatives       # 列出所有衍生内容
-  python run_novel_generation.py --podcast 1-4           # 生成第1-4章播客
-  python run_novel_generation.py --video-prompt 5         # 生成第5章视频提示词
-  python run_novel_generation.py --character 韩林          # 生成韩林的角色描述
-
-  # 反馈循环 (发现问题→分析问题→修改错误)
+  # # 反馈循环 (发现问题→分析问题→修改错误)
   python run_novel_generation.py --load 7414da9519da     # 加载项目
   python run_novel_generation.py --feedback-discover      # 发现问题
   python run_novel_generation.py --feedback-analyze      # 分析问题
@@ -3800,11 +3528,6 @@ def main():
         "--no-auto-feedback", action="store_true", help="禁用自动反馈循环"
     )
     parser.add_argument(
-        "--sync-derivatives-after-generate",
-        action="store_true",
-        help="正文生成完成后立即同步衍生内容；默认关闭，可改用独立 --sync-derivatives 命令",
-    )
-    parser.add_argument(
         "--require-llm",
         action="store_true",
         help="要求真实 LLM 生成；LLM 调用失败或输出过短时不写入 fallback 占位章节",
@@ -3817,7 +3540,7 @@ def main():
     parser.add_argument(
         "--diagnose-config",
         action="store_true",
-        help="检查 provider/database/Redis/crawler/发布配置状态（不输出密钥）",
+        help="检查 provider/database/Redis/crawler 配置状态（不输出密钥）",
     )
     parser.add_argument(
         "--diagnose-json",
@@ -3901,23 +3624,6 @@ def main():
     parser.add_argument("--output", help="导出文件路径")
     parser.add_argument("--end", type=int, help="导出结束章节号")
 
-    # 番茄发布命令
-    parser.add_argument("--publish", metavar="RANGE", help="发布章节到番茄 (如: 1-5)")
-    parser.add_argument("--publish-all", action="store_true", help="发布所有章节到番茄")
-    parser.add_argument("--fanqie-book-id", help="番茄书号 (覆盖配置)")
-
-    # 衍生内容命令
-    parser.add_argument(
-        "--sync-derivatives", metavar="RANGE", help="同步衍生内容 (如: 1-10)"
-    )
-    parser.add_argument(
-        "--list-derivatives", action="store_true", help="列出所有衍生内容"
-    )
-    parser.add_argument("--podcast", metavar="RANGE", help="生成播客脚本 (如: 1-4)")
-    parser.add_argument(
-        "--video-prompt", type=int, metavar="CHAPTER", help="生成视频提示词"
-    )
-    parser.add_argument("--character", metavar="NAME", help="生成角色描述")
 
     # 反馈循环命令
     parser.add_argument(
@@ -4003,35 +3709,6 @@ def main():
 
     if args.export:
         return cmd_export(args)
-
-    if args.publish:
-        args.range = args.publish
-        args.all = False
-        return cmd_publish(args)
-
-    if args.publish_all:
-        args.range = "1-9999"
-        args.all = True
-        return cmd_publish(args)
-
-    if args.sync_derivatives:
-        args.range = args.sync_derivatives
-        return cmd_sync_derivatives(args)
-
-    if args.list_derivatives:
-        return cmd_list_derivatives(args)
-
-    if args.podcast:
-        args.range = args.podcast
-        return cmd_generate_podcast(args)
-
-    if args.video_prompt:
-        args.chapter = args.video_prompt
-        return cmd_generate_video_prompt(args)
-
-    if args.character:
-        args.name = args.character
-        return cmd_generate_character(args)
 
     # 反馈循环命令
     if (
