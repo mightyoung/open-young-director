@@ -1,9 +1,9 @@
-name = "crewai-workspace"
-description = "Cutting-edge framework for orchestrating role-playing, autonomous AI agents. By fostering collaborative intelligence, CrewAI empowers agents to work together seamlessly, tackling complex tasks."
+name = "young-writer-workspace"
+description = "Local long-form fiction writing workbench centered on lib/knowledge_base."
 readme = "README.md"
 requires-python = ">=3.10,<3.15"
 authors = [
-    { name = "Joao Moura", email = "joao@crewai.com" }
+    { name = "young-writer" }
 ]
 
 [dependency-groups]
@@ -14,31 +14,13 @@ dev = [
     "bandit==1.9.2",
     "pytest==8.4.2",
     "pytest-asyncio==1.3.0",
-    "pytest-subprocess==1.5.3",
-    "vcrpy==7.0.0", # pinned, less versions break pytest-recording
-    "pytest-recording==0.13.4",
-    "pytest-randomly==4.0.1",
     "pytest-timeout==2.4.0",
     "pytest-xdist==3.8.0",
-    "pytest-split==0.10.0",
-    "types-requests~=2.31.0.6",
-    "types-pyyaml==6.0.*",
-    "types-regex==2026.1.15.*",
-    "types-appdirs==1.4.*",
-    "boto3-stubs[bedrock-runtime]==1.42.40",
     "types-psycopg2==2.9.21.20251012",
-    "types-pymysql==1.1.0.20250916",
-    "types-aiofiles~=25.1.0",
 ]
-
 
 [tool.ruff]
-src = ["lib/*"]
-extend-exclude = [
-    "lib/crewai/src/crewai/cli/templates",
-    "lib/crewai/tests/",
-    "lib/crewai-tools/tests/",
-]
+src = ["lib/knowledge_base"]
 respect-gitignore = true
 force-exclude = true
 fix = true
@@ -50,36 +32,35 @@ docstring-code-format = true
 [tool.ruff.lint]
 future-annotations = true
 extend-select = [
-    "E",      # pycodestyle errors (style issues)
-    "F",      # Pyflakes (code errors)
-    "B",      # flake8-bugbear (bug prevention)
-    "S",      # bandit (security issues)
-    "RUF",    # ruff-specific rules
-    "N",      # pep8-naming (naming conventions)
-    "W",      # pycodestyle warnings
-    "I",      # isort (import formatting)
-    "T",      # flake8-print (print statements)
-#    "D",      # pydocstyle (docstring conventions) disabled until
-    "PERF",   # performance issues
-    "PIE",    # flake8-pie (unnecessary code)
-    "TID",    # flake8-tidy-imports (import best practices)
-    "ASYNC",  # async/await best practices
-    "RET",    # flake8-return (return improvements)
-    "UP006",  # use collections.abc
-    "UP007",  # use X | Y for unions
-    "UP035",  # use dict/list instead of typing.Dict/List
-    "UP037",  # remove quotes from type annotations
-    "UP045",  # use X | None instead of Optional[X]
-    "UP004",  # use isinstance instead of type
-    "UP008",  # use super() instead of super(Class, self)
-    "UP010",  # use isinstance for type checks
-    "UP018",  # use str() instead of "string"
-    "UP031",  # use f-strings for .format()
-    "UP032",  # use f-strings for .format() with positional
-    "I001",   # sort imports
-    "I002",   # remove unused imports
+    "E",
+    "F",
+    "B",
+    "S",
+    "RUF",
+    "N",
+    "W",
+    "I",
+    "T",
+    "PERF",
+    "PIE",
+    "TID",
+    "ASYNC",
+    "RET",
+    "UP006",
+    "UP007",
+    "UP035",
+    "UP037",
+    "UP045",
+    "UP004",
+    "UP008",
+    "UP010",
+    "UP018",
+    "UP031",
+    "UP032",
+    "I001",
+    "I002",
 ]
-ignore = ["E501"]  # ignore line too long globally
+ignore = ["E501"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
@@ -93,7 +74,7 @@ case-sensitive = true
 combine-as-imports = true
 force-single-line = false
 force-sort-within-sections = true
-known-first-party = []
+known-first-party = ["young_writer", "knowledge_base"]
 section-order = ["future", "standard-library", "third-party", "first-party", "local-folder"]
 lines-after-imports = 2
 split-on-trailing-comma = true
@@ -103,15 +84,10 @@ convention = "google"
 ignore-decorators = ["typing.overload"]
 
 [tool.ruff.lint.per-file-ignores]
-"lib/crewai/tests/**/*.py" = ["S101", "RET504", "S105", "S106"]  # Allow assert statements, unnecessary assignments, and hardcoded passwords in tests
-"lib/crewai-tools/tests/**/*.py" = ["S101", "RET504", "S105", "S106", "RUF012", "N818", "E402", "RUF043", "S110", "B017"]  # Allow various test-specific patterns
-"lib/crewai-files/tests/**/*.py" = ["S101", "RET504", "S105", "S106", "B017", "F841"]  # Allow assert statements and blind exception assertions in tests
-"lib/knowledge_base/tests/**/*.py" = ["S101", "RET504", "S105", "S106", "B017", "F841"]  # Allow assert statements and test-specific patterns in knowledge-base tests
-"lib/crewai/src/crewai/content/novel/crews/novel_crew.py" = ["B007", "E402", "E701", "E722", "E741", "F401", "F541", "F821", "F841", "I001", "N818", "PERF401", "RUF001", "RUF002", "RUF003", "RUF059", "S110", "UP037", "W291", "W293"]  # Legacy large orchestrator file with pre-existing lint debt; keep CI focused on syntax validity
-"lib/knowledge_base/young_writer/agents/novel_generator.py" = ["F841", "PERF401", "RET504", "RUF001", "RUF003", "RUF013", "S110"]  # Young-writer generator intentionally uses Chinese prompt text and carries pre-existing legacy lint debt
-"lib/knowledge_base/run_novel_generation.py" = ["RUF001", "RUF002", "RUF003", "RUF005", "S603", "T201"]  # Legacy CLI file intentionally uses Chinese punctuation and direct console output
-"lib/knowledge_base/young_writer/services/longform_run.py" = ["RUF001"]  # Preserve Chinese review summaries without broad file churn
-
+"lib/knowledge_base/tests/**/*.py" = ["S101", "RET504", "S105", "S106", "B017", "F841"]
+"lib/knowledge_base/young_writer/agents/novel_generator.py" = ["F841", "PERF401", "RET504", "RUF001", "RUF003", "RUF013", "S110"]
+"lib/knowledge_base/run_novel_generation.py" = ["RUF001", "RUF002", "RUF003", "RUF005", "S603", "T201"]
+"lib/knowledge_base/young_writer/services/longform_run.py" = ["RUF001"]
 
 [tool.mypy]
 strict = true
@@ -123,45 +99,26 @@ warn_return_any = true
 show_error_codes = true
 warn_unused_ignores = true
 python_version = "3.12"
-exclude = "(?x)(^lib/crewai/src/crewai/cli/templates/|^lib/crewai/tests/|^lib/crewai-tools/tests/|^lib/crewai-files/tests/)"
 plugins = ["pydantic.mypy"]
-
-
-[tool.bandit]
-exclude_dirs = ["lib/crewai/src/crewai/cli/templates"]
-
 
 [tool.pytest.ini_options]
 markers = [
-    "telemetry: mark test as a telemetry test (don't mock telemetry)",
     "slow: mark test as slow running",
 ]
 testpaths = [
-    "lib/crewai/tests",
-    "lib/crewai-tools/tests",
-    "lib/crewai-files/tests",
     "lib/knowledge_base/tests",
 ]
 asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"
-addopts = "--tb=short -n auto --timeout=60 --dist=loadfile --max-worker-restart=2 --block-network --import-mode=importlib"
+addopts = "--tb=short --timeout=60 --import-mode=importlib"
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
 filterwarnings = [
-    # Ignore the deprecated 'reasoning' parameter warning in agent/core.py
-    # This is a known deprecation and tests using reasoning=True are testing backward compatibility
-    "ignore::DeprecationWarning:crewai.agent.core",
-    # Ignore PytestCollectionWarning for TestFlow class (has __init__ constructor - known pytest issue)
     "ignore::pytest.PytestCollectionWarning",
 ]
 
 [tool.uv]
-
-# composio-core pins rich<14 but textual requires rich>=14.
-# onnxruntime 1.24+ dropped Python 3.10 wheels; cap it so qdrant[fastembed] resolves on 3.10.
-# fastembed 0.7.x and docling 2.63 cap pillow<12; the removed APIs don't affect them.
-# langchain-core 0.3.76 has a template-injection vuln (GHSA); force >=0.3.80.
 override-dependencies = [
     "rich>=13.7.1",
     "onnxruntime<1.24; python_version < '3.11'",
@@ -172,17 +129,8 @@ override-dependencies = [
 
 [tool.uv.workspace]
 members = [
-    "lib/crewai",
-    "lib/crewai-tools",
-    "lib/devtools",
-    "lib/crewai-files",
     "lib/knowledge_base",
 ]
 
-
 [tool.uv.sources]
-crewai = { workspace = true }
-crewai-tools = { workspace = true }
-crewai-devtools = { workspace = true }
-crewai-files = { workspace = true }
 young_writer = { workspace = true }

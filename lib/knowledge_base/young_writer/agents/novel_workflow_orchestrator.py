@@ -22,8 +22,7 @@ from typing import Any, Dict, List, Optional
 
 from .novel_orchestrator import NovelOrchestrator
 from .reality_checker import RealityChecker
-from crewai.content.agents.protocols.workflow import WorkflowOrchestrator, PipelineConfig, PipelineResult
-from crewai.content.agents.protocols.context import ContextManager
+from .protocols import ContextManager, PipelineConfig, PipelineResult, WorkflowOrchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +63,9 @@ class NovelWorkflowConfig:
         stop_on_quality_failure: Stop pipeline if quality gate fails
         max_retries: Max retries per step on failure
     """
-    pipeline_steps: List[NovelPipelineStep] = field(default_factory=STANDARD_NOVEL_PIPELINE)
+    pipeline_steps: List[NovelPipelineStep] = field(
+        default_factory=lambda: list(STANDARD_NOVEL_PIPELINE)
+    )
     enable_quality_gate: bool = True
     quality_gate_interval: int = 2  # Validate every 2 steps
     stop_on_quality_failure: bool = True
@@ -382,25 +383,30 @@ class NovelWorkflowOrchestrator:
         return result
 
     def get_pipeline_dag(self) -> List[Dict[str, Any]]:
-        """Get pipeline as DAG for visualization.
+        """Get pipeline DAG visualization.
 
         Returns:
-            List of step definitions with connections
+            List of step definitions with connections.
         """
         dag = []
+        interval = self.config.quality_gate_interval
+        total_steps = len(self.config.pipeline_steps)
         for i, step in enumerate(self.config.pipeline_steps):
+            is_interval_gate = (
+                self.config.enable_quality_gate and interval > 0 and i % interval == 0
+            )
             dag.append({
                 "id": i,
                 "agent": step.agent_name,
                 "type": step.step_type,
                 "quality_gate": (
-                    step.step_type == "validate" or
-                    (self.config.enable_quality_gate and i % self.config.quality_gate_interval == 0)
+                    step.step_type == "validate"
+                    or (self.config.enable_quality_gate and interval <= 0 and i == total_steps - 1)
+                    or is_interval_gate
                 ),
-                "next": [j for j in range(i + 1, len(self.config.pipeline_steps))],
+                "next": [j for j in range(i + 1, total_steps)],
             })
         return dag
-
 
 def create_novel_workflow(
     novel_orchestrator: NovelOrchestrator,

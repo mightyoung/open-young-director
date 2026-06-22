@@ -1,4 +1,4 @@
-# Open Young Director / 青年导演
+# Open Young Director / young-writer
 
 [English](#english) | [中文](#中文)
 
@@ -8,36 +8,18 @@
 
 ### Overview
 
-**Open Young Director** is a crewAI-based monorepo whose actively maintained novel-writing workflow currently lives in `lib/knowledge_base/`, with `lib/knowledge_base/young_writer/` as the primary Python package and `knowledge_base` kept as a compatibility alias.
+**Open Young Director** is a local, single-user workbench for long-form web
+fiction. The maintained product code lives in `lib/knowledge_base/`, with
+`lib/knowledge_base/young_writer/` as the primary Python package and
+`knowledge_base` kept as a compatibility alias.
 
-The current deliverable is a local, single-user writing workbench for long-form web fiction. It combines:
+The workbench combines:
 
 - a Streamlit control panel
 - a CLI for project creation, chapter generation, and full-novel runs
 - pause/resume checkpoints for outline, volume, and chapter review
 - consistency, anti-drift, and review history tracking
-- derivative-content generation hooks for podcast/video-style assets
-
-This repository also contains the upstream-style `crewai` packages and tools, but if you want to run the novel system today, start from `lib/knowledge_base/`.
-
-### Current Scope
-
-What is working today:
-
-- local project creation and loading
-- chapter-by-chapter generation
-- full-novel generation with approval checkpoints
-- structured writing options shared by UI and CLI
-- resumable runs backed by canonical run state
-- chapter review payloads with anti-drift evidence and rewrite plans
-- cross-volume registry tracking for unresolved goals, promises, and dangling settings
-
-What this repository is not claiming today:
-
-- hosted multi-user service
-- production deployment target
-- distributed worker cluster
-- Docker/Kubernetes delivery lane
+- derivative-content hooks for podcast/video-style assets
 
 ### Main Entry Points
 
@@ -50,18 +32,16 @@ What this repository is not claiming today:
 
 ```text
 lib/
-├── crewai/                    # Core crewAI framework and CLI
-├── crewai-tools/              # Tool integrations
-└── knowledge_base/            # Active young-writer workspace
-    ├── young_writer/          # Primary product package
-    ├── knowledge_base/        # Compatibility alias package
-    ├── agents/                # Legacy import shim
-    ├── services/              # Legacy import shim
-    ├── streamlit_app.py       # Local control panel
+└── knowledge_base/
+    ├── young_writer/           # Primary product package
+    ├── knowledge_base/         # Compatibility alias package
+    ├── agents/                 # Legacy import shim
+    ├── services/               # Legacy import shim
+    ├── streamlit_app.py        # Local control panel
     ├── run_novel_generation.py # Main CLI
-    ├── writing_options.py     # Shared writing-option presets
-    ├── docs/                  # Operator docs and workflow contracts
-    └── tests/                 # Focused tests for the workbench
+    ├── writing_options.py      # Shared writing-option presets
+    ├── docs/                   # Operator docs and workflow contracts
+    └── tests/                  # Focused tests for the workbench
 ```
 
 ### Quick Start
@@ -99,62 +79,7 @@ uv run python run_novel_generation.py \
   --chapters 120
 ```
 
-Generate a few chapters:
-
-```bash
-uv run python run_novel_generation.py --load <project_id> --generate 3
-```
-
-Start a resumable longform run:
-
-```bash
-uv run python run_novel_generation.py \
-  --load <project_id> \
-  --generate-full \
-  --chapters-per-volume 60 \
-  --approval-mode outline+volume
-```
-
-Resume a paused run:
-
-```bash
-uv run python run_novel_generation.py \
-  --load <project_id> \
-  --generate-full \
-  --run-id <run_id> \
-  --run-dir <run_dir> \
-  --resume-state <pending_state.json> \
-  --submit-approval approve
-```
-
-Inspect supported writing knobs:
-
-```bash
-uv run python run_novel_generation.py --show-writing-options
-```
-
-### Longform Workflow Notes
-
-Longform runs write canonical state into:
-
-- `lib/knowledge_base/novels/<title>_<project_id>/runs/<run_id>/longform_state.v1.json`
-
-Important behavior:
-
-- `status.json` is telemetry, not the authoritative resume source
-- pending review files are derived envelopes for operator review
-- `approval_history` is append-only across reject/revise/approve loops
-- `chapter_review` payloads can include anti-drift evidence, warning issues, semantic review, and structured rewrite plans
-- feedback discovery reads consistency reports, generation results, pending reviews, and derived summary evidence; P0 fix mode is guidance-only and does not mutate chapters
-- when `DATABASE_URL` is not configured, longform memory falls back to project-local SQLite at `longform_memory.sqlite`
-- `WRITER.md` remains the human source; a curated `writer_rules.json` subset is injected into prompts and reported as warning-only writer-rule advisories
-- `volume_review` payloads can include cross-volume registry state for unresolved goals, open promises, and dangling settings
-
-### Tests
-
-Focused workbench tests live under `lib/knowledge_base/tests/`.
-
-Run the main regression set:
+Run focused tests:
 
 ```bash
 uv run pytest \
@@ -164,10 +89,14 @@ uv run pytest \
   lib/knowledge_base/tests/test_streamlit_app.py -q
 ```
 
-### Notes
+### Runtime Notes
 
 - `lib/knowledge_base/.env` is local-only and should not be committed.
-- Generated project data under `lib/knowledge_base/config/`, `novels/`, `generated_scripts/`, and run directories can contain local working state and should be reviewed before committing.
+- Generated project data under `lib/knowledge_base/config/`, `novels/`,
+  `generated_scripts/`, and run directories can contain local working state and
+  should be reviewed before committing.
+- `status.json` is telemetry, not the authoritative resume source.
+- Longform resume state lives in `longform_state.v1.json`.
 
 ---
 
@@ -175,36 +104,17 @@ uv run pytest \
 
 ### 概述
 
-**Open Young Director（青年导演）** 是一个基于 crewAI 的单仓库项目，当前真正处于持续维护状态的小说创作系统位于 `lib/knowledge_base/`，其中 `lib/knowledge_base/young_writer/` 是主 Python 包，`knowledge_base` 仅保留兼容别名。
+**Open Young Director / young-writer** 是一个本地、单用户的长篇网文创作工作台。
+当前维护中的产品代码位于 `lib/knowledge_base/`，主 Python 包是
+`lib/knowledge_base/young_writer/`，`knowledge_base` 仅作为兼容别名保留。
 
-现在这套系统的定位是一个本地、单用户的长篇网文创作工作台，核心能力包括：
+核心能力包括：
 
 - Streamlit 可视化控制台
 - 用于建项目、生成章节、整本长篇运行的 CLI
 - 大纲、分卷、章节复核等可暂停/可恢复检查点
 - 一致性、anti-drift、审批历史追踪
 - 播客/视频提示词等衍生内容生成挂钩
-
-仓库里仍然保留 `crewai` 主体框架和工具包，但如果你要使用当前的小说系统，应优先从 `lib/knowledge_base/` 开始。
-
-### 当前范围
-
-当前已经覆盖：
-
-- 本地创建和加载项目
-- 逐章生成
-- 整本长篇生成与人工审批检查点
-- UI 和 CLI 共用的结构化写作参数
-- 基于规范化 run state 的恢复执行
-- 带 anti-drift 证据和重写计划的章节复核
-- 跨卷未完成目标、伏笔、设定线程的 registry 管理
-
-当前不应误解为：
-
-- 线上多用户服务
-- 可直接发布的生产部署方案
-- 分布式 worker 集群
-- Docker / Kubernetes 交付形态
 
 ### 主要入口
 
@@ -217,18 +127,16 @@ uv run pytest \
 
 ```text
 lib/
-├── crewai/                    # crewAI 核心框架与 CLI
-├── crewai-tools/              # 工具集成
-└── knowledge_base/            # 当前 young-writer 工作台
-    ├── young_writer/          # 主产品包
-    ├── knowledge_base/        # 兼容别名包
-    ├── agents/                # 旧导入兼容 shim
-    ├── services/              # 旧导入兼容 shim
-    ├── streamlit_app.py       # 本地控制台
+└── knowledge_base/
+    ├── young_writer/           # 主产品包
+    ├── knowledge_base/         # 兼容别名包
+    ├── agents/                 # 旧导入路径 shim
+    ├── services/               # 旧导入路径 shim
+    ├── streamlit_app.py        # 本地控制台
     ├── run_novel_generation.py # 主 CLI
-    ├── writing_options.py     # 共用写作参数预设
-    ├── docs/                  # 操作文档与运行合同
-    └── tests/                 # 工作台相关测试
+    ├── writing_options.py      # 写作参数预设
+    ├── docs/                   # 操作文档和流程合同
+    └── tests/                  # 工作台测试
 ```
 
 ### 快速开始
@@ -238,7 +146,7 @@ uv sync
 cp lib/knowledge_base/.env.example lib/knowledge_base/.env
 ```
 
-通常至少需要配置：
+通常需要配置：
 
 ```bash
 KIMI_API_KEY=your_key
@@ -253,72 +161,7 @@ cd lib/knowledge_base
 uv run streamlit run streamlit_app.py
 ```
 
-用 CLI 创建项目：
-
-```bash
-cd lib/knowledge_base
-uv run python run_novel_generation.py \
-  --new "太古魔帝传" \
-  --genre "玄幻修仙" \
-  --outline "少年韩林获得上古魔帝传承，逆天崛起。" \
-  --world "修真世界，宗门林立，传承与禁地并存。" \
-  --characters "韩林：隐忍、克制、目标明确。" \
-  --chapters 120
-```
-
-生成几章正文：
-
-```bash
-uv run python run_novel_generation.py --load <project_id> --generate 3
-```
-
-启动可恢复的整本长篇流程：
-
-```bash
-uv run python run_novel_generation.py \
-  --load <project_id> \
-  --generate-full \
-  --chapters-per-volume 60 \
-  --approval-mode outline+volume
-```
-
-恢复暂停中的 run：
-
-```bash
-uv run python run_novel_generation.py \
-  --load <project_id> \
-  --generate-full \
-  --run-id <run_id> \
-  --run-dir <run_dir> \
-  --resume-state <pending_state.json> \
-  --submit-approval approve
-```
-
-查看支持的写作参数：
-
-```bash
-uv run python run_novel_generation.py --show-writing-options
-```
-
-### 长篇运行说明
-
-长篇模式的规范化状态文件位于：
-
-- `lib/knowledge_base/novels/<title>_<project_id>/runs/<run_id>/longform_state.v1.json`
-
-几个关键点：
-
-- `status.json` 只是遥测快照，不是恢复时的权威状态源
-- pending review 文件只是给操作者查看/提交审批用的派生 envelope
-- `approval_history` 会在 reject / revise / approve 循环里追加保留
-- `chapter_review` 可暴露 anti-drift 证据、warning、语义复核结果和结构化重写计划
-- `volume_review` 可暴露跨卷 registry，用于维护未完成目标、未回收伏笔和未桥接设定
-
-### 测试
-
-工作台相关测试主要位于 `lib/knowledge_base/tests/`。
-
-建议回归命令：
+运行重点回归测试：
 
 ```bash
 uv run pytest \
@@ -327,14 +170,3 @@ uv run pytest \
   lib/knowledge_base/tests/test_run_novel_generation.py \
   lib/knowledge_base/tests/test_streamlit_app.py -q
 ```
-
-### 备注
-
-- `lib/knowledge_base/.env` 只用于本地开发，不应提交。
-- `lib/knowledge_base/config/`、`novels/`、`generated_scripts/` 和各类 run 目录可能包含本地工作状态，提交前应单独检查。
-
----
-
-## License / 许可证
-
-MIT License. See [LICENSE](./LICENSE).

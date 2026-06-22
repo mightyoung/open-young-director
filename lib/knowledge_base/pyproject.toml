@@ -7,7 +7,6 @@ authors = [
 ]
 requires-python = ">=3.10, <3.15"
 dependencies = [
-    "crewai",
     "chromadb>=0.4.0",
     "redis>=5.0.0",
     "psycopg2-binary>=2.9.0",
@@ -21,6 +20,12 @@ build-backend = "hatchling.build"
 
 [tool.hatch.version]
 path = "young_writer/__init__.py"
+
+[tool.hatch.build]
+exclude = [
+    "young_writer/config/**",
+    "young_writer/runtime/**",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = [

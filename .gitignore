@@ -55,12 +55,10 @@ logs/
 chroma.sqlite3
 chromadb-*.lock
 
-# CrewAI specific dev artifacts
+# Local young-writer dev artifacts
 memory.db
 schema.sql
-crew_tasks_output.json
 test_flow.html
-crewairules.mdc
 plan.md
 conceptual_plan.md
 build_image
@@ -73,6 +71,8 @@ old_en.json
 # Dev state directories (regenerateable)
 .swarm/
 .young/
+lib/knowledge_base/young_writer/config/
+lib/knowledge_base/young_writer/runtime/
 .pytest_cache
 
 # Knowledge base runtime workspace

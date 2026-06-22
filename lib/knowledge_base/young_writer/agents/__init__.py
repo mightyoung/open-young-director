@@ -73,11 +73,8 @@ def __getattr__(name: str) -> Any:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
     module_name, attr_name = module_info
-    try:
-        module = import_module(module_name, __name__)
-        value = getattr(module, attr_name)
-    except ModuleNotFoundError:
-        value = None
+    module = import_module(module_name, __name__)
+    value = getattr(module, attr_name)
 
     globals()[name] = value
     return value
