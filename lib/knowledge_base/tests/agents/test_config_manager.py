@@ -12,6 +12,7 @@ from young_writer.agents.config_manager import (
     NovelProject,
 )
 from young_writer.agents.outline_loader import OutlineLoader
+from young_writer.services.project_assets import parse_project_asset_bundle
 from young_writer.services.story_input import STORY_INPUT_DIRNAME
 
 COMPLETE_CHAPTER_ARTIFACT = """# 第1章
@@ -156,6 +157,37 @@ class TestCreateProject:
         assert story_input_dir.exists()
         assert (story_input_dir / "chapter_plans.json").exists()
         assert (story_input_dir / "project_bible.json").exists()
+
+    def test_create_project_uses_imported_project_assets(
+        self, temp_config_dir, mock_env_vars
+    ):
+        """Test imported schema assets seed project fields and metadata."""
+        manager = ConfigManager(config_dir=str(temp_config_dir))
+        assets = parse_project_asset_bundle(
+            {
+                "outline": {"premise": "导入大纲主线", "major_arcs": ["第一卷破局"]},
+                "world_setting": {
+                    "summary": "导入世界观",
+                    "rules": ["规则一不可违背"],
+                },
+                "characters": [{"name": "沈舟", "role": "主角"}],
+            }
+        )
+
+        project = manager.create_project(
+            title="导入测试",
+            author="作者",
+            genre="科幻",
+            outline="手填大纲",
+            world_setting="手填世界观",
+            character_intro="手填角色",
+            project_assets=assets,
+        )
+
+        assert "导入大纲主线" in project.outline
+        assert "规则一不可违背" in project.world_setting
+        assert "沈舟: 主角" in project.character_intro
+        assert project.metadata["project_assets"]["outline"]["premise"] == "导入大纲主线"
 
     def test_existing_legacy_project_directory_is_preserved(
         self, temp_config_dir, mock_env_vars

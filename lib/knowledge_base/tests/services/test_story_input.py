@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 from young_writer.services.input_assembler import InputAssembler
 from young_writer.services.story_input import (
-    CharacterEntry,
     ChapterPlan,
+    CharacterEntry,
     GenerationPacket,
     InputValidationReport,
     ProjectBible,
@@ -150,6 +150,10 @@ def test_input_assembler_enriches_context_with_generation_packet(temp_project_di
     assert context["story_input_validation"]["blocking_issues"] == []
     assert context["canonical_input_policy"]["story_input_json"] == "canonical"
     assert context["goal_lock_resolution"]["effective_source"] == "chapter_plan.goal_lock"
+    assert context["chapter_driver_packet"]["schema_version"] == "chapter_driver_packet.v1"
+    assert context["chapter_driver_packet"]["chapter_number"] == 2
+    assert "场景节拍" in context["chapter_driver_summary"]
+    assert context["chapter_driver_validation"] == []
 
 
 def test_input_assembler_marks_runtime_goal_lock_conflict_as_plan_first(temp_project_dir):

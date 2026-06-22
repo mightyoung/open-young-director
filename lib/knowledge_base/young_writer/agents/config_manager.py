@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 
 from young_writer.services.chapter_artifacts import discover_saved_chapter_numbers
 from young_writer.services.paths import WorkspacePaths
+from young_writer.services.project_assets import ProjectAssetBundle
 from young_writer.services.story_input import (
     build_story_input_bundle,
     render_outline_markdown,
@@ -309,6 +310,7 @@ class ConfigManager:
         character_intro: str = "",
         total_chapters: int = 60,
         llm_client: Any | None = None,
+        project_assets: ProjectAssetBundle | None = None,
     ) -> NovelProject:
         """Create a new novel project."""
         title = title.strip() or "未命名作品"
@@ -317,6 +319,14 @@ class ConfigManager:
         outline = outline.strip()
         world_setting = world_setting.strip()
         character_intro = character_intro.strip()
+
+        asset_metadata: dict[str, Any] | None = None
+        if project_assets is not None:
+            asset_fields = project_assets.to_project_fields()
+            outline = asset_fields["outline"]
+            world_setting = asset_fields["world_setting"]
+            character_intro = asset_fields["character_intro"]
+            asset_metadata = project_assets.to_metadata()
 
         if not outline or not world_setting or not character_intro:
             generated = self._generate_project_seed(
@@ -357,6 +367,8 @@ class ConfigManager:
             total_chapters=total_chapters,
             current_chapter=0,
         )
+        if asset_metadata:
+            project.metadata["project_assets"] = asset_metadata
 
         self._save_project(project)
         self.set_current_project(project)

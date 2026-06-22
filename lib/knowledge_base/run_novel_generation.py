@@ -65,6 +65,10 @@ from young_writer.services.chapter_artifacts import (  # noqa: E402
     summarize_saved_chapters,
 )
 from young_writer.services.input_assembler import InputAssembler  # noqa: E402
+from young_writer.services.project_assets import (  # noqa: E402
+    ProjectAssetValidationError,
+    load_project_assets_from_files,
+)
 from young_writer.services.experience_pool import (  # noqa: E402
     EXPERIENCE_KIND_GENERATION,
     GlobalExperiencePool,
@@ -1243,6 +1247,25 @@ def cmd_new_project(args):
     """创建新项目."""
     config_mgr = get_config_manager()
     llm_client, _ = _build_llm_clients(config_mgr)
+    has_asset_files = any(
+        getattr(args, name, None)
+        for name in ("asset_file", "outline_file", "world_file", "characters_file")
+    )
+    project_assets = None
+    if has_asset_files:
+        try:
+            project_assets = load_project_assets_from_files(
+                asset_file=getattr(args, "asset_file", None),
+                outline_file=getattr(args, "outline_file", None),
+                world_file=getattr(args, "world_file", None),
+                characters_file=getattr(args, "characters_file", None),
+            )
+        except ProjectAssetValidationError as exc:
+            print(f"❌ 项目资产导入失败: {exc}")
+            return 1
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"❌ 项目资产文件读取失败: {exc}")
+            return 1
 
     project = config_mgr.create_project(
         title=args.title,
@@ -1253,6 +1276,7 @@ def cmd_new_project(args):
         character_intro=args.characters or "",
         total_chapters=args.chapters or 100,
         llm_client=llm_client,
+        project_assets=project_assets,
     )
 
     writing_options = _collect_writing_options_from_args(args)
@@ -3457,6 +3481,13 @@ def main():
     parser.add_argument("--outline", default="", help="故事大纲")
     parser.add_argument("--world", default="", help="世界观设定")
     parser.add_argument("--characters", default="", help="人物设定")
+    parser.add_argument(
+        "--asset-file",
+        help="导入包含 outline/world_setting/characters 的项目资产 JSON",
+    )
+    parser.add_argument("--outline-file", help="导入结构化大纲 JSON")
+    parser.add_argument("--world-file", help="导入结构化世界观 JSON")
+    parser.add_argument("--characters-file", help="导入结构化角色 JSON 数组")
     parser.add_argument("--author", default="AI Author", help="作者名")
     parser.add_argument("--chapters", type=int, default=100, help="计划章节数")
     parser.add_argument("--load", metavar="PROJECT_ID", help="加载已有项目")

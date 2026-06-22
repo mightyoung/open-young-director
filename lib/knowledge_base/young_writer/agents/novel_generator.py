@@ -12,6 +12,7 @@ from young_writer.agents.writer_rules import (
     check_writer_rules,
     compact_writer_rule_summary,
 )
+from young_writer.services.narrative_driver import finalize_chapter_driver_context
 from young_writer.services.story_graph.diff import build_graph_diff_details
 from young_writer.writing_options import (
     build_writing_guidance,
@@ -527,6 +528,7 @@ class NovelGeneratorAgent:
         min_word_count = int(target_word_count * 0.8)  # Allow 20% tolerance
 
         generation_context = dict(context or {})
+        finalize_chapter_driver_context(generation_context)
         generation_context["chapter_intent_contract"] = (
             self._build_chapter_intent_contract(
                 outline=outline_summary,
@@ -609,6 +611,15 @@ class NovelGeneratorAgent:
         chapter.consistency_report["rewrite_history"] = list(rewrite_history)
         chapter.consistency_report["chapter_intent_contract"] = dict(
             generation_context.get("chapter_intent_contract", {}) or {}
+        )
+        chapter.consistency_report["chapter_driver_packet"] = dict(
+            generation_context.get("chapter_driver_packet", {}) or {}
+        )
+        chapter.consistency_report["chapter_driver_summary"] = str(
+            generation_context.get("chapter_driver_summary", "") or ""
+        )
+        chapter.consistency_report["chapter_driver_validation"] = list(
+            generation_context.get("chapter_driver_validation", []) or []
         )
 
         return chapter
@@ -1353,9 +1364,9 @@ class NovelGeneratorAgent:
         protagonist_constraint = context.get("protagonist_constraint", "")
         volume_guidance = self._compose_volume_guidance(context)
         goal_lock_guidance = self._build_goal_lock_guidance(context)
-        chapter_guidance = str(
-            (context or {}).get("chapter_guidance", "") or ""
-        ).strip()
+        context = context or {}
+        chapter_guidance = str(context.get("chapter_guidance", "") or "").strip()
+        finalize_chapter_driver_context(context)
         if not (context or {}).get("chapter_intent_contract"):
             context["chapter_intent_contract"] = self._build_chapter_intent_contract(
                 outline=outline,
@@ -2650,6 +2661,9 @@ class NovelGeneratorAgent:
         chapter_graph_packet = dict(
             (context or {}).get("chapter_graph_packet", {}) or {}
         )
+        chapter_driver_packet = dict(
+            (context or {}).get("chapter_driver_packet", {}) or {}
+        )
         contract: dict[str, Any] = {
             "goal_lock": goal_lock,
             "goal_subgoals": goal_subgoals,
@@ -2679,6 +2693,20 @@ class NovelGeneratorAgent:
             "prohibited_inheritance": list(
                 chapter_graph_packet.get("prohibited_inheritance", []) or []
             ),
+            "scene_beats": list(
+                chapter_driver_packet.get("scene_beats", []) or []
+            ),
+            "cast_objectives": list(chapter_driver_packet.get("cast", []) or []),
+            "emotional_arc": list(
+                chapter_driver_packet.get("emotional_arc", []) or []
+            ),
+            "tension_points": list(
+                chapter_driver_packet.get("tension_points", []) or []
+            ),
+            "cliffhanger": str(
+                chapter_driver_packet.get("cliffhanger", "") or ""
+            ).strip(),
+            "driver_notes": list(chapter_driver_packet.get("driver_notes", []) or []),
             "success_checks": [],
         }
         if goal_lock:
@@ -2723,6 +2751,16 @@ class NovelGeneratorAgent:
                 str(item).strip()
                 for item in contract["prohibited_inheritance"][:2]
                 if str(item).strip()
+            )
+        for beat in contract["scene_beats"][:4]:
+            if not isinstance(beat, dict):
+                continue
+            evidence = str(beat.get("success_evidence", "") or "").strip()
+            if evidence:
+                contract["success_checks"].append(evidence)
+        if contract["cliffhanger"]:
+            contract["success_checks"].append(
+                f"结尾必须回应或制造余波：{contract['cliffhanger']}"
             )
         return contract
 
@@ -2781,6 +2819,62 @@ class NovelGeneratorAgent:
         if success_evidence:
             lines.append("- 成功证据:")
             lines.extend(f"  - {item}" for item in success_evidence[:4])
+        scene_beats = [
+            item for item in contract.get("scene_beats", []) if isinstance(item, dict)
+        ]
+        if scene_beats:
+            lines.append("- 叙事驱动场景节拍:")
+            for beat in scene_beats[:4]:
+                action = str(beat.get("action", "") or "").strip()
+                turn = str(beat.get("turn", "") or "").strip()
+                evidence = str(beat.get("success_evidence", "") or "").strip()
+                rendered = action
+                if turn:
+                    rendered += f"；转折: {turn}"
+                if evidence:
+                    rendered += f"；验收: {evidence}"
+                if rendered:
+                    lines.append(f"  - {rendered}")
+        cast_objectives = [
+            item
+            for item in contract.get("cast_objectives", [])
+            if isinstance(item, dict)
+        ]
+        if cast_objectives:
+            lines.append("- 角色驱动目标:")
+            for item in cast_objectives[:5]:
+                name = str(item.get("name", "") or "").strip()
+                objective = str(item.get("objective", "") or "").strip()
+                pressure = str(item.get("pressure", "") or "").strip()
+                if name:
+                    lines.append(
+                        f"  - {name}: {objective or '服务本章目标'}"
+                        + (f"；压力: {pressure}" if pressure else "")
+                    )
+        emotional_arc = [
+            str(item).strip()
+            for item in contract.get("emotional_arc", [])
+            if str(item).strip()
+        ]
+        if emotional_arc:
+            lines.append("- 情绪弧: " + " -> ".join(emotional_arc[:4]))
+        tension_points = [
+            str(item).strip()
+            for item in contract.get("tension_points", [])
+            if str(item).strip()
+        ]
+        if tension_points:
+            lines.append("- 压力点: " + "；".join(tension_points[:4]))
+        cliffhanger = str(contract.get("cliffhanger", "") or "").strip()
+        if cliffhanger:
+            lines.append(f"- 结尾钩子: {cliffhanger}")
+        driver_notes = [
+            str(item).strip()
+            for item in contract.get("driver_notes", [])
+            if str(item).strip()
+        ]
+        if driver_notes:
+            lines.append("- 叙事执行提示: " + "；".join(driver_notes[:4]))
         scope = str(contract.get("chapter_guidance_scope", "") or "").strip()
         if scope == "additive_only":
             lines.append("- 本章附加指令定位: 只补充执行方式，不覆盖主线目标锁。")
@@ -3817,6 +3911,15 @@ class NovelGeneratorAgent:
             ),
             "chapter_intent_check": dict(
                 (context or {}).get("chapter_intent_check", {}) or {}
+            ),
+            "chapter_driver_packet": dict(
+                (context or {}).get("chapter_driver_packet", {}) or {}
+            ),
+            "chapter_driver_summary": str(
+                (context or {}).get("chapter_driver_summary", "") or ""
+            ),
+            "chapter_driver_validation": list(
+                (context or {}).get("chapter_driver_validation", []) or []
             ),
             "chapter_graph_packet": dict(
                 (context or {}).get("chapter_graph_packet", {}) or {}

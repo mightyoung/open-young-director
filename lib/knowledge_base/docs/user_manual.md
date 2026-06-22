@@ -286,11 +286,12 @@ uv run python run_novel_generation.py \
 - `anti_drift_notes`
 - `extra_notes`
 
-使用上要注意三条规则：
+使用上要注意四条规则：
 
 1. `next_volume_guidance_payload` 才是结构化上游真源，`status.json.queued_volume_guidance_payload` 只是镜像给 UI 读。
 2. `goal_lock` 一旦存在，就应该作为章节 prompt 的稳定锚点；one-shot `chapter_guidance` 只能追加，不能覆盖卷级目标锁。
 3. 章节摘要只有在质量闸门确认正文也围绕 `goal_lock` 推进后，才应该晋升为下游 `previous_summary`。
+4. `chapter_driver_packet` 会把章节计划派生成场景节拍、角色目标、情绪弧、压力点和结尾钩子；它只驱动小说生成，不恢复旧 `film_drama` 媒体/短剧链路。
 
 当章节未通过质量闸门时，运行会暂停到 `chapter.review`。Review payload 至少应暴露：
 
@@ -303,6 +304,7 @@ uv run python run_novel_generation.py \
 - `semantic_review`
 - `writer_rule_warnings`
 - `chapter_intent_contract`
+- `chapter_driver_packet` / `chapter_driver_summary` / `chapter_driver_validation`
 - `rewrite_plan`
 - `rewrite_attempted` / `rewrite_succeeded` / `rewrite_history`
 

@@ -14,7 +14,7 @@ def generate_pending_state_path(
     topic: str = "unknown",
     output_dir: str | None = None,
 ) -> str:
-    """Generate a pending-state path using the same filename contract as crewai."""
+    """Generate a pending-state path using the legacy filename contract."""
     topic_part = "".join(char if char.isalnum() else "_" for char in str(topic))
     filename = f".novel_pipeline_{topic_part}_{stage}_{int(time.time())}_pending.json"
     if output_dir:
@@ -814,6 +814,9 @@ def review_payload_for_chapter(
         "chapter_intent_contract": dict(
             report.get("chapter_intent_contract", {}) or {}
         ),
+        "chapter_driver_packet": dict(report.get("chapter_driver_packet", {}) or {}),
+        "chapter_driver_summary": str(report.get("chapter_driver_summary", "") or "").strip(),
+        "chapter_driver_validation": list(report.get("chapter_driver_validation", []) or []),
         "chapter_graph_packet": dict(report.get("chapter_graph_packet", {}) or {}),
         "graph_diff_details": graph_diff_details,
         "graph_recommended_action": recommended_action or None,

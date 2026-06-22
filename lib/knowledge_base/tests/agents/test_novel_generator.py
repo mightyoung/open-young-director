@@ -786,7 +786,7 @@ class TestNovelGeneratorSmoothnessConsistency:
 
         assert report["invalid"] is False
         assert not any(
-            "scene_or_timeline_disconnect" == issue for issue in report["issue_types"]
+            issue == "scene_or_timeline_disconnect" for issue in report["issue_types"]
         )
 
     def test_consistency_report_allows_explicit_path_bridge_into_new_room(self):
@@ -1902,15 +1902,57 @@ def test_consistency_report_adds_graph_diff_details_from_chapter_graph_packet():
                 "previous_scene_anchor": "白昼环控制室",
                 "opening_bridge_required": "开篇先接住白昼环控制室；如需切到废弃港，必须写出路径或抵达动作。",
                 "rebaseline_deltas": [],
-            }
+            },
+            "chapter_driver_validation": ["scene_beats must be a list"],
         },
         plot_summary={"l2_brief_summary": "林渊在废弃港继续追查母亲信号。"},
     )
 
     assert report["chapter_graph_packet"]["goal_lock"] == "确认信号真假、进入禁航海沟"
+    assert report["chapter_driver_validation"] == ["scene_beats must be a list"]
     assert report["graph_diff_details"]["schema_version"] == "graph_diff_details.v1"
     assert report["graph_diff_details"]["recommended_action"] == "accept"
     assert any(
         item["type"] == "MUST_INCLUDE" and item["label"] == "救回母亲"
         for item in report["graph_diff_details"]["planned_edges"]
     )
+
+
+def test_chapter_driver_packet_is_rendered_in_intent_contract():
+    generator = _make_generator()
+    context = {
+        "goal_lock": "确认信号真假、进入禁航海沟",
+        "chapter_driver_packet": {
+            "schema_version": "chapter_driver_packet.v1",
+            "scene_beats": [
+                {
+                    "index": 1,
+                    "action": "确认信号真假",
+                    "turn": "信息差被压缩",
+                    "success_evidence": "正文写出确认信号真假的行动",
+                }
+            ],
+            "cast": [
+                {
+                    "name": "林渊",
+                    "objective": "进入禁航海沟",
+                    "pressure": "从怀疑转为孤注一掷",
+                }
+            ],
+            "emotional_arc": ["承接警报", "从怀疑转为孤注一掷"],
+            "tension_points": ["主线目标不可漂移: 确认信号真假、进入禁航海沟"],
+            "cliffhanger": "母亲第二段回声出现",
+            "driver_notes": ["开篇先回应上一章后果"],
+        },
+    }
+
+    contract = generator._build_chapter_intent_contract(
+        outline="林渊确认信号真假。",
+        context=context,
+    )
+    rendered = generator._format_chapter_intent_contract(contract)
+
+    assert contract["scene_beats"][0]["action"] == "确认信号真假"
+    assert "叙事驱动场景节拍" in rendered
+    assert "角色驱动目标" in rendered
+    assert "母亲第二段回声出现" in rendered

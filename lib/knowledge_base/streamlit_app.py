@@ -29,6 +29,10 @@ from young_writer.services.cli_commands import (  # noqa: E402
     build_full_generate_command,
     build_generate_command,
 )
+from young_writer.services.project_assets import (  # noqa: E402
+    ProjectAssetValidationError,
+    parse_project_asset_bundle,
+)
 from young_writer.services.longform_run import (  # noqa: E402
     approval_history_summary as _approval_history_summary,
     compile_chapter_rewrite_guidance,
@@ -385,6 +389,7 @@ def create_project_action(
     characters: str,
     author: str,
     chapters: int,
+    asset_json: str = "",
 ) -> str:
     config_mgr = get_config_manager()
     llm_client = None
@@ -392,6 +397,14 @@ def create_project_action(
         llm_client = config_mgr.build_generation_llm_client()
     except Exception:
         llm_client = None
+    project_assets = None
+    if asset_json.strip():
+        try:
+            project_assets = parse_project_asset_bundle(
+                json.loads(asset_json), source_path="streamlit_upload"
+            )
+        except (json.JSONDecodeError, ProjectAssetValidationError) as exc:
+            return f"项目资产导入失败: {exc}"
     config_mgr.create_project(
         title=title.strip(),
         author=author.strip() or "AI Author",
@@ -401,6 +414,7 @@ def create_project_action(
         character_intro=characters.strip(),
         total_chapters=int(chapters),
         llm_client=llm_client,
+        project_assets=project_assets,
     )
     return _active_project_status()
 
@@ -706,9 +720,8 @@ def _render_project_sidebar(st_mod: Any) -> None:
     config_mgr = get_config_manager()
     st_mod.sidebar.markdown("## 项目")
     choices = _project_choices()
-    current_value = (
-        config_mgr.current_project.id if config_mgr.current_project else None
-    )
+    current_project = config_mgr.current_project
+    current_value = current_project.id if current_project else None
     selected_project = st_mod.sidebar.selectbox(
         "加载项目",
         options=["", *choices],
@@ -723,58 +736,59 @@ def _render_project_sidebar(st_mod: Any) -> None:
         st_mod.write("### 新建项目")
         title = st_mod.text_input(
             "标题",
-            value=config_mgr.current_project.title
-            if config_mgr.current_project
-            else "太古魔帝传",
+            value=current_project.title if current_project else "太古魔帝传",
         )
         author = st_mod.text_input(
             "作者",
-            value=config_mgr.current_project.author
-            if config_mgr.current_project
-            else "AI Author",
+            value=current_project.author if current_project else "AI Author",
         )
         genre = st_mod.text_input(
             "题材",
-            value=config_mgr.current_project.genre
-            if config_mgr.current_project
-            else "玄幻修仙",
+            value=current_project.genre if current_project else "玄幻修仙",
         )
         chapters = st_mod.number_input(
             "计划章节数",
             min_value=1,
             max_value=2000,
-            value=config_mgr.current_project.total_chapters
-            if config_mgr.current_project
-            else 240,
+            value=current_project.total_chapters if current_project else 240,
             step=1,
         )
         outline = st_mod.text_area(
             "大纲",
-            value=config_mgr.current_project.outline
-            if config_mgr.current_project
-            else "",
+            value=current_project.outline if current_project else "",
             height=120,
             help="留空则自动生成",
         )
         world = st_mod.text_area(
             "世界观",
-            value=config_mgr.current_project.world_setting
-            if config_mgr.current_project
-            else "",
+            value=current_project.world_setting if current_project else "",
             height=80,
             help="留空则自动生成",
         )
         characters = st_mod.text_area(
             "人物设定",
-            value=config_mgr.current_project.character_intro
-            if config_mgr.current_project
-            else "",
+            value=current_project.character_intro if current_project else "",
             height=80,
             help="留空则自动生成",
         )
+        asset_upload = st_mod.file_uploader(
+            "导入项目资产 JSON",
+                type=["json"],
+                help="可选。JSON 需包含 outline、world_setting、characters。",
+            )
+        asset_json = ""
+        if asset_upload is not None:
+            asset_json = asset_upload.getvalue().decode("utf-8")
         if st_mod.form_submit_button("创建项目", use_container_width=True):
             st_mod.session_state["yw_status"] = create_project_action(
-                title, genre, outline, world, characters, author, chapters
+                title,
+                genre,
+                outline,
+                world,
+                characters,
+                author,
+                chapters,
+                asset_json,
             )
             st_mod.rerun()
 

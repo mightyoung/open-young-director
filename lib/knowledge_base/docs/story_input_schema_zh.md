@@ -111,3 +111,20 @@ story_input/
 - `chapter_plan.title / summary / key_events / realm / purpose / must_include / must_not_include / character_names / continuity_in / continuity_out / goal_lock / pacing / emotional_turn / volume_label / magic_line`
 
 空字段仍按原有必填规则处理；非必填空字段不会因为未包含中文而失败。
+
+## 叙事驱动包
+
+`InputAssembler.enrich_context()` 会从 `GenerationPacket` 派生
+`chapter_driver_packet`，schema_version 固定为
+`chapter_driver_packet.v1`。该包不替代 `chapter_plan` 或 `goal_lock`，
+而是把结构化输入压缩成写作执行变量：
+
+- `scene_beats`: 本章场景/行动节拍。
+- `cast`: 本章角色目标、压力和关系信号。
+- `emotional_arc`: 承接、转折、余波。
+- `tension_points`: 目标锁、关键事件、世界硬约束等压力点。
+- `cliffhanger`: 结尾钩子或下一章必须回应的余波。
+- `driver_notes`: prompt-facing 执行提示。
+
+来源优先级仍是 `chapter_plan` 和 `goal_lock` 最高；
+`chapter_driver_packet` 只负责提供 scene/beat 级驱动变量。

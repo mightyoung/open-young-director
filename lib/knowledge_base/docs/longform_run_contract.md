@@ -131,8 +131,9 @@ The longform chapter loop must preserve these invariants:
 2. Chapter generation inherits that payload through `context["volume_guidance_payload"]`.
 3. `goal_lock` stays a stable prompt anchor for each chapter whenever the structured payload provides it.
 4. Chapter-specific guidance is additive only; it must not overwrite or shadow the structured `goal_lock` source.
-5. If a chapter fails the consistency/anti-drift gate, the run pauses at `chapter.review` and review consumers read the derived pending payload instead of guessing from raw logs.
-6. If a chapter summary appears aligned but the body still drifts away from the `goal_lock`, the chapter review payload must surface that failure explicitly and downstream summary promotion must be gated on the verified result rather than the raw generated summary.
+5. `chapter_driver_packet.v1` stays subordinate to `goal_lock` and `chapter_graph_packet`; it supplies scene beats, cast objectives, emotional arc, tension points, and cliffhanger hints for generation.
+6. If a chapter fails the consistency/anti-drift gate, the run pauses at `chapter.review` and review consumers read the derived pending payload instead of guessing from raw logs.
+7. If a chapter summary appears aligned but the body still drifts away from the `goal_lock`, the chapter review payload must surface that failure explicitly and downstream summary promotion must be gated on the verified result rather than the raw generated summary.
 
 ## Longform Stages
 

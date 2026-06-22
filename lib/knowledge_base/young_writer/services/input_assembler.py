@@ -6,13 +6,18 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from young_writer.services.narrative_driver import (
+    build_chapter_driver_packet,
+    render_chapter_driver_packet_summary,
+    validate_chapter_driver_packet,
+)
 from young_writer.services.story_input import (
     CANONICAL_INPUT_POLICY,
     ChapterPlan,
     GenerationPacket,
     RuntimeOverrides,
-    StyleProfile,
     StoryInputBundle,
+    StyleProfile,
     build_story_input_bundle,
     chapter_plan_to_outline_info,
     load_story_input_bundle,
@@ -175,6 +180,17 @@ class InputAssembler:
             if isinstance(existing_characters, (dict, list)) and existing_characters
             else self._legacy_orchestrator_characters(packet)
         )
+        chapter_driver_packet = build_chapter_driver_packet(
+            packet,
+            chapter_graph_packet=(
+                context.get("chapter_graph_packet")
+                if isinstance(context.get("chapter_graph_packet"), dict)
+                else None
+            ),
+            effective_goal_lock=str(
+                goal_lock_resolution.get("effective_goal_lock", "") or ""
+            ),
+        )
         context.update(
             {
                 "chapter_number": chapter_number,
@@ -198,6 +214,13 @@ class InputAssembler:
                 "character_names": character_names[:8],
                 "generation_packet": packet_to_dict(packet),
                 "story_input_validation": asdict(packet.validation),
+                "chapter_driver_packet": chapter_driver_packet,
+                "chapter_driver_summary": render_chapter_driver_packet_summary(
+                    chapter_driver_packet
+                ),
+                "chapter_driver_validation": validate_chapter_driver_packet(
+                    chapter_driver_packet
+                ),
                 "writing_options": asdict(packet.style_profile),
                 "canonical_input_policy": dict(CANONICAL_INPUT_POLICY),
             }
