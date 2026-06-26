@@ -108,6 +108,7 @@ lib/knowledge_base/config/project_*.json
 !lib/knowledge_base/config/project_fixture*.json
 !lib/knowledge_base/config/project_sample*.json
 lib/knowledge_base/config/*.local.json
+lib/knowledge_base/lib/
 /data/
 !lib/knowledge_base/.env.example
 !lib/knowledge_base/pyproject.toml
