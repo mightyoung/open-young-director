@@ -809,6 +809,7 @@ def review_payload_for_chapter(
         "warning_issues": list(report.get("warning_issues", [])),
         "semantic_review": dict(report.get("semantic_review", {}) or {}),
         "writer_rule_warnings": list(report.get("writer_rule_warnings", [])),
+        "style_review": dict(report.get("style_review", {}) or {}),
         "smoothness_details": list(report.get("smoothness_details", [])),
         "anti_drift_details": dict(report.get("anti_drift_details", {}) or {}),
         "chapter_intent_contract": dict(

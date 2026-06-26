@@ -1,5 +1,5 @@
 {
-  "schema_version": "writer_rules.v1",
+  "schema_version": "writer_rules.v2",
   "source": "WRITER.md",
   "rules": [
     {
@@ -8,8 +8,14 @@
       "anchor": "禁词表",
       "severity": "warning",
       "blocking": false,
+      "scope": "narration",
+      "min_level": "light",
+      "prompt_weight": 100,
+      "density_threshold": 1,
       "terms": ["突然", "居然", "竟然", "恐怖如斯", "倒吸一口冷气", "极其", "非常", "仿佛", "似乎", "某种", "令人惊讶的是"],
-      "guidance": "避免 AI 腔垫话和套路化惊叹，改用具体动作、场景压力或因果推进。"
+      "guidance": "避免 AI 腔垫话和套路化惊叹，改用具体动作、场景压力或因果推进。",
+      "rewrite_hint": "删掉空泛程度副词，用可见动作、具体代价或场面压力替代。",
+      "false_positive_note": "对白中的角色口癖可保留；叙述层连续出现才需要优先处理。"
     },
     {
       "id": "style.physicalized_emotion",
@@ -17,8 +23,14 @@
       "anchor": "物理化",
       "severity": "warning",
       "blocking": false,
+      "scope": "narration",
+      "min_level": "light",
+      "prompt_weight": 95,
+      "density_threshold": 1,
       "terms": ["愤怒", "恐惧", "悲伤", "开心", "绝望"],
-      "guidance": "情绪不要只写抽象名词，应落实到心跳、冷汗、手指颤抖、呼吸变化等物理反馈。"
+      "guidance": "情绪不要只写抽象名词，应落实到心跳、冷汗、手指颤抖、呼吸变化等物理反馈。",
+      "rewrite_hint": "把情绪名词改成身体反应、动作停顿、视线变化或语气断裂。",
+      "false_positive_note": "角色自白或对话可少量保留抽象情绪词。"
     },
     {
       "id": "world.geography_logic",
@@ -26,8 +38,13 @@
       "anchor": "地理逻辑",
       "severity": "warning",
       "blocking": false,
+      "scope": "all",
+      "min_level": "light",
+      "prompt_weight": 80,
+      "density_threshold": 1,
       "terms": ["瞬间移动", "眨眼间便到了", "凭空出现在"],
-      "guidance": "角色移动必须符合 character_gps 和前文位置，需要路程、代价或桥接。"
+      "guidance": "角色移动必须符合 character_gps 和前文位置，需要路程、代价或桥接。",
+      "rewrite_hint": "补出移动路径、时间消耗、法术代价或前文埋下的空间规则。"
     },
     {
       "id": "world.combat_cost",
@@ -35,8 +52,13 @@
       "anchor": "战力天平",
       "severity": "warning",
       "blocking": false,
-      "terms": ["轻松越阶", "随手击败高境界", "毫无代价"],
-      "guidance": "低境界胜高境界必须描写惨烈代价或规则漏洞。"
+      "scope": "all",
+      "min_level": "light",
+      "prompt_weight": 75,
+      "density_threshold": 1,
+      "terms": ["轻松击败", "随手镇压", "毫发无伤", "一招秒杀"],
+      "guidance": "低境界逆胜需要惨烈代价、规则漏洞、资源消耗或环境条件。",
+      "rewrite_hint": "补出胜利条件和代价，避免无成本碾压破坏战力天平。"
     },
     {
       "id": "character.behavior_logic",
@@ -44,8 +66,128 @@
       "anchor": "拒绝降智",
       "severity": "warning",
       "blocking": false,
+      "scope": "all",
+      "min_level": "light",
+      "prompt_weight": 70,
+      "density_threshold": 1,
       "terms": ["反派突然犯蠢", "毫无理由地放过", "无脑"],
-      "guidance": "角色决定必须符合 hidden_agenda，反派应有对等智商和生存逻辑。"
+      "guidance": "角色决定必须符合 hidden_agenda，反派应有对等智商和生存逻辑。",
+      "rewrite_hint": "补出角色当下动机、收益判断或误判依据，避免剧情需要式降智。"
+    },
+    {
+      "id": "ai_voice.significance_inflation",
+      "category": "ai_voice_inflation",
+      "anchor": "去AI化",
+      "severity": "warning",
+      "blocking": false,
+      "scope": "narration",
+      "min_level": "standard",
+      "prompt_weight": 90,
+      "density_threshold": 1,
+      "terms": ["标志着", "意味着", "彰显了", "深刻影响", "注定改变", "关键时刻"],
+      "patterns": ["(命运|时代|格局)的(齿轮|洪流|帷幕)"],
+      "guidance": "避免把普通情节点拔高成总结式意义判断，让意义从行动后果中显出来。",
+      "rewrite_hint": "把宏大判断改成角色眼前的损失、选择、误判或即时后果。"
+    },
+    {
+      "id": "ai_voice.promo_language",
+      "category": "ai_voice_promo",
+      "anchor": "去AI化",
+      "severity": "warning",
+      "blocking": false,
+      "scope": "narration",
+      "min_level": "standard",
+      "prompt_weight": 75,
+      "density_threshold": 1,
+      "terms": ["令人叹为观止", "充满活力", "极具震撼", "引人入胜", "无与伦比", "精彩纷呈"],
+      "guidance": "避免宣传稿式夸赞，小说应通过场面细节让读者自行感到震撼。",
+      "rewrite_hint": "改写为可观察画面、声音、气味、动作或角色反应。"
+    },
+    {
+      "id": "ai_voice.connector_crutches",
+      "category": "ai_voice_connector",
+      "anchor": "去AI化",
+      "severity": "warning",
+      "blocking": false,
+      "scope": "narration",
+      "min_level": "standard",
+      "prompt_weight": 70,
+      "density_threshold": 2,
+      "terms": ["此外", "与此同时", "值得注意的是", "更重要的是", "总而言之", "换句话说"],
+      "guidance": "减少论文式连接词，用动作承接、视角切换或场景因果推进段落。",
+      "rewrite_hint": "删除连接词，让上一句的动作或后果自然带出下一段。"
+    },
+    {
+      "id": "ai_voice.negative_parallelism",
+      "category": "ai_voice_parallelism",
+      "anchor": "去AI化",
+      "severity": "warning",
+      "blocking": false,
+      "scope": "narration",
+      "min_level": "standard",
+      "prompt_weight": 65,
+      "density_threshold": 1,
+      "terms": [],
+      "patterns": ["不(?:仅|只|单单|只是)[^。！？]{0,30}(?:而且|更是|还是|而是)"],
+      "guidance": "避免机械的“不只是 X，更是 Y”总结句，改成具体冲突或结果。",
+      "rewrite_hint": "拆成角色选择和外部后果，不用抽象对偶句收束。"
+    },
+    {
+      "id": "ai_voice.rule_of_three",
+      "category": "ai_voice_parallelism",
+      "anchor": "去AI化",
+      "severity": "warning",
+      "blocking": false,
+      "scope": "narration",
+      "min_level": "strict",
+      "prompt_weight": 45,
+      "density_threshold": 1,
+      "terms": [],
+      "patterns": ["[^。！？]{2,12}[，、][^。！？]{2,12}[，、][^。！？]{2,12}，?(?:共同|一起|同时|都)"],
+      "guidance": "警惕机械三段式排比，除非它服务角色气口或战斗节奏。",
+      "rewrite_hint": "保留最有画面的一项，其余改成动作链或因果链。"
+    },
+    {
+      "id": "ai_voice.generic_positive_ending",
+      "category": "ai_voice_generic_ending",
+      "anchor": "去AI化",
+      "severity": "warning",
+      "blocking": false,
+      "scope": "narration",
+      "min_level": "strict",
+      "prompt_weight": 60,
+      "density_threshold": 1,
+      "terms": ["新的开始", "未来充满希望", "一切才刚刚开始", "迎来了新的篇章", "迈向更加光明的未来"],
+      "guidance": "避免通用积极结尾，章节收束应落在钩子、代价、误会、危机或新目标上。",
+      "rewrite_hint": "用未解决的威胁、角色代价或下一章钩子替代泛泛正向总结。"
+    },
+    {
+      "id": "ai_voice.abstract_summary",
+      "category": "ai_voice_abstract_summary",
+      "anchor": "去AI化",
+      "severity": "warning",
+      "blocking": false,
+      "scope": "narration",
+      "min_level": "standard",
+      "prompt_weight": 85,
+      "density_threshold": 1,
+      "terms": ["复杂而深刻", "多层次", "重要意义", "不可忽视", "产生了深远影响", "形成鲜明对比"],
+      "guidance": "减少总结报告腔和抽象评价，改写为当下场景里的具体行为和后果。",
+      "rewrite_hint": "把评价句改成角色看到、听到、失去或立刻必须处理的事。"
+    },
+    {
+      "id": "ai_voice.vague_agency",
+      "category": "ai_voice_vague_agency",
+      "anchor": "去AI化",
+      "severity": "warning",
+      "blocking": false,
+      "scope": "narration",
+      "min_level": "strict",
+      "prompt_weight": 50,
+      "density_threshold": 1,
+      "terms": ["人们开始意识到", "所有人都明白", "众人不禁", "大家都知道"],
+      "guidance": "避免模糊群体归因，明确是谁看见、谁误判、谁付出代价。",
+      "rewrite_hint": "换成具名角色的反应或小范围视角，不用全知式群体总结。"
     }
   ]
 }

@@ -767,6 +767,37 @@ class TestConfigDiagnostics:
         }
         assert "fake-secret-value-123" not in serialized
 
+    def test_diagnostics_loads_workspace_env_without_cli_entrypoint(
+        self, tmp_path, monkeypatch
+    ):
+        workspace = tmp_path / "workspace"
+        config_dir = workspace / "lib" / "knowledge_base" / "young_writer" / "config"
+        env_file = workspace / "lib" / "knowledge_base" / ".env"
+        config_dir.mkdir(parents=True)
+        env_file.parent.mkdir(parents=True, exist_ok=True)
+        env_file.write_text(
+            "\n".join(
+                [
+                    "DATABASE_URL=postgresql://user:secret@127.0.0.1:1/db",
+                    "REDIS_HOST=127.0.0.1",
+                    "REDIS_PORT=1",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        for key in ["DATABASE_URL", "REDIS_URL", "REDIS_HOST", "REDIS_PORT"]:
+            monkeypatch.delenv(key, raising=False)
+
+        manager = ConfigManager(config_dir=str(config_dir))
+        diagnostics = manager.diagnose_integrations()
+        serialized = json.dumps(diagnostics, ensure_ascii=False)
+
+        assert diagnostics["postgres"]["configured"] is True
+        assert diagnostics["postgres"]["source"] == "env"
+        assert diagnostics["redis"]["configured"] is True
+        assert diagnostics["redis"]["source"] == "env"
+        assert "secret@127.0.0.1" not in serialized
+
     def test_diagnostics_reports_env_sources_without_secret_values(
         self, temp_config_dir, mock_env_vars, monkeypatch
     ):

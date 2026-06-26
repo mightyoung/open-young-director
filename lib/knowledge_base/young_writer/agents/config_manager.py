@@ -13,6 +13,8 @@ import sys
 from typing import Any, ClassVar
 from urllib.parse import urlparse
 
+from dotenv import load_dotenv
+
 from young_writer.services.chapter_artifacts import discover_saved_chapter_numbers
 from young_writer.services.paths import WorkspacePaths
 from young_writer.services.project_assets import ProjectAssetBundle
@@ -236,6 +238,7 @@ class ConfigManager:
         self.current_project: NovelProject | None = None
         self._initialized = True
 
+        self._load_env_vars()
         self._load_configs()
 
     def _load_configs(self):
@@ -258,7 +261,11 @@ class ConfigManager:
             self.load_project(project_id)
 
     def _load_env_vars(self):
-        """Load environment variables."""
+        """Load workspace environment variables."""
+        knowledge_base_dir = self.root_dir.parent
+        repo_root_dir = knowledge_base_dir.parents[1]
+        load_dotenv(repo_root_dir / ".env", override=False)
+        load_dotenv(knowledge_base_dir / ".env", override=True)
 
     def _normalize_provider_configs(self, data: dict[str, Any]) -> dict[str, LLMProviderConfig]:
         """Merge persisted provider configs with defaults."""

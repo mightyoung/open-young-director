@@ -1,6 +1,5 @@
 """Shared writing option presets for CLI, prompt builders, and future UI."""
 
-from typing import Dict, Optional
 
 
 STYLE_PRESETS = {
@@ -88,6 +87,13 @@ HOOK_STRENGTH_PRESETS = {
     "strong": "开篇即抛出危机、反差或爆点，强化追读欲。",
 }
 
+HUMANIZATION_LEVEL_PRESETS = {
+    "off": "不额外注入去 AI 腔规则，仅保留基础 WRITER.md 约束。",
+    "light": "轻量去 AI 腔，减少垫话、套路惊叹和抽象情绪词。",
+    "standard": "标准去 AI 腔，额外规避宣传腔、总结腔和机械连接词。",
+    "strict": "严格去 AI 腔，强化文风审稿建议，但不自动触发硬门禁。",
+}
+
 WRITING_OPTION_GROUPS = {
     "style": STYLE_PRESETS,
     "perspective": PERSPECTIVE_PRESETS,
@@ -99,6 +105,7 @@ WRITING_OPTION_GROUPS = {
     "emotion_intensity": EMOTION_INTENSITY_PRESETS,
     "combat_style": COMBAT_STYLE_PRESETS,
     "hook_strength": HOOK_STRENGTH_PRESETS,
+    "humanization_level": HUMANIZATION_LEVEL_PRESETS,
 }
 
 DEFAULT_WRITING_OPTIONS = {
@@ -113,12 +120,13 @@ DEFAULT_WRITING_OPTIONS = {
     "emotion_intensity": "medium",
     "combat_style": "tactical",
     "hook_strength": "medium",
+    "humanization_level": "light",
 }
 
 
 def resolve_option(
-    value: Optional[str],
-    options: Dict[str, str],
+    value: str | None,
+    options: dict[str, str],
     default_key: str,
     label: str,
 ) -> str:
@@ -130,7 +138,7 @@ def resolve_option(
     return f"{label}: {key} - {description}"
 
 
-def normalize_writing_options(raw_options: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+def normalize_writing_options(raw_options: dict[str, str] | None = None) -> dict[str, str]:
     """Fill missing writing options with defaults and drop unknown keys."""
     normalized = dict(DEFAULT_WRITING_OPTIONS)
     for key, value in (raw_options or {}).items():
@@ -139,7 +147,7 @@ def normalize_writing_options(raw_options: Optional[Dict[str, str]] = None) -> D
     return normalized
 
 
-def build_writing_guidance(options: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+def build_writing_guidance(options: dict[str, str] | None = None) -> dict[str, str]:
     """Build human-readable writing guidance strings from normalized options."""
     normalized = normalize_writing_options(options)
     style_key = normalized.get("style_preset") or normalized["style"]
@@ -168,9 +176,15 @@ def build_writing_guidance(options: Optional[Dict[str, str]] = None) -> Dict[str
                 "medium",
                 "情绪强度",
             ),
-            resolve_option(normalized["combat_style"], COMBAT_STYLE_PRESETS, "tactical", "战斗写法"),
-            resolve_option(normalized["hook_strength"], HOOK_STRENGTH_PRESETS, "medium", "开篇抓力"),
-        ],
-    }
+        resolve_option(normalized["combat_style"], COMBAT_STYLE_PRESETS, "tactical", "战斗写法"),
+        resolve_option(normalized["hook_strength"], HOOK_STRENGTH_PRESETS, "medium", "开篇抓力"),
+        resolve_option(
+            normalized["humanization_level"],
+            HUMANIZATION_LEVEL_PRESETS,
+            "light",
+            "去AI腔强度",
+        ),
+    ],
+}
     requirements["normalized"] = normalized
     return requirements

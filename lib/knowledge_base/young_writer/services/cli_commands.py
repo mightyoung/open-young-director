@@ -17,6 +17,7 @@ WRITING_OPTION_FLAGS = {
     "emotion_intensity": "--emotion-intensity",
     "combat_style": "--combat-style",
     "hook_strength": "--hook-strength",
+    "humanization_level": "--humanization-level",
 }
 
 

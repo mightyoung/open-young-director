@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+
 try:
     import fcntl
 except ImportError:  # pragma: no cover - non-POSIX fallback.
@@ -105,7 +106,7 @@ class ExperienceCase:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "ExperienceCase":
+    def from_dict(cls, payload: dict[str, Any]) -> ExperienceCase:
         return cls(
             id=_clean_str(payload.get("id")),
             status=_clean_str(payload.get("status")) or DEFAULT_STATUS,
@@ -157,30 +158,159 @@ class GlobalExperiencePool:
                 cases.append(case)
         return cases
 
+    def get_case(self, case_id: str) -> ExperienceCase | None:
+        target_id = _clean_str(case_id)
+        if not target_id:
+            return None
+        for case in self.load_cases():
+            if case.id == target_id:
+                return case
+        return None
+
+    def _cases_lock_path(self) -> Path:
+        return self.root_dir / ".cases.lock"
+
     def _locked_append_jsonl(self, path: Path, payload: dict[str, Any]) -> None:
         self.root_dir.mkdir(parents=True, exist_ok=True)
-        with path.open("a+", encoding="utf-8") as handle:
+        lock_path = self._cases_lock_path()
+        with lock_path.open("a+", encoding="utf-8") as lock_handle:
             if fcntl is not None:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-            handle.seek(0)
-            existing_ids = set()
-            for line in handle.read().splitlines():
-                if not line.strip():
-                    continue
-                try:
-                    existing = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                existing_id = _clean_str(existing.get("id"))
-                if existing_id:
-                    existing_ids.add(existing_id)
-            payload_id = _clean_str(payload.get("id"))
-            if not payload_id or payload_id not in existing_ids:
-                handle.write(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+                fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
+            with path.open("a+", encoding="utf-8") as handle:
+                handle.seek(0)
+                existing_ids = set()
+                for line in handle.read().splitlines():
+                    if not line.strip():
+                        continue
+                    try:
+                        existing = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    existing_id = _clean_str(existing.get("id"))
+                    if existing_id:
+                        existing_ids.add(existing_id)
+                payload_id = _clean_str(payload.get("id"))
+                if not payload_id or payload_id not in existing_ids:
+                    handle.write(
+                        json.dumps(payload, ensure_ascii=False, sort_keys=True)
+                    )
+                    handle.write("\n")
+                    handle.flush()
+            if fcntl is not None:
+                fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+
+    def _rewrite_cases_unlocked(self, cases: list[ExperienceCase]) -> None:
+        tmp_path = self.cases_path.with_name(f"{self.cases_path.name}.tmp")
+        with tmp_path.open("w", encoding="utf-8") as handle:
+            for case in cases:
+                handle.write(
+                    json.dumps(case.to_dict(), ensure_ascii=False, sort_keys=True)
+                )
                 handle.write("\n")
             handle.flush()
+        tmp_path.replace(self.cases_path)
+
+    def update_case(
+        self,
+        case_id: str,
+        *,
+        status: str | None = None,
+        evidence_append: dict[str, Any] | None = None,
+        usage_delta: int = 0,
+        helped_delta: int = 0,
+        hurt_delta: int = 0,
+    ) -> ExperienceCase | None:
+        target_id = _clean_str(case_id)
+        if not target_id:
+            return None
+
+        updated_case: ExperienceCase | None = None
+        now = datetime.now().isoformat()
+        cases: list[ExperienceCase] = []
+        self.root_dir.mkdir(parents=True, exist_ok=True)
+        lock_path = self._cases_lock_path()
+        with lock_path.open("a+", encoding="utf-8") as lock_handle:
             if fcntl is not None:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+                fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX)
+            for case in self.load_cases():
+                payload = case.to_dict()
+                if case.id == target_id:
+                    if status is not None:
+                        payload["status"] = _clean_str(status) or case.status
+                    if evidence_append:
+                        evidence = dict(payload.get("evidence") or {})
+                        events = evidence.get("events")
+                        if not isinstance(events, list):
+                            events = []
+                        event = dict(evidence_append)
+                        event.setdefault("created_at", now)
+                        events.append(event)
+                        evidence["events"] = events[-50:]
+                        payload["evidence"] = evidence
+                    payload["usage_count"] = max(
+                        0, int(payload.get("usage_count") or 0) + usage_delta
+                    )
+                    payload["helped_count"] = max(
+                        0, int(payload.get("helped_count") or 0) + helped_delta
+                    )
+                    payload["hurt_count"] = max(
+                        0, int(payload.get("hurt_count") or 0) + hurt_delta
+                    )
+                    payload["updated_at"] = now
+                    updated_case = ExperienceCase.from_dict(payload)
+                    cases.append(updated_case)
+                else:
+                    cases.append(case)
+
+            if updated_case is None:
+                if fcntl is not None:
+                    fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+                return None
+            self._rewrite_cases_unlocked(cases)
+            if fcntl is not None:
+                fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+        return updated_case
+
+    def update_case_status(
+        self,
+        case_id: str,
+        status: str,
+        *,
+        evidence_append: dict[str, Any] | None = None,
+    ) -> ExperienceCase | None:
+        return self.update_case(
+            case_id,
+            status=status,
+            evidence_append=evidence_append,
+        )
+
+    def promote_case(
+        self,
+        case_id: str,
+        *,
+        status: str = "verified",
+        evidence_append: dict[str, Any] | None = None,
+    ) -> ExperienceCase | None:
+        promoted_status = _clean_str(status) or "verified"
+        if promoted_status not in PROMOTED_STATUSES:
+            raise ValueError(f"Unsupported promoted status: {promoted_status}")
+        return self.update_case_status(
+            case_id,
+            promoted_status,
+            evidence_append=evidence_append,
+        )
+
+    def reject_case(
+        self,
+        case_id: str,
+        *,
+        evidence_append: dict[str, Any] | None = None,
+    ) -> ExperienceCase | None:
+        return self.update_case_status(
+            case_id,
+            "rejected",
+            evidence_append=evidence_append,
+        )
 
     def append_case(self, case: ExperienceCase) -> ExperienceCase:
         payload = case.to_dict()
@@ -210,11 +340,22 @@ class GlobalExperiencePool:
         chapter_number: int = 0,
         outcome: str = "unknown",
     ) -> None:
-        if not experience_ids:
+        cleaned_ids: list[str] = []
+        for item in experience_ids:
+            cleaned = _clean_str(item)
+            if cleaned and cleaned not in cleaned_ids:
+                cleaned_ids.append(cleaned)
+        if not cleaned_ids:
             return
+        project_id = _clean_str(project_id)
+        run_id = _clean_str(run_id)
+        if not project_id or not run_id:
+            return
+        stage = _clean_str(stage)
+        outcome = _clean_str(outcome) or "unknown"
         payload = {
             "schema_version": SCHEMA_VERSION,
-            "experience_ids": experience_ids,
+            "experience_ids": cleaned_ids,
             "project_id": project_id,
             "run_id": run_id,
             "stage": stage,
@@ -231,6 +372,23 @@ class GlobalExperiencePool:
             handle.flush()
             if fcntl is not None:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        helped_delta = 1 if outcome == "helped" else 0
+        hurt_delta = 1 if outcome == "hurt" else 0
+        for experience_id in cleaned_ids:
+            self.update_case(
+                experience_id,
+                usage_delta=1,
+                helped_delta=helped_delta,
+                hurt_delta=hurt_delta,
+                evidence_append={
+                    "event": "usage",
+                    "outcome": outcome,
+                    "stage": stage,
+                    "project_id": project_id,
+                    "run_id": run_id,
+                    "chapter_number": chapter_number,
+                },
+            )
 
     def retrieve(
         self,

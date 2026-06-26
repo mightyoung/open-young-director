@@ -10,6 +10,14 @@ from pathlib import Path
 import re
 from typing import Any
 
+from young_writer.services.context_memory import (
+    build_memory_context_packet,
+    render_memory_context_packet_summary,
+)
+from young_writer.services.narrative_state import (
+    build_narrative_state_packet,
+    render_narrative_state_packet_summary,
+)
 from young_writer.services.paths import WorkspacePaths, safe_project_slug
 from young_writer.services.story_graph.packet import (
     build_chapter_graph_packet,
@@ -373,25 +381,32 @@ class ChapterManager:
 
         rendered_text = "\n".join(rendered_lines) if rendered_lines else "暂无前情 (第一章)"
         longform_memory = self._retrieve_longform_memory(chapter_num, rendered_text)
-        if longform_memory:
-            rendered_lines.append("长程记忆证据:")
-            rendered_lines.extend(
-                (
-                    f"- 第{item.get('chapter_number')}章 "
-                    f"{item.get('memory_type')}: {item.get('summary') or item.get('content_excerpt')}"
-                )
-                for item in longform_memory
-                )
-            rendered_text = "\n".join(rendered_lines)
         chapter_graph_packet = build_chapter_graph_packet(
             self.novel_dir,
             chapter_number=chapter_num,
         )
         chapter_graph_summary = render_chapter_graph_packet_summary(chapter_graph_packet)
-        if chapter_graph_summary:
-            rendered_lines.append("剧情状态图摘要:")
-            rendered_lines.extend(chapter_graph_summary.splitlines())
-            rendered_text = "\n".join(rendered_lines)
+        narrative_state_packet = build_narrative_state_packet(
+            self.novel_dir,
+            chapter_number=chapter_num,
+        )
+        narrative_state_summary = render_narrative_state_packet_summary(
+            narrative_state_packet
+        )
+        memory_context_packet = build_memory_context_packet(
+            chapter_number=chapter_num,
+            chapter_graph_packet=chapter_graph_packet,
+            chapter_graph_summary=chapter_graph_summary,
+            narrative_state_packet=narrative_state_packet,
+            narrative_state_summary=narrative_state_summary,
+            longform_memory=longform_memory,
+        )
+        memory_context_summary = render_memory_context_packet_summary(
+            memory_context_packet
+        )
+        if memory_context_summary:
+            rendered_lines.extend(memory_context_summary.splitlines())
+        rendered_text = "\n".join(rendered_lines)
         return ChapterContext(
             rendered_text,
             chapter_number=chapter_num,
@@ -405,6 +420,10 @@ class ChapterManager:
             character_names=character_names,
             chapter_graph_packet=chapter_graph_packet,
             chapter_graph_summary=chapter_graph_summary,
+            narrative_state_packet=narrative_state_packet,
+            narrative_state_summary=narrative_state_summary,
+            memory_context_packet=memory_context_packet,
+            memory_context_summary=memory_context_summary,
             story_input_bundle=story_input_bundle,
         )
 

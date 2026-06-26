@@ -75,13 +75,15 @@ class DeepSeekClient:
                         },
                     )
                 if response.status_code != 200:
-                    error_msg = response.text[:500]
+                    error_msg = self._format_api_error(response)
                     logger.error(
                         "DeepSeek API error (%s): %s",
                         response.status_code,
                         error_msg,
                     )
-                    raise RuntimeError(f"DeepSeek API error: {error_msg}")
+                    raise RuntimeError(
+                        f"DeepSeek API error ({response.status_code}): {error_msg}"
+                    )
 
                 result = response.json()
                 choices = result.get("choices") or []
@@ -117,3 +119,21 @@ class DeepSeekClient:
         if last_error is not None:
             raise last_error
         raise RuntimeError("DeepSeek API request failed without a concrete error")
+
+    def _format_api_error(self, response: httpx.Response) -> str:
+        """Return a concise provider error without exposing credentials."""
+        raw_text = str(getattr(response, "text", "") or "").strip()
+        try:
+            payload = response.json()
+        except Exception:
+            payload = None
+        if isinstance(payload, dict):
+            error = payload.get("error")
+            if isinstance(error, dict):
+                message = str(error.get("message") or "").strip()
+                error_type = str(error.get("type") or "").strip()
+                code = str(error.get("code") or "").strip()
+                parts = [part for part in [message, error_type, code] if part]
+                if parts:
+                    return " | ".join(parts)
+        return raw_text[:500] if raw_text else "empty error response"

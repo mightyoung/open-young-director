@@ -29,13 +29,13 @@ from young_writer.services.cli_commands import (  # noqa: E402
     build_full_generate_command,
     build_generate_command,
 )
-from young_writer.services.project_assets import (  # noqa: E402
-    ProjectAssetValidationError,
-    parse_project_asset_bundle,
-)
 from young_writer.services.longform_run import (  # noqa: E402
     approval_history_summary as _approval_history_summary,
     compile_chapter_rewrite_guidance,
+)
+from young_writer.services.project_assets import (  # noqa: E402
+    ProjectAssetValidationError,
+    parse_project_asset_bundle,
 )
 from young_writer.services.run_storage import (  # noqa: E402
     create_run,
@@ -842,12 +842,17 @@ def _render_writing_tab(st_mod: Any) -> None:
                 "战斗写法",
                 sorted(WRITING_OPTION_GROUPS["combat_style"].keys()),
             ),
-            (
-                "hook_strength",
-                "开篇抓力",
-                sorted(WRITING_OPTION_GROUPS["hook_strength"].keys()),
-            ),
-        ]
+        (
+            "hook_strength",
+            "开篇抓力",
+            sorted(WRITING_OPTION_GROUPS["hook_strength"].keys()),
+        ),
+        (
+            "humanization_level",
+            "去AI腔强度",
+            sorted(WRITING_OPTION_GROUPS["humanization_level"].keys()),
+        ),
+    ]
         collected: dict[str, str] = {}
         for idx, (key, label, options) in enumerate(option_order):
             with cols[idx % 2]:
@@ -1224,6 +1229,7 @@ def _chapter_review_structured_sections(
         for item in review_payload.get("writer_rule_warnings", [])
         if isinstance(item, dict)
     ]
+    style_review = review_payload.get("style_review", {}) or {}
     rewrite_plan = review_payload.get("rewrite_plan", {}) or {}
     issue_categories = [
         str(item).strip()
@@ -1284,13 +1290,31 @@ def _chapter_review_structured_sections(
         sections.append(("重写尝试", _non_empty_lines(lines)))
     if warning_issues:
         sections.append(("语义告警", _non_empty_lines(warning_issues)))
-    if writer_rule_warnings:
+    if style_review:
+        lines = []
+        score = style_review.get("score")
+        level = str(style_review.get("humanization_level", "") or "").strip()
+        if score is not None:
+            lines.append(f"文风分: {score}; 强度: {level or 'light'}; 不阻断")
+        for item in style_review.get("issue_groups", [])[:5]:
+            if not isinstance(item, dict):
+                continue
+            samples = "、".join(str(value) for value in item.get("samples", [])[:3])
+            hint = str(item.get("rewrite_hint") or item.get("guidance") or "").strip()
+            lines.append(
+                f"{item.get('category', 'writer_rule')}: "
+                f"命中 {item.get('matches_count', 0)} 次; {samples}; {hint}"
+            )
+        if lines:
+            sections.append(("文风告警（不阻断）", _non_empty_lines(lines)))
+    elif writer_rule_warnings:
         lines = []
         for item in writer_rule_warnings[:5]:
             matches = "、".join(str(value) for value in item.get("matches", [])[:4])
             category = str(item.get("category", "writer_rule") or "writer_rule")
-            lines.append(f"{category}: {matches}")
-        sections.append(("写作规则告警", _non_empty_lines(lines)))
+            guidance = str(item.get("guidance", "") or "").strip()
+            lines.append(f"{category}: {matches}; {guidance}")
+        sections.append(("写作规则告警（不阻断）", _non_empty_lines(lines)))
     return sections
 
 

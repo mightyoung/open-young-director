@@ -1,5 +1,6 @@
 """Tests for NovelGeneratorAgent writing option prompt integration."""
 
+import importlib
 import importlib.util
 import json
 from pathlib import Path
@@ -46,6 +47,18 @@ def _make_generator() -> NovelGeneratorAgent:
         config_manager=DummyConfigManager(),
         llm_client=MagicMock(),
     )
+
+
+def test_world_fact_subject_extractor_ignores_comparison_fillers():
+    generator = _make_generator()
+
+    subjects = generator._extract_resolved_subjects(
+        "他收起密信，像是中间什么都没有发生，仿佛那道回声已经消失。",
+        MODULE.ITEM_LOSS_MARKERS,
+    )
+
+    assert "像是" not in subjects
+    assert "仿佛" not in subjects
 
 
 def _make_chapter(number: int, title: str, content: str) -> MODULE.GeneratedChapter:
@@ -119,6 +132,302 @@ def test_goal_terms_extracts_terminal_rescue_anchors():
     assert "林渊" in terms
     assert "救回" in terms
     assert "母亲" in terms
+
+
+def test_goal_terms_keep_registered_object_anchor_before_tail_truncation():
+    generator = _make_generator()
+
+    terms = generator._goal_terms("林澈比对母亲警告与星痕中枢档案确认关系")
+
+    assert "比对" in terms
+    assert "母亲警告" in terms
+    assert "星痕中枢" in terms
+    assert "母亲警告与星痕中" not in terms
+
+
+def test_goal_terms_extract_database_risk_anchors():
+    generator = _make_generator()
+
+    terms = generator._goal_terms("林澈接入主数据库追踪外海意识苏醒风险")
+
+    assert "接入" in terms
+    assert "追踪" in terms
+    assert "主数据库" in terms
+    assert "外海意识" in terms
+    assert "苏醒风险" in terms
+
+
+def test_goal_terms_extract_third_choice_anchors():
+    generator = _make_generator()
+
+    terms = generator._goal_terms("林澈破解母亲留下的第三种选择")
+
+    assert "破解" in terms
+    assert "母亲留下" in terms
+    assert "第三种选择" in terms
+
+
+def test_event_coverage_accepts_database_risk_chain():
+    generator = _make_generator()
+
+    covered = generator._event_is_covered(
+        "林澈接入主数据库追踪外海意识苏醒风险",
+        "林澈接通主数据库，把封印系统的异常曲线与深海回波逐项比对，"
+        "随后监测外海意识的苏醒风险，确认突破指标正在升高。",
+        {"character_names": ["林澈"]},
+    )
+
+    assert covered is True
+
+
+def test_event_coverage_accepts_third_choice_chain():
+    generator = _make_generator()
+
+    covered = generator._event_is_covered(
+        "林澈破解母亲留下的第三种选择",
+        "林澈把母亲遗留的声纹手稿重新解读，终于读懂她藏在鲸歌里的第三种选择："
+        "先切断封印系统对被奴役意识的抽取，再用潮汐心脏为城市争取撤离窗口。"
+        "他执行这套方案后，屏障稳定了四分钟，也暴露出下一次苏醒风险。",
+        {"character_names": ["林澈"]},
+    )
+
+    assert covered is True
+
+
+def test_event_coverage_rejects_third_choice_without_mother_plan():
+    generator = _make_generator()
+
+    covered = generator._event_is_covered(
+        "林澈破解母亲留下的第三种选择",
+        "林澈继续监测外海意识体的波动，封印系统开始崩塌，"
+        "所有人都知道必须在拯救城市之前先处理风险。",
+        {"character_names": ["林澈"]},
+    )
+
+    assert covered is False
+
+
+def test_event_coverage_rejects_database_risk_without_core_object():
+    generator = _make_generator()
+
+    covered = generator._event_is_covered(
+        "林澈接入主数据库追踪外海意识苏醒风险",
+        "林澈继续监测城市网络，监管中心的静默警报正在向中继站逼近。",
+        {"character_names": ["林澈"]},
+    )
+
+    assert covered is False
+
+
+def test_event_coverage_accepts_seal_break_prevention_chain():
+    generator = _make_generator()
+
+    covered = generator._event_is_covered(
+        "林澈与小队阻止外海意识体突破潮汐心脏封印",
+        "林澈和顾南舟发现外海意识体正在突破潮汐心脏封印，"
+        "小队立刻切断外部能量回路并压制回流，终于稳住封印，"
+        "但潮汐心脏的温度指标仍在升高。",
+        {"character_names": ["林澈", "顾南舟"]},
+    )
+
+    assert covered is True
+
+
+def test_event_coverage_rejects_seal_break_preparation_only():
+    generator = _make_generator()
+
+    covered = generator._event_is_covered(
+        "林澈与小队阻止外海意识体突破潮汐心脏封印",
+        "林澈与顾南舟继续寻找母亲留下的密钥，并准备进入认知梦境调查更多线索。",
+        {"character_names": ["林澈", "顾南舟"]},
+    )
+
+    assert covered is False
+
+
+def test_event_coverage_accepts_discovery_event_with_semantic_anchors():
+    generator = _make_generator()
+
+    covered = generator._event_is_covered(
+        "林澈发现深海监听阵列记录到来自失踪父亲的旧式摩斯信号",
+        "林澈在旧终端里捕捉到深海监听阵列留下的声纹，"
+        "信号来自失踪父亲，是一段旧式摩斯信号。",
+        {"character_names": ["林澈"]},
+    )
+
+    assert covered is True
+
+
+def test_event_coverage_rejects_discovery_event_without_core_object():
+    generator = _make_generator()
+
+    covered = generator._event_is_covered(
+        "林澈发现深海监听阵列记录到来自失踪父亲的旧式摩斯信号",
+        "林澈回到岚港，在码头整理旧行李，暂时没有打开监听阵列档案。",
+        {"character_names": ["林澈"]},
+    )
+
+    assert covered is False
+
+
+def test_event_coverage_accepts_morse_signal_verification_synonyms():
+    generator = _make_generator()
+
+    covered = generator._event_is_covered(
+        "林澈核查摩斯信号来源",
+        "林澈反复复听录音，并把摩斯信号与旧档案比对，确认来源异常。",
+        {"character_names": ["林澈"]},
+    )
+
+    assert covered is True
+
+
+def test_event_coverage_accepts_particle_variant_in_signal_goal():
+    generator = _make_generator()
+
+    covered = generator._event_is_covered(
+        "林澈核查母亲最后信号",
+        "林澈把母亲最后的信号反复复听，并与调查报告里的时间戳比对，"
+        "确认它来自星痕中枢。",
+        {"character_names": ["林澈"]},
+    )
+
+    assert covered is True
+
+
+def test_event_coverage_accepts_team_reveal_with_core_object_anchors():
+    generator = _make_generator()
+
+    covered = generator._event_is_covered(
+        "林澈与小队确认潮汐心脏封印外海意识体真相",
+        "林澈和顾南舟把潮汐心脏的旧图纸逐层比对，确认它不是普通反应堆，"
+        "而是封印外海意识体的核心装置。",
+        {"character_names": ["林澈", "顾南舟"]},
+    )
+
+    assert covered is True
+
+
+def test_event_coverage_accepts_team_comparison_with_core_object_anchors():
+    generator = _make_generator()
+
+    covered = generator._event_is_covered(
+        "林澈与小队比对潮汐心脏与外海意识体封印记录",
+        "林澈、顾南舟和阿璃把潮汐心脏的维护记录与外海意识体封印日志逐项比对，"
+        "发现两组编号指向同一个核心舱。",
+        {"character_names": ["林澈", "顾南舟", "阿璃"]},
+    )
+
+    assert covered is True
+
+
+def test_goal_lock_alignment_accepts_particle_variant_in_body_goal():
+    generator = _make_generator()
+    chapter = MODULE.GeneratedChapter(
+        number=12,
+        title="第12章",
+        content=(
+            "林澈把母亲最后的信号反复复听，并与调查报告里的时间戳比对。"
+            "他确认信号来自星痕中枢，决定沿着这条线索继续追查。"
+        ),
+        word_count=80,
+        metadata={"outline_summary": "林澈核查母亲最后信号"},
+        plot_summary={"brief_summary": "林澈核查母亲最后信号"},
+    )
+
+    issues, details = generator._check_goal_lock_alignment(
+        chapter,
+        {"goal_lock": "林澈核查母亲最后信号", "character_names": ["林澈"]},
+    )
+
+    assert issues == []
+    assert details["body_alignment"] is True
+    assert details["missing_subgoals"] == []
+
+
+def test_event_coverage_accepts_reveal_event_with_truth_synonyms():
+    generator = _make_generator()
+
+    covered = generator._event_is_covered(
+        "许照晚揭开岚港居民集体遗忘事件",
+        "许照晚把采访记录和潮汐日志逐项比对，查明岚港居民集体遗忘并非谣言，"
+        "而是低频回声在大潮夜反复抹除记忆。",
+        {"character_names": ["许照晚"]},
+    )
+
+    assert covered is True
+
+
+def test_event_coverage_accepts_prevention_event_with_blocking_synonyms():
+    generator = _make_generator()
+
+    covered = generator._event_is_covered(
+        "许照晚阻止岚港居民集体遗忘事件",
+        "许照晚切断临时广播里的低频回声，把居民疏散到屏蔽区，"
+        "避免岚港居民在大潮夜继续集体遗忘。",
+        {"character_names": ["许照晚"]},
+    )
+
+    assert covered is True
+
+
+def test_event_coverage_accepts_investigation_event_with_archive_synonyms():
+    generator = _make_generator()
+
+    covered = generator._event_is_covered(
+        "林澈调查父亲参与声波记忆实验线索",
+        "林澈查阅零号监听站的旧日志，调取父亲签过名的实验档案，"
+        "又把声波记忆实验的编号和事故记录逐项比对。",
+        {"character_names": ["林澈"]},
+    )
+
+    assert covered is True
+
+
+def test_event_coverage_accepts_tracking_low_frequency_echo_synonyms():
+    generator = _make_generator()
+
+    covered = generator._event_is_covered(
+        "林澈追查岚港低频回声抹除记忆源头",
+        "林澈沿着潮汐数据追踪低频回声，在海沟监听日志里定位源头，"
+        "确认它会抹除岚港居民的灾难记忆。",
+        {"character_names": ["林澈"]},
+    )
+
+    assert covered is True
+
+
+def test_narrative_opening_strips_markdown_heading_for_continuity():
+    generator = _make_generator()
+
+    opening = generator._extract_narrative_opening(
+        "# 第2章\n林澈关掉显示器的那一刻，屏幕上还定格着摩斯信号。"
+    )
+
+    assert "第2章" not in opening
+    assert "林澈关掉显示器" in opening
+
+
+def test_opening_acknowledges_signal_consequence_via_screen_context():
+    generator = _make_generator()
+
+    assert generator._opening_acknowledges_consequence(
+        "林澈关掉显示器的那一刻，屏幕上还定格着那段摩斯信号。",
+        "久到林澈以为信号中断了",
+    )
+
+
+def test_opening_acknowledges_long_scene_consequence_by_anchor_overlap():
+    generator = _make_generator()
+
+    assert generator._opening_acknowledges_consequence(
+        "一枚信号弹熄灭前留下的余音。林澈紧紧攥着阿璃的手，"
+        "一起走过那座横跨星空的桥。脚下是深渊矿区的废墟，"
+        "头顶是裂缝中渗透进来的蓝色光。桥的尽头是一片混沌虚空，"
+        "那里有一团母亲的光芒在闪烁，还有一个正在苏醒的阴影。",
+        "他站在桥上，身后是从裂缝渗透进来的蓝色光，"
+        "身前是无尽虚空和母亲的光芒，更远处则是那个正在苏醒的庞大阴影。",
+    )
 
 
 def test_goal_lock_false_inheritance_downgrades_when_key_events_are_covered(monkeypatch):
@@ -240,11 +549,12 @@ class TestNovelGeneratorWritingOptions:
         monkeypatch.setattr(
             MODULE,
             "check_writer_rules",
-            lambda _content: [
+            lambda _content, *args, **kwargs: [
                 {
                     "category": "banned_wording",
                     "blocking": True,
                     "matches": ["突然"],
+                    "matches_count": 1,
                     "guidance": "避免 AI 腔垫话。",
                 }
             ],
@@ -264,6 +574,102 @@ class TestNovelGeneratorWritingOptions:
         assert report["hard_gate_issue_types"] == []
         assert "writer_rule_blocking" not in report["issue_types"]
         assert report["writer_rule_warnings"][0]["blocking"] is True
+        assert report["style_review"]["warning_only"] is True
+
+    def test_writer_rules_support_patterns_density_and_scope(self):
+        payload = {
+            "source": "WRITER.md",
+            "rules": [
+                {
+                    "id": "ai_voice.connector",
+                    "category": "ai_voice_connector",
+                    "anchor": "去AI化",
+                    "scope": "narration",
+                    "min_level": "standard",
+                    "density_threshold": 2,
+                    "terms": ["此外"],
+                    "guidance": "减少连接词拐杖。",
+                },
+                {
+                    "id": "ai_voice.parallel",
+                    "category": "ai_voice_parallelism",
+                    "anchor": "去AI化",
+                    "scope": "narration",
+                    "min_level": "standard",
+                    "patterns": ["不(?:仅|只|只是)[^。！？]{0,20}(?:而且|更是|而是)"],
+                    "guidance": "避免机械总结句。",
+                },
+            ],
+        }
+        content = (
+            "他说：“此外，这只是角色口癖。”\n"
+            "此外，韩林后退半步。此外，他按住伤口。\n"
+            "这不只是一次比试，更是祖地防线的破口。"
+        )
+
+        warnings = MODULE.check_writer_rules(
+            content, payload=payload, humanization_level="standard"
+        )
+
+        assert [item["category"] for item in warnings] == [
+            "ai_voice_connector",
+            "ai_voice_parallelism",
+        ]
+        assert warnings[0]["matches_count"] == 2
+        assert warnings[0]["matches"] == ["此外"]
+        assert warnings[1]["matches"]
+
+    def test_writer_rules_reject_invalid_regex_at_load_time(self, tmp_path):
+        writer_rules = importlib.import_module("young_writer.agents.writer_rules")
+        rules_path = tmp_path / "writer_rules.json"
+        writer_path = tmp_path / "WRITER.md"
+        writer_path.write_text("去AI化", encoding="utf-8")
+        rules_path.write_text(
+            json.dumps(
+                {
+                    "source": "WRITER.md",
+                    "rules": [
+                        {
+                            "id": "bad.regex",
+                            "category": "ai_voice",
+                            "anchor": "去AI化",
+                            "patterns": ["("],
+                        }
+                    ],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
+        with pytest.raises(ValueError, match="bad.regex"):
+            writer_rules.load_writer_rules(rules_path, writer_path)
+
+    def test_humanization_level_controls_prompt_summary(self):
+        generator = NovelGeneratorAgent(
+            config_manager=DummyConfigManager(),
+            llm_client=MagicMock(),
+        )
+
+        off_prompt = generator._build_generation_prompt(
+            chapter_number=1,
+            title="第一章",
+            outline="韩林守住祖地。",
+            previous_summary="",
+            genre="玄幻",
+            writing_options={"humanization_level": "off"},
+        )
+        strict_prompt = generator._build_generation_prompt(
+            chapter_number=1,
+            title="第一章",
+            outline="韩林守住祖地。",
+            previous_summary="",
+            genre="玄幻",
+            writing_options={"humanization_level": "strict"},
+        )
+
+        assert "未加载结构化写作规则" in off_prompt
+        assert "ai_voice" in strict_prompt
 
     def test_generate_chapter_uses_project_seed_when_outline_file_missing(self, monkeypatch):
         generator = _make_generator()
@@ -340,6 +746,26 @@ class TestNovelGeneratorWritingOptions:
             in result["generation_trace"]["orchestrator"]["failure_reasons"]
         )
         assert generator._orchestrator_consecutive_failures == 1
+
+    def test_generate_content_preserves_provider_error_when_fallback_disabled(self):
+        generator = _make_generator()
+        generator.allow_fallback = False
+        generator.llm_client.generate.side_effect = RuntimeError(
+            "DeepSeek API error (402): Insufficient Balance"
+        )
+
+        with pytest.raises(RuntimeError) as exc_info:
+            generator._generate_content(
+                chapter_number=30,
+                title="第30章",
+                outline="林澈继续深入主数据中心。",
+                previous_summary="上一章林澈接入主数据库。",
+                context={"chapter_number": 30, "genre": "科幻"},
+            )
+
+        message = str(exc_info.value)
+        assert "LLM generation failed and fallback disabled" in message
+        assert "DeepSeek API error (402): Insufficient Balance" in message
 
     def test_generate_content_skips_orchestrator_when_character_sources_missing(self):
         generator = _make_generator()
@@ -519,6 +945,157 @@ class TestNovelGeneratorWritingOptions:
         assert "必须回收的伏笔/问题" in prompt
         assert "下一卷必须尽快回收师门裂痕" in prompt
 
+    def test_generation_prompt_includes_hard_scene_task_guidance(self):
+        generator = NovelGeneratorAgent(
+            config_manager=DummyConfigManager(),
+            llm_client=MagicMock(),
+        )
+        context = {
+            "previous_chapters": [
+                {
+                    "number": 11,
+                    "content": "林澈从深渊矿区的通风管道里爬出，身后仍有岩层坍塌声。",
+                }
+            ],
+            "chapter_intent_contract": {
+                "goal_lock": "林澈核查母亲最后信号",
+            },
+        }
+
+        prompt = generator._build_generation_prompt(
+            chapter_number=12,
+            title="第12章",
+            outline="林澈核查母亲最后信号。",
+            previous_summary="上一章林澈从深渊矿区撤离。",
+            genre="近未来海洋科幻悬疑",
+            previous_chapters=context["previous_chapters"],
+            context=context,
+        )
+
+        assert "本章硬性场景任务" in prompt
+        assert "开篇前2句必须承接上一章真实尾段" in prompt
+        assert "深渊矿区的通风管道" in prompt
+        assert "第一场或第二场必须用正文行动推进目标锁：林澈核查母亲最后信号" in prompt
+        assert "复听、解码、比对、定位或确认来源" in prompt
+
+    def test_hard_scene_task_guidance_requires_anchor_bridge_and_action_sentence(self):
+        generator = NovelGeneratorAgent(
+            config_manager=DummyConfigManager(),
+            llm_client=MagicMock(),
+        )
+        guidance = generator._build_hard_scene_task_guidance(
+            {
+                "previous_chapters": [
+                    {
+                        "number": 16,
+                        "content": "林澈望向裂缝后的黑暗遗迹，承诺一定找到源头。",
+                    }
+                ],
+                "chapter_intent_contract": {
+                    "goal_lock": "林澈比对母亲警告与星痕中枢档案确认关系",
+                },
+            }
+        )
+
+        assert "开篇第一段至少显式回扣两个尾段锚点" in guidance
+        assert "第一场或第二场必须用正文行动推进目标锁" in guidance
+        assert "比对任务必须写出证据载体、比对对象和结论" in guidance
+        assert "档案任务必须写出调取、查阅、核验或解密档案的动作" in guidance
+
+    def test_hard_scene_task_guidance_requires_risk_tracking_actions(self):
+        generator = NovelGeneratorAgent(
+            config_manager=DummyConfigManager(),
+            llm_client=MagicMock(),
+        )
+        guidance = generator._build_hard_scene_task_guidance(
+            {
+                "previous_chapters": [
+                    {
+                        "number": 28,
+                        "content": "林澈接入主数据库，城市暗处的警报随即亮起。",
+                    }
+                ],
+                "chapter_intent_contract": {
+                    "goal_lock": "林澈追踪外海意识苏醒风险",
+                },
+            }
+        )
+
+        assert "主数据库" in guidance
+        assert "警报" in guidance
+        assert "风险任务必须写出追踪/监测对象、异常指标、风险结论和应对动作" in guidance
+        assert "正文关键段必须显式写出“外海意识”及其苏醒、突破或入侵风险指标" in guidance
+
+    def test_hard_scene_task_guidance_requires_database_risk_chain_and_location_bridge(self):
+        generator = NovelGeneratorAgent(
+            config_manager=DummyConfigManager(),
+            llm_client=MagicMock(),
+        )
+
+        guidance = generator._build_hard_scene_task_guidance(
+            {
+                "previous_chapters": [
+                    {
+                        "number": 28,
+                        "content": "林澈站在海下穹顶城的边缘，意识到接入主数据库会再次触发警报。",
+                    }
+                ],
+                "chapter_intent_contract": {
+                    "goal_lock": "林澈接入主数据库追踪外海意识苏醒风险",
+                    "target_destinations": ["海下穹顶城"],
+                },
+            }
+        )
+
+        assert "接入/连入主数据库" in guidance
+        assert "追踪/监测外海意识" in guidance
+        assert "苏醒、突破或入侵风险指标和结论" in guidance
+        assert "禁止只写城市网络、监管中心或静默警报" in guidance
+        assert "包含关系、抵达路径或切换原因" in guidance
+
+    def test_hard_scene_task_guidance_requires_third_choice_chain(self):
+        generator = NovelGeneratorAgent(
+            config_manager=DummyConfigManager(),
+            llm_client=MagicMock(),
+        )
+
+        guidance = generator._build_hard_scene_task_guidance(
+            {
+                "previous_chapters": [
+                    {
+                        "number": 36,
+                        "content": "林澈意识到拯救城市和释放意识都不足以结束危机。",
+                    }
+                ],
+                "chapter_intent_contract": {
+                    "goal_lock": "林澈破解母亲留下的第三种选择",
+                },
+            }
+        )
+
+        assert "读取/解读/破译母亲留下的信息" in guidance
+        assert "第三方案不同于拯救城市或释放意识的二选一" in guidance
+        assert "母亲遗留信息 -> 第三方案 -> 行动结果" in guidance
+
+    def test_hard_scene_task_guidance_requires_seal_break_prevention_chain(self):
+        generator = NovelGeneratorAgent(
+            config_manager=DummyConfigManager(),
+            llm_client=MagicMock(),
+        )
+
+        guidance = generator._build_hard_scene_task_guidance(
+            {
+                "chapter_intent_contract": {
+                    "goal_lock": "林澈与小队阻止外海意识体突破潮汐心脏封印",
+                },
+            }
+        )
+
+        assert "外海意识体正在突破潮汐心脏封印" in guidance
+        assert "切断/压制/阻断/稳住/封回" in guidance
+        assert "突破迹象 -> 阻止动作 -> 封印结果" in guidance
+
+
     def test_generate_content_keeps_goal_lock_visible_alongside_chapter_guidance(self):
         llm_client = MagicMock()
         llm_client.generate.return_value = "第五章\n" + (
@@ -667,6 +1244,24 @@ class TestNovelGeneratorSmoothnessConsistency:
         )
 
         _assert_transition_issue(report, "时间跳跃无锚点")
+
+    def test_consistency_report_accepts_abstract_cut_with_crawl_path_bridge(self):
+        report = _run_consistency_check(
+            previous_summary="上一章林澈仍在海下穹顶城，刚接入主数据库并触发封印警报。",
+            previous_content="""
+            海下穹顶城的备用电源室里，警报灯沿着主数据中心的机柜逐排亮起。
+            林澈意识到他们必须沿排水管道继续深入。
+            """,
+            current_content="""
+            城市的另一处秘密正在黑暗中等待。
+            从废弃排水管道爬出时，林澈的双手已经被锈蚀的管壁划出数道血痕。
+            他蹲在中央泵房的水泥地面上，确认这里仍属于海下穹顶城地下维护层。
+            """,
+        )
+
+        assert not any(
+            "时间跳跃无锚点" in issue for issue in report["blocking_issues"]
+        )
 
     def test_consistency_report_flags_unresolved_previous_consequence(self):
         report = _run_consistency_check(
@@ -831,6 +1426,17 @@ class TestNovelGeneratorSmoothnessConsistency:
         )
 
         assert anchor == "禁航区边界"
+
+    def test_extract_location_anchor_rejects_conceptual_sea_words(self):
+        generator = _make_generator()
+
+        assert generator._extract_location_anchor("“一次海”的回声还在耳膜深处震颤。") == ""
+        assert generator._extract_location_anchor("他脑海里浮现出母亲留下的档案。") == ""
+
+    def test_extract_location_anchor_rejects_save_city_action_fragment(self):
+        generator = _make_generator()
+
+        assert generator._extract_location_anchor("林澈必须在拯救城市和释放意识之间找到第三种选择。") == ""
 
     def test_extract_location_anchor_detects_station_scene(self):
         generator = _make_generator()
@@ -1200,6 +1806,32 @@ class TestNovelGeneratorSmoothnessConsistency:
 
         assert report["invalid"] is True
         assert "world_fact_violation" in report["issue_types"]
+
+    def test_world_fact_check_ignores_generic_sound_subject(self):
+        generator = NovelGeneratorAgent(
+            config_manager=DummyConfigManager(), llm_client=MagicMock()
+        )
+
+        issues = generator._check_world_fact_consistency(
+            content="屏幕重新亮起时，声音再次从通道深处传来。",
+            previous_summary="上一章声音消散，众人暂时失去方位。",
+            previous_chapters=[],
+        )
+
+        assert issues == []
+
+    def test_world_fact_check_ignores_adverbial_generic_visual_subject(self):
+        generator = NovelGeneratorAgent(
+            config_manager=DummyConfigManager(), llm_client=MagicMock()
+        )
+
+        issues = generator._check_world_fact_consistency(
+            content="光团重新亮起时，林澈看清了墙上的旧编号。",
+            previous_summary="上一章光团缓缓消散，众人暂时失去方向。",
+            previous_chapters=[],
+        )
+
+        assert issues == []
 
     def test_consistency_report_flags_structure_drift_when_new_settings_exceed_budget(
         self,
@@ -1627,6 +2259,48 @@ class TestNovelGeneratorSmoothnessConsistency:
         )
         assert "【本次修复】" in report["rewrite_guidance"]
         assert "时间跨度带来的状态变化" in report["rewrite_guidance"]
+
+    def test_rewrite_plan_adds_explicit_third_choice_repair(self):
+        generator = _make_generator()
+
+        plan = generator._build_rewrite_plan(
+            {
+                "issue_types": ["missing_key_events"],
+                "missing_events": ["林澈破解母亲留下的第三种选择"],
+                "blocking_issues": ["缺少关键事件: 林澈破解母亲留下的第三种选择"],
+                "anti_drift_details": {
+                    "goal_lock": "林澈破解母亲留下的第三种选择",
+                },
+            }
+        )
+
+        assert any("母亲留下的信息" in item for item in plan["fixes"])
+        assert any("第三方案" in item for item in plan["fixes"])
+        assert any(
+            operation["action"] == "restore_third_choice_chain"
+            for operation in plan["operations"]
+        )
+
+    def test_rewrite_plan_adds_explicit_seal_break_repair(self):
+        generator = _make_generator()
+
+        plan = generator._build_rewrite_plan(
+            {
+                "issue_types": ["missing_key_events"],
+                "missing_events": ["林澈与小队阻止外海意识体突破潮汐心脏封印"],
+                "blocking_issues": ["缺少关键事件: 林澈与小队阻止外海意识体突破潮汐心脏封印"],
+                "anti_drift_details": {
+                    "goal_lock": "林澈与小队阻止外海意识体突破潮汐心脏封印",
+                },
+            }
+        )
+
+        assert any("阻止封印突破" in item for item in plan["fixes"])
+        assert any("突破迹象" in item for item in plan["success_criteria"])
+        assert any(
+            operation["action"] == "restore_seal_break_prevention_chain"
+            for operation in plan["operations"]
+        )
 
     def test_build_chapter_repair_plan_adds_plan_first_fields(self):
         generator = _make_generator()
