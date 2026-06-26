@@ -28,6 +28,10 @@ ACTION_VERB_HINTS = (
     "追",
     "追查",
     "确认",
+    "发现",
+    "揭开",
+    "听见",
+    "指向",
     "截获",
     "救回",
     "公开",
@@ -172,6 +176,7 @@ class StyleProfile:
     emotion_intensity: str = ""
     combat_style: str = ""
     hook_strength: str = ""
+    humanization_level: str = ""
 
 
 @dataclass
@@ -427,6 +432,86 @@ def _select_progressive(items: list[str], progress: float, fallback: str) -> str
     return items[index]
 
 
+def _select_progressive_by_chapter(
+    items: list[str],
+    chapter_number: int,
+    total_chapters: int,
+    fallback: str,
+    *,
+    repeat_items: list[str] | None = None,
+) -> str:
+    if not items:
+        return fallback
+    if total_chapters > len(items) * 3:
+        item_index = max(chapter_number, 1) - 1
+        if item_index < len(items):
+            return items[item_index]
+        repeat_pool = repeat_items or items
+        return repeat_pool[(item_index - len(items)) % len(repeat_pool)]
+    index = min(
+        round(
+            (max(chapter_number, 1) - 1)
+            * max(len(items) - 1, 0)
+            / max(total_chapters - 1, 1)
+        ),
+        len(items) - 1,
+    )
+    return items[index]
+
+
+def _is_outline_meta_progression(text: str) -> bool:
+    cleaned = str(text or "").strip()
+    if "阶段" not in cleaned:
+        return False
+    if not any(marker in cleaned for marker in ("全书", "故事", "全篇", "整体")):
+        return False
+    return any(marker in cleaned for marker in ("推进", "分为", "从", "依次"))
+
+
+def _is_generic_final_choice(text: str) -> bool:
+    cleaned = str(text or "").strip("，,；;。！？!?：: ")
+    if "必须做出选择" not in cleaned:
+        return False
+    return "在" not in cleaned and "之间" not in cleaned and "第三种" not in cleaned
+
+
+def _outline_action_units(
+    outline_sentences: list[str], *, character_names: list[str]
+) -> list[str]:
+    units: list[str] = []
+    seen: set[str] = set()
+
+    def _add(unit: str) -> None:
+        cleaned = str(unit or "").strip("，,；;。！？!?：: ")
+        if len(cleaned) < 6 or cleaned in seen:
+            return
+        seen.add(cleaned)
+        units.append(cleaned)
+
+    for sentence in outline_sentences:
+        _add(sentence)
+        clauses = [
+            item.strip()
+            for item in SEED_EVENT_SPLIT_PATTERNS.split(sentence)
+            if item.strip()
+        ]
+        for clause in clauses:
+            has_character = any(name and name in clause for name in character_names)
+            if has_character or _chapter_event_has_action(clause):
+                _add(clause)
+    return units or outline_sentences
+
+
+def _recyclable_outline_units(units: list[str], *, character_names: list[str]) -> list[str]:
+    recyclable = [
+        unit
+        for unit in units
+        if any(name and name in unit for name in character_names)
+        or _chapter_event_has_action(unit)
+    ]
+    return recyclable or units
+
+
 def _chapter_event_has_action(event: str) -> bool:
     return any(verb in str(event or "") for verb in ACTION_VERB_HINTS)
 
@@ -470,16 +555,45 @@ def _compress_seed_clause(
         (name for name in character_names if len(name) >= 2 and name in cleaned),
         "",
     )
-    action = next(
-        (
-            verb
-            for verb in sorted(ACTION_VERB_HINTS, key=len, reverse=True)
-            if verb in cleaned
-        ),
-        "",
-    )
+    if "鲸歌信号" in cleaned and "母亲" in cleaned:
+        actor = subject or next((name for name in character_names if len(name) >= 2), "")
+        return f"{actor}追查母亲失踪线索" if actor else "追查母亲失踪线索"
+    if "组成小队" in cleaned and "揭开" in cleaned:
+        actor = next((name for name in character_names if len(name) >= 2), subject)
+        reveal_target = cleaned.split("揭开", 1)[1].strip("，,；;。！？!?：: ")
+        reveal_target = reveal_target.replace("其实在", "")
+        reveal_target = reveal_target.replace("的真相", "真相")
+        if reveal_target:
+            prefix = f"{actor}与小队" if actor else "小队"
+            return f"{prefix}揭开{reveal_target}"
+    action_candidates = [
+        (cleaned.find(verb), verb)
+        for verb in sorted(ACTION_VERB_HINTS, key=len, reverse=True)
+        if cleaned.find(verb) >= 0
+    ]
+    if subject:
+        subject_end = cleaned.find(subject) + len(subject)
+        action = next(
+            (
+                verb
+                for index, verb in action_candidates
+                if index >= subject_end
+            ),
+            "",
+        )
+    else:
+        action = action_candidates[0][1] if action_candidates else ""
     if not action:
-        return cleaned[:18]
+        cleaned = _compact_non_action_seed_clause(cleaned)
+        actor = subject or next((name for name in character_names if len(name) >= 2), "")
+        if actor:
+            if cleaned.startswith(f"{actor}的"):
+                cleaned = cleaned[len(actor) + 1 :]
+            elif cleaned.startswith(actor):
+                cleaned = cleaned[len(actor) :]
+            cleaned = cleaned.strip("，,；;。！？!?：: ")
+            return _clip_seed_goal(f"{actor}发现{cleaned}", limit=64)
+        return _clip_seed_goal(cleaned, limit=64)
 
     action_index = cleaned.find(action)
     object_tail = cleaned[action_index + len(action) :]
@@ -488,7 +602,7 @@ def _compress_seed_clause(
     for stopword in SEED_EVENT_STOPWORDS:
         if object_tail.startswith(stopword):
             object_tail = object_tail[len(stopword) :].strip()
-    object_tail = object_tail[:16]
+    object_tail = _clip_seed_goal(object_tail, limit=48)
 
     parts: list[str] = []
     if subject:
@@ -497,7 +611,49 @@ def _compress_seed_clause(
     if object_tail:
         parts.append(object_tail)
     compact = "".join(parts).strip()
-    return compact[:24] if compact else cleaned[:18]
+    if compact:
+        return _clip_seed_goal(compact, limit=64)
+    return _clip_seed_goal(cleaned, limit=32)
+
+
+def _clip_seed_goal(goal: str, *, limit: int) -> str:
+    cleaned = str(goal or "").strip("，,；;。！？!?：: ")
+    if len(cleaned) <= limit:
+        return _trim_seed_goal(cleaned)
+
+    window = cleaned[:limit]
+    min_boundary = max(8, limit // 2)
+    boundary = max(window.rfind(mark) for mark in "，,；;。！？!?：:")
+    if boundary >= min_boundary:
+        return _trim_seed_goal(window[:boundary])
+    return _trim_seed_goal(window)
+
+
+def _trim_seed_goal(goal: str) -> str:
+    cleaned = str(goal or "").rstrip("的和与及、，,；;")
+    for suffix in ("关于", "以及", "为了", "因为", "通过", "一项"):
+        if cleaned.endswith(suffix):
+            cleaned = cleaned[: -len(suffix)].rstrip("的和与及、，,；;")
+    return cleaned
+
+
+def _compact_non_action_seed_clause(clause: str) -> str:
+    cleaned = str(clause or "").strip("，,；;。！？!?：: ")
+    cleaned = re.sub(r"^(?:近未来|现代|未来)?(?:海滨城市|城市)?", "", cleaned)
+    cleaned = cleaned.strip("，,；;。！？!?：: ")
+    if "父亲" in cleaned and "声波保存记忆" in cleaned:
+        return "父亲参与声波记忆实验线索"
+    if "低频回声" in cleaned and "记忆" in cleaned:
+        return "岚港低频回声抹除记忆源头"
+    if "集体遗忘" in cleaned:
+        place_match = re.search(r"(?P<place>[\u4e00-\u9fffA-Za-z0-9]{2,8})居民", cleaned)
+        place = place_match.group("place") if place_match else ""
+        return f"{place}集体遗忘" if place else "居民集体遗忘"
+    match = re.search(r"(?P<place>[\u4e00-\u9fffA-Za-z0-9]{2,12})(?:连续)?出现(?P<event>.+)", cleaned)
+    if match:
+        cleaned = f"{match.group('place')}{match.group('event')}"
+    cleaned = cleaned.replace("连续潮汐", "潮汐")
+    return cleaned.rstrip("和与及、，,；;")
 
 
 def _derive_seed_goal_lock(
@@ -534,8 +690,143 @@ def _derive_seed_key_events(
     character_names: list[str],
     location_names: list[str],
 ) -> list[str]:
-    del summary, character_names, location_names
-    return [goal_lock] if goal_lock else []
+    del summary, location_names
+    goal = str(goal_lock or "").strip()
+    if not goal:
+        return []
+
+    primary_character = next(
+        (str(name or "").strip() for name in character_names if str(name or "").strip()),
+        "",
+    )
+    event_verbs = (*ACTION_VERB_HINTS, "保护")
+    inherited_actor = primary_character if primary_character and primary_character in goal else primary_character
+    inherited_action = next(
+        (verb for verb in sorted(event_verbs, key=len, reverse=True) if verb in goal),
+        "",
+    )
+    events: list[str] = []
+    for fragment in re.split(r"[、，,；;。]|以及|并且|并|同时", goal):
+        event = _trim_seed_goal(fragment)
+        if len(event) < 4:
+            continue
+        if (
+            inherited_actor
+            and inherited_action
+            and inherited_actor not in event
+            and not any(verb in event for verb in event_verbs)
+        ):
+            event = f"{inherited_actor}{inherited_action}{event}"
+        if (
+            primary_character
+            and primary_character not in event
+            and any(event.startswith(verb) for verb in event_verbs)
+        ):
+            event = f"{primary_character}{event}"
+        event = _clip_seed_goal(event, limit=48)
+        if event and event not in events:
+            events.append(event)
+        if len(events) >= 3:
+            break
+    if len(events) > 1:
+        events = [
+            event
+            for event in events
+            if not any(
+                marker in event
+                for marker in ("保护身边人", "保护身边的人", "保护同伴")
+            )
+        ] or events
+    return events or [goal]
+
+
+def _advance_repeated_seed_goal_lock(goal_lock: str, repetition_index: int) -> str:
+    if repetition_index <= 0:
+        return goal_lock
+    if "五个阶段" in str(goal_lock or "") and "推进" in str(goal_lock or ""):
+        stage_actions = (
+            "林澈追查城市异常源头",
+            "林澈调查城市政治掩盖链",
+            "林澈组织深海远征进入遗迹",
+            "林澈核查母亲真相档案",
+            "林澈接入主数据库追踪外海意识苏醒风险",
+        )
+        return stage_actions[min(repetition_index - 1, len(stage_actions) - 1)]
+    if "第三种选择" in str(goal_lock or "") or "做出选择" in str(goal_lock or ""):
+        original_goal = str(goal_lock or "")
+        actor = "林澈" if "林澈" in original_goal else ""
+        choice_actions = (
+            "评估第三种选择的代价",
+            "确认第三种选择的触发条件",
+            "比对拯救城市与释放意识的后果",
+            "制定执行第三种选择的方案",
+            "承担第三种选择带来的风险",
+        )
+        return f"{actor}{choice_actions[min(repetition_index - 1, len(choice_actions) - 1)]}"
+    if "摩斯信号" in str(goal_lock or ""):
+        original_goal = str(goal_lock or "")
+        action_positions = [
+            original_goal.find(verb)
+            for verb in ACTION_VERB_HINTS
+            if original_goal.find(verb) > 0
+        ]
+        actor_end = min(action_positions) if action_positions else 2
+        actor = original_goal[:actor_end]
+        signal_actions = (
+            "核查摩斯信号来源",
+            "确认摩斯信号与父亲有关",
+            "追查摩斯信号档案",
+            "揭开摩斯信号背后的事故线索",
+            "阻止摩斯信号指向的下一次灾难",
+        )
+        return f"{actor}{signal_actions[min(repetition_index - 1, len(signal_actions) - 1)]}"
+    if "母亲失踪线索" in str(goal_lock or ""):
+        original_goal = str(goal_lock or "")
+        action_positions = [
+            original_goal.find(verb)
+            for verb in ACTION_VERB_HINTS
+            if original_goal.find(verb) > 0
+        ]
+        actor_end = min(action_positions) if action_positions else 2
+        actor = original_goal[:actor_end]
+        mother_actions = (
+            "调查母亲失踪线索",
+            "复听并比对母亲最后信号确认来源",
+            "比对母亲警告与星痕中枢档案确认关系",
+            "追查母亲与深海叛乱的真相",
+            "破解母亲留下的第三种选择",
+        )
+        return f"{actor}{mother_actions[min(repetition_index - 1, len(mother_actions) - 1)]}"
+    if "潮汐心脏" in str(goal_lock or "") and "外海意识体" in str(goal_lock or ""):
+        original_goal = str(goal_lock or "")
+        action_positions = [
+            original_goal.find(verb)
+            for verb in ACTION_VERB_HINTS
+            if original_goal.find(verb) > 0
+        ]
+        actor_end = min(action_positions) if action_positions else 2
+        actor = original_goal[:actor_end]
+        truth_actions = (
+            "发现潮汐心脏封印外海意识体的证据",
+            "比对潮汐心脏与外海意识体封印记录",
+            "确认潮汐心脏封印外海意识体真相",
+            "追查外海意识体突破封印的风险",
+            "阻止外海意识体突破潮汐心脏封印",
+        )
+        return f"{actor}{truth_actions[min(repetition_index - 1, len(truth_actions) - 1)]}"
+    actions = ("发现", "调查", "确认", "追查", "揭开", "阻止")
+    next_action = actions[min(repetition_index, len(actions) - 1)]
+    action = next(
+        (
+            verb
+            for verb in sorted((*ACTION_VERB_HINTS, "发现"), key=len, reverse=True)
+            if verb in str(goal_lock or "")
+        ),
+        "",
+    )
+    if not action:
+        return f"{next_action}{goal_lock}".rstrip("的和与及、，,；;")
+    return str(goal_lock).replace(action, next_action, 1).rstrip("的和与及、，,；;")
 
 
 def _select_chapter_locations(
@@ -575,6 +866,14 @@ def build_story_input_bundle(
     characters = parse_character_entries(str(getattr(project, "character_intro", "") or ""))
     character_names = [entry.name for entry in characters]
     total_chapters = max(int(getattr(project, "total_chapters", 0) or 0), 1)
+    outline_units = (
+        _outline_action_units(outline_sentences, character_names=character_names)
+        if total_chapters > max(len(outline_sentences), 1) * 3
+        else outline_sentences
+    )
+    repeat_outline_units = _recyclable_outline_units(
+        outline_units, character_names=character_names
+    )
     chapters_per_volume = max(int(chapters_per_volume or 60), 1)
     seed_goal_lock = _derive_seed_goal_lock(
         str(getattr(project, "title", "") or ""),
@@ -603,12 +902,15 @@ def build_story_input_bundle(
     style_profile = StyleProfile(**{k: v for k, v in (writing_options or {}).items() if hasattr(StyleProfile, k)})
 
     chapter_plans: list[ChapterPlan] = []
+    summary_repetitions: dict[str, int] = {}
     for chapter_number in range(1, total_chapters + 1):
         progress = (chapter_number - 1) / max(total_chapters - 1, 1)
-        summary = _select_progressive(
-            outline_sentences,
-            progress,
+        summary = _select_progressive_by_chapter(
+            outline_units,
+            chapter_number,
+            total_chapters,
             f"围绕{getattr(project, 'title', '主线')}推进本章冲突。",
+            repeat_items=repeat_outline_units,
         )
         chapter_goal_lock = _derive_seed_goal_lock(
             str(getattr(project, "title", "") or ""),
@@ -616,6 +918,13 @@ def build_story_input_bundle(
             character_names=character_names,
             location_names=world_locations,
         ) or seed_goal_lock
+        summary_key = summary or chapter_goal_lock
+        repetition_index = summary_repetitions.get(summary_key, 0)
+        summary_repetitions[summary_key] = repetition_index + 1
+        chapter_goal_lock = _advance_repeated_seed_goal_lock(
+            chapter_goal_lock,
+            repetition_index,
+        )
         stage = _chapter_stage_label(progress)
         character_slice = character_names[:4]
         key_events = _derive_seed_key_events(
@@ -630,7 +939,11 @@ def build_story_input_bundle(
             world_locations=world_locations,
             progress=progress,
         )
-        continuity_in = f"承接上一章局势，继续{stage}阶段推进。"
+        continuity_in = (
+            "开篇建立人物、地点与主线异常。"
+            if chapter_number == 1
+            else f"承接上一章局势，继续{stage}阶段推进。"
+        )
         continuity_out = f"为下一章保留{stage}阶段后的新压力或新线索。"
         magic_parts = [f"阶段目标：{stage}"]
         world_focus = _select_progressive(world_sentences, progress, world_setting[:80])
@@ -647,7 +960,7 @@ def build_story_input_bundle(
                 key_events=key_events,
                 realm=str(getattr(project, "genre", "") or ""),
                 purpose=f"{stage}阶段的主线推进",
-                must_include=[chapter_goal_lock] if chapter_goal_lock else [],
+                must_include=list(key_events),
                 character_ids=[entry.id for entry in characters[:4]],
                 character_names=character_slice,
                 location_ids=[

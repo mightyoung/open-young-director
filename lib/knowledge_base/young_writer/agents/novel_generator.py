@@ -9,6 +9,7 @@ import re
 from typing import Any
 
 from young_writer.agents.writer_rules import (
+    build_style_review,
     check_writer_rules,
     compact_writer_rule_summary,
 )
@@ -53,6 +54,12 @@ TRANSITION_BRIDGE_SIGNALS = (
     "进入",
     "踏入",
     "走进",
+    "爬出",
+    "爬入",
+    "钻出",
+    "钻入",
+    "穿出",
+    "穿入",
     "推开",
     "穿过",
     "奔赴",
@@ -141,7 +148,6 @@ CONSEQUENCE_MARKERS = (
     "追兵",
     "重伤",
     "伤势",
-    "危机",
     "爆炸",
     "昏迷",
     "决裂",
@@ -207,6 +213,8 @@ LOW_CONFIDENCE_LOCATION_ANCHORS = {
     "石门",
     "房门",
     "舱门",
+    "脑海",
+    "一次海",
 }
 LOW_CONFIDENCE_LOCATION_PARTS = {
     "窗口",
@@ -216,6 +224,9 @@ LOW_CONFIDENCE_LOCATION_PARTS = {
     "数据流",
     "波形",
     "警报",
+    "脑海",
+    "拯救",
+    "城市",
 }
 NON_BRIDGE_TRANSITION_PATTERNS = (
     r"准备进入[\u4e00-\u9fff]{2,16}",
@@ -230,11 +241,19 @@ EVENT_ACTION_KEYWORDS = (
     "返回",
     "抵达",
     "进入",
+    "接入",
     "验证",
     "调查",
     "追查",
+    "追踪",
+    "监测",
     "查清",
     "确认",
+    "比对",
+    "核查",
+    "发现",
+    "揭开",
+    "阻止",
     "协助",
     "救回",
     "拯救",
@@ -256,11 +275,19 @@ EVENT_ACTION_SYNONYMS = {
     "返回": ("返回", "回到", "归来", "回来", "折返"),
     "抵达": ("抵达", "到达", "赶到", "来到"),
     "进入": ("进入", "踏入", "冲入", "闯入", "潜入"),
+    "接入": ("接入", "连入", "连接", "接通", "接上", "登入"),
     "验证": ("验证", "核实", "确认", "证实", "查验", "校验"),
-    "调查": ("调查", "查探", "探查", "追查"),
-    "追查": ("追查", "调查", "查探", "追索"),
+    "调查": ("调查", "查探", "探查", "追查", "查阅", "翻查", "检索", "调取", "比对", "核实", "追问"),
+    "追查": ("追查", "调查", "查探", "追索", "追踪", "定位", "溯源", "锁定"),
+    "追踪": ("追踪", "追查", "追索", "跟踪", "定位", "监测", "锁定"),
+    "监测": ("监测", "检测", "观测", "监听", "追踪", "定位"),
     "查清": ("查清", "查明", "弄清", "摸清"),
     "确认": ("确认", "证实", "核实"),
+    "比对": ("比对", "对照", "核对", "校验", "交叉验证"),
+    "核查": ("核查", "核实", "比对", "复听", "查验", "确认"),
+    "发现": ("发现", "找到", "捕捉到", "识别出", "读出", "听见"),
+    "揭开": ("揭开", "揭露", "查明", "证实", "发现", "弄清"),
+    "阻止": ("阻止", "制止", "阻断", "切断", "中止", "停止", "避免", "压制", "压回", "稳住", "封回", "拦住", "挡住"),
     "协助": ("协助", "帮忙", "帮助", "配合", "支援", "帮我", "帮他", "帮她"),
     "救回": ("救回", "救出", "救下", "营救", "带回"),
     "拯救": ("拯救", "救下", "救出", "救回"),
@@ -275,8 +302,24 @@ EVENT_ACTION_SYNONYMS = {
     "突破": ("突破", "冲破", "打破", "突围"),
     "寻找": ("寻找", "找寻", "搜寻", "查找"),
     "潜入": ("潜入", "闯入", "混入", "进入"),
-    "破解": ("破解", "解开", "破译", "拆解"),
+    "破解": ("破解", "解开", "破译", "拆解", "解读", "读懂", "译出", "解析"),
 }
+EVENT_OBJECT_ANCHOR_HINTS = (
+    "母亲最后信号",
+    "潮汐心脏",
+    "外海意识体",
+    "外海意识",
+    "苏醒风险",
+    "风险指标",
+    "第三种选择",
+    "第三选择",
+    "母亲留下",
+    "母亲遗留",
+    "星痕中枢",
+    "主数据库",
+    "数据库",
+    "深海叛乱",
+)
 EVENT_SPLIT_PATTERNS = re.compile(
     r"(?:带着|携带|拿着|并且|并|与|和|前往|进入|返回|归来|验证|调查|追查|查清|确认|协助|救回|拯救|公开|守住|击败|现身|闯入|夺取|截获|逃离|突破|寻找|潜入|破解|争取|请求|寻求|以及|然后|随后|为了|必须|正在|已经|开始|继续|尝试|的|了|在)"
 )
@@ -337,6 +380,21 @@ ITEM_LOSS_MARKERS = (
     "损毁",
 )
 ITEM_REAPPEAR_MARKERS = ("重新", "再次", "依然", "仍然", "又", "再度")
+WORLD_FACT_GENERIC_SUBJECTS = {
+    "声音",
+    "信号",
+    "回声",
+    "光团",
+    "光线",
+    "灯光",
+    "屏幕",
+    "门锁",
+    "像是",
+    "仿佛",
+    "好像",
+    "似乎",
+    "如同",
+}
 ANTI_DRIFT_BRIDGE_CONNECTORS = (
     "为了",
     "因此",
@@ -1406,6 +1464,7 @@ class NovelGeneratorAgent:
             chapter_guidance=chapter_guidance,
             writing_options=writing_options,
             rewrite_guidance=rewrite_guidance,
+            context=context,
         )
 
         try:
@@ -1440,7 +1499,9 @@ class NovelGeneratorAgent:
         except Exception as e:
             logger.error(f"LLM generation failed: {e}")
             if not self.allow_fallback:
-                raise RuntimeError("LLM generation failed and fallback disabled") from e
+                raise RuntimeError(
+                    f"LLM generation failed and fallback disabled: {e}"
+                ) from e
             content = self._generate_fallback_content(
                 chapter_number, title, outline, previous_summary, context
             )
@@ -1474,6 +1535,7 @@ class NovelGeneratorAgent:
         chapter_guidance: str = "",
         writing_options: dict[str, str] | None = None,
         rewrite_guidance: str = "",
+        context: dict[str, Any] | None = None,
     ) -> str:
         """Build generation prompt for kimi-cli (coding agent style).
 
@@ -1490,7 +1552,9 @@ class NovelGeneratorAgent:
         guidance = build_writing_guidance(writing_options)
         normalized_options = guidance["normalized"]
         try:
-            writer_rule_summary = compact_writer_rule_summary()
+            writer_rule_summary = compact_writer_rule_summary(
+                humanization_level=normalized_options.get("humanization_level")
+            )
         except Exception as exc:
             logger.warning("Could not load writer rules for prompt: %s", exc)
             writer_rule_summary = ""
@@ -1529,6 +1593,8 @@ class NovelGeneratorAgent:
 3. 完整的起承转合结构
 """
 
+        hard_scene_task_guidance = self._build_hard_scene_task_guidance(context)
+
         prompt = f"""你是一个专业的中文长篇小说写作助手。请根据以下信息创作小说章节。
 
 ## 章节信息
@@ -1538,6 +1604,11 @@ class NovelGeneratorAgent:
 - 题材: {genre}
 {world_constraints}
 {retry_warning}
+
+## 本章硬性场景任务
+
+{hard_scene_task_guidance or "开篇必须承接上一章，正文必须以可见行动推进本章目标。"}
+
 
 ## 本章大纲
 {outline}
@@ -1746,6 +1817,22 @@ class NovelGeneratorAgent:
         """Normalize text for lightweight deterministic matching."""
         return re.sub(r"\s+", "", text or "")
 
+    def _normalize_anchor_for_match(self, text: str) -> str:
+        """Normalize short Chinese anchors without weakening event matching."""
+        normalized = self._normalize_text_for_match(text)
+        return re.sub(r"[的地得了着过]", "", normalized)
+
+    def _anchor_in_text(self, anchor: str, text: str) -> bool:
+        """Return True for exact anchors or harmless Chinese particle variants."""
+        if not anchor or not text:
+            return False
+        if anchor in text:
+            return True
+        normalized_anchor = self._normalize_anchor_for_match(anchor)
+        if len(normalized_anchor) < 2:
+            return False
+        return normalized_anchor in self._normalize_anchor_for_match(text)
+
     def _clean_anchor_candidate(self, text: str) -> str:
         """Trim common connective noise from deterministic match anchors."""
         candidate = str(text or "").strip("：:，,；;。！？!?\n ")
@@ -1839,6 +1926,11 @@ class NovelGeneratorAgent:
                 keywords.append(object_tail)
                 seen.add(object_tail)
 
+        for anchor in EVENT_OBJECT_ANCHOR_HINTS:
+            if anchor in normalized_event and anchor not in seen:
+                keywords.append(anchor)
+                seen.add(anchor)
+
         for part in EVENT_SPLIT_PATTERNS.split(normalized_event):
             candidate = self._clean_anchor_candidate(part)
             if (
@@ -1858,24 +1950,57 @@ class NovelGeneratorAgent:
         normalized_event = str(event_fragment or "").strip()
         if len(normalized_event) < 2:
             return True
-        if normalized_event in content:
+        if self._anchor_in_text(normalized_event, content):
             return True
 
         keywords = self._extract_event_keywords(normalized_event, context)
         if not keywords:
             return False
 
+        event_object_anchors: list[str] = []
+        for anchor in sorted(EVENT_OBJECT_ANCHOR_HINTS, key=len, reverse=True):
+            if anchor not in normalized_event:
+                continue
+            if any(anchor in existing for existing in event_object_anchors):
+                continue
+            event_object_anchors.append(anchor)
+        matched_object_anchors: set[str] = set()
+        for anchor in event_object_anchors:
+            anchor_matched = self._anchor_in_text(anchor, content)
+            if anchor == "苏醒风险":
+                anchor_matched = anchor_matched or (
+                    self._anchor_in_text("苏醒", content)
+                    and self._anchor_in_text("风险", content)
+                )
+            if anchor == "风险指标":
+                anchor_matched = anchor_matched or (
+                    self._anchor_in_text("风险", content)
+                    and self._anchor_in_text("指标", content)
+                )
+            if anchor == "母亲留下":
+                anchor_matched = anchor_matched or self._anchor_in_text(
+                    "母亲遗留", content
+                )
+            if anchor == "母亲遗留":
+                anchor_matched = anchor_matched or self._anchor_in_text(
+                    "母亲留下", content
+                )
+            if anchor_matched:
+                matched_object_anchors.add(anchor)
+        if event_object_anchors and len(matched_object_anchors) < len(event_object_anchors):
+            return False
+
         action_keywords = [
             action for action in EVENT_ACTION_KEYWORDS if action in normalized_event
         ]
         matched_keywords: set[str] = {
-            keyword for keyword in keywords if keyword in content
+            keyword for keyword in keywords if self._anchor_in_text(keyword, content)
         }
         matched_action_keywords = {
             action
             for action in action_keywords
             if any(
-                alias in content
+                self._anchor_in_text(alias, content)
                 for alias in EVENT_ACTION_SYNONYMS.get(action, (action,))
             )
         }
@@ -1968,15 +2093,20 @@ class NovelGeneratorAgent:
         return any(part in candidate for part in LOW_CONFIDENCE_LOCATION_PARTS)
 
     def _extract_narrative_opening(self, content: str) -> str:
-        """Strip markdown prelude and return the actual narrative opening window."""
+        """Strip markdown prelude and headings before opening checks."""
         raw_text = str(content or "")
         if not raw_text:
             return ""
         narrative = raw_text
         if "◆开场" in narrative:
             narrative = narrative.split("◆开场", 1)[1]
-        elif "\n---" in narrative:
+        if "\n---" in narrative:
             narrative = narrative.split("\n---", 1)[1]
+        narrative = "\n".join(
+            line
+            for line in narrative.splitlines()
+            if not line.lstrip().startswith("#")
+        ).strip()
         return self._normalize_text_for_match(narrative[:600])
 
     def _location_anchors_conflict(
@@ -2074,11 +2204,22 @@ class NovelGeneratorAgent:
     def _opening_acknowledges_consequence(
         self, opening: str, consequence_marker: str
     ) -> bool:
-        """Check whether the current opening acknowledges the prior consequence."""
+        """Check whether current opening acknowledges prior consequence."""
         normalized = self._normalize_text_for_match(opening)
         if not normalized:
             return False
         if consequence_marker and consequence_marker in normalized:
+            return True
+        normalized_marker = self._normalize_text_for_match(consequence_marker)
+        if (
+            "信号" in normalized_marker
+            and any(
+                marker in normalized
+                for marker in ("信号", "屏幕", "显示器", "终端", "摩斯", "声纹")
+            )
+        ):
+            return True
+        if self._opening_covers_consequence_anchors(normalized, normalized_marker):
             return True
         if (
             consequence_marker in {"追兵", "追杀", "逃亡"}
@@ -2089,6 +2230,72 @@ class NovelGeneratorAgent:
         return any(
             marker in normalized for marker in CONSEQUENCE_ACKNOWLEDGEMENT_MARKERS
         )
+
+    def _consequence_anchor_terms(self, normalized_marker: str) -> list[str]:
+        """Extract concrete scene anchors from a normalized carry-over clause."""
+        anchor_hints = (
+            "信号弹",
+            "信号",
+            "终端",
+            "屏幕",
+            "显示器",
+            "通讯器",
+            "桥",
+            "裂缝",
+            "蓝色光",
+            "虚空",
+            "光芒",
+            "阴影",
+            "封印",
+            "深渊",
+            "矿区",
+            "控制室",
+            "监听站",
+            "母亲",
+            "父亲",
+            "追兵",
+            "爆炸",
+            "伤口",
+            "遗迹",
+            "黑暗",
+            "源头",
+            "承诺",
+            "警报",
+            "通信器",
+            "密码室",
+            "阀室",
+            "阀门",
+            "穹顶城",
+            "城市",
+            "数据库",
+            "主数据库",
+            "接入",
+        )
+        terms: list[str] = []
+        for term in anchor_hints:
+            if term in normalized_marker and term not in terms:
+                terms.append(term)
+        return terms
+
+    def _opening_covers_consequence_anchors(
+        self, normalized_opening: str, normalized_marker: str
+    ) -> bool:
+        """Accept long carry-over clauses when their concrete scene anchors recur."""
+        if len(normalized_marker) < 12 or not normalized_opening:
+            return False
+
+        terms = self._consequence_anchor_terms(normalized_marker)
+
+        if len(terms) < 2:
+            return False
+
+        matched = [
+            term for term in terms if self._anchor_in_text(term, normalized_opening)
+        ]
+        if len(matched) < 2:
+            return False
+        coverage = len(matched) / max(1, len(terms))
+        return self._has_bridge_signal(normalized_opening) or coverage >= 0.6
 
     def _opening_dismisses_prior_consequence(self, opening: str) -> bool:
         """Detect shallow mention patterns that explicitly dismiss prior consequences."""
@@ -2177,6 +2384,14 @@ class NovelGeneratorAgent:
         consequence_acknowledged = self._opening_acknowledges_consequence(
             opening, consequence_marker
         )
+        if (
+            consequence_marker
+            and not consequence_acknowledged
+            and previous_tail
+        ):
+            consequence_acknowledged = self._opening_acknowledges_consequence(
+                opening, previous_tail
+            )
         if consequence_marker and (
             not consequence_acknowledged or consequence_dismissed
         ):
@@ -2401,14 +2616,64 @@ class NovelGeneratorAgent:
                 guidance_plan["success_criteria"].append(
                     "大纲中的关键事件必须真实发生，而不是只留在摘要里。"
                 )
+            self._append_rewrite_operation(
+                guidance_plan,
+                phase="body",
+                action="restore_outline_event",
+                target="key_event_chain",
+                instruction=f"把缺失关键事件补回正文推进链：{'；'.join(missing_events[:3])}",
+                rationale="missing_key_events",
+                success_signal="大纲中的关键事件必须真实发生，而不是只留在摘要里。",
+            )
+            third_choice_events = [
+                event
+                for event in missing_events
+                if "第三种选择" in event or "第三选择" in event
+            ]
+            if third_choice_events:
+                third_choice_instruction = (
+                    "围绕第三种选择重写正文关键段：林澈必须读取/解读/破译母亲留下的信息，"
+                    "明确第三方案不同于拯救城市或释放意识的二选一，并写出执行动作、结果、代价或下一步风险。"
+                    "正文关键段必须原样出现“母亲留下”或“母亲遗留”，以及“第三种选择”或“第三方案”。"
+                )
+                guidance_plan["fixes"].append(third_choice_instruction)
+                guidance_plan["success_criteria"].append(
+                    "正文必须出现“母亲留下/母亲遗留”的信息载体、“第三种选择/第三方案”的内容，以及林澈执行后的结果。"
+                )
                 self._append_rewrite_operation(
                     guidance_plan,
                     phase="body",
-                    action="restore_outline_event",
-                    target="key_event_chain",
-                    instruction=f"把缺失关键事件补回正文推进链：{'；'.join(missing_events[:3])}",
+                    action="restore_third_choice_chain",
+                    target="third_choice_key_event",
+                    instruction=third_choice_instruction,
                     rationale="missing_key_events",
-                    success_signal="大纲中的关键事件必须真实发生，而不是只留在摘要里。",
+                    success_signal="正文必须出现母亲遗留信息、第三方案内容和执行结果。",
+                )
+            seal_break_events = [
+                event
+                for event in missing_events
+                if "阻止" in event
+                and "外海意识" in event
+                and "潮汐心脏" in event
+            ]
+            if seal_break_events:
+                seal_break_instruction = (
+                    "围绕阻止封印突破重写正文关键段：林澈与小队必须发现外海意识体正在突破潮汐心脏封印，"
+                    "采取切断/压制/阻断/稳住/封回等行动，并写出封印结果、代价或残留风险。"
+                    "不得只写寻找密钥、调查档案、进入梦境或准备行动。"
+                )
+                guidance_plan["fixes"].append(seal_break_instruction)
+                guidance_plan["success_criteria"].append(
+                    "正文必须出现突破迹象、阻止动作和潮汐心脏封印的结果。"
+                )
+                self._append_rewrite_operation(
+                    guidance_plan,
+                    phase="body",
+                    action="restore_seal_break_prevention_chain",
+                    target="seal_break_key_event",
+                    instruction=seal_break_instruction,
+                    rationale="missing_key_events",
+                    success_signal="正文必须出现突破迹象、阻止动作和潮汐心脏封印结果。",
                 )
         if "world_fact_violation" in guidance_plan["issue_types"]:
             guidance_plan["fixes"].append(
@@ -2764,6 +3029,115 @@ class NovelGeneratorAgent:
             )
         return contract
 
+    def _build_hard_scene_task_guidance(
+        self, context: dict[str, Any] | None
+    ) -> str:
+        """Render compact must-do scene tasks near the top of generation prompts."""
+        context = context or {}
+        contract = dict(context.get("chapter_intent_contract", {}) or {})
+        goal_lock = str(
+            contract.get("goal_lock") or self._extract_goal_lock(context) or ""
+        ).strip()
+        lines: list[str] = []
+
+        previous_tail = self._extract_previous_chapter_tail(context)
+        if previous_tail:
+            tail = re.sub(r"\s+", "", previous_tail)[-120:]
+            lines.append(
+                "- 开篇前2句必须承接上一章真实尾段，不得无路径换地点："
+                f"{tail}"
+            )
+            tail_anchors = self._consequence_anchor_terms(
+                self._normalize_text_for_match(previous_tail)
+            )
+            if tail_anchors:
+                lines.append(
+                    "- 开篇第一段至少显式回扣两个尾段锚点: "
+                    + " / ".join(tail_anchors[:5])
+                )
+
+        opening_bridge = str(
+            contract.get("opening_bridge_required", "") or ""
+        ).strip()
+        if opening_bridge:
+            lines.append(f"- 开篇承接: {opening_bridge}")
+
+        required_bridge = str(contract.get("required_bridge", "") or "").strip()
+        if required_bridge:
+            lines.append(f"- 必补桥段: {required_bridge}")
+        target_destinations = [
+            str(item).strip()
+            for item in contract.get("target_destinations", [])
+            if str(item).strip()
+        ]
+        if target_destinations:
+            lines.append(
+                "- 开篇若写子地点或新地点，前2句必须交代它与"
+                f"「{target_destinations[0]}」的包含关系、抵达路径或切换原因。"
+            )
+
+        if goal_lock:
+            lines.append(f"- 第一场或第二场必须用正文行动推进目标锁：{goal_lock}")
+            lines.append(
+                "- 验收句式：人物采取核查/调查/比对/确认等动作 -> "
+                "获得证据 -> 产生下一步选择或风险；不能只在摘要、标题或心理独白里提到目标。"
+            )
+            if "信号" in goal_lock:
+                lines.append(
+                    "- 目标含“信号”时，正文必须写出复听、解码、比对、定位或确认来源"
+                    "中的至少一个动作和明确结果。"
+                )
+            if "比对" in goal_lock:
+                lines.append(
+                    "- 比对任务必须写出证据载体、比对对象和结论，不得只写感受、宣言或背景解释。"
+                )
+        if "档案" in goal_lock:
+            lines.append(
+                "- 档案任务必须写出调取、查阅、核验或解密档案的动作，并给出档案结论。"
+            )
+        if "第三种选择" in goal_lock or "第三选择" in goal_lock:
+            lines.append(
+                "- 第三种选择任务必须写出：林澈读取/解读/破译母亲留下的信息，"
+                "明确第三方案不同于拯救城市或释放意识的二选一，并写出执行结果、代价或下一步风险。"
+            )
+            lines.append(
+                "- 硬性验收词：正文关键段必须原样出现“母亲留下”或“母亲遗留”，"
+                "必须原样出现“第三种选择”或“第三方案”，并让林澈完成破解/解读/破译动作。"
+            )
+            lines.append(
+                "- 禁止只写封印崩塌、外海意识波动或角色宣言来替代“母亲遗留信息 -> 第三方案 -> 行动结果”的推进链。"
+            )
+        if "风险" in goal_lock or "苏醒" in goal_lock:
+            lines.append(
+                "- 风险任务必须写出追踪/监测对象、异常指标、风险结论和应对动作。"
+            )
+            if "外海意识" in goal_lock:
+                lines.append(
+                    "- 正文关键段必须显式写出“外海意识”及其苏醒、突破或入侵风险指标。"
+                )
+        if "主数据库" in goal_lock and "外海意识" in goal_lock:
+            lines.append(
+                "- 硬性验收：同一关键段必须写出林澈接入/连入主数据库，"
+                "随后追踪/监测外海意识，并给出苏醒、突破或入侵风险指标和结论。"
+            )
+            lines.append(
+                "- 禁止只写城市网络、监管中心或静默警报来替代主数据库与外海意识风险。"
+            )
+        if (
+            "阻止" in goal_lock
+            and "外海意识" in goal_lock
+            and "潮汐心脏" in goal_lock
+        ):
+            lines.append(
+                "- 阻止突破封印任务必须写出：林澈与小队发现外海意识体正在突破潮汐心脏封印，"
+                "采取切断/压制/阻断/稳住/封回等行动，并给出封印是否被稳住、代价或残留风险。"
+            )
+            lines.append(
+                "- 禁止只写寻找密钥、调查档案、进入梦境或准备行动来替代“突破迹象 -> 阻止动作 -> 封印结果”的关键事件。"
+            )
+
+        return "\n".join(lines)
+
     def _format_chapter_intent_contract(self, contract: dict[str, Any] | None) -> str:
         """Render the chapter intent contract into a prompt-friendly text block."""
         if not isinstance(contract, dict) or not contract:
@@ -2775,6 +3149,14 @@ class NovelGeneratorAgent:
         goal_lock = str(contract.get("goal_lock", "") or "").strip()
         if goal_lock:
             lines.append(f"- 不可偏离的主线目标锁: {goal_lock}")
+            lines.append(
+                "- 正文必须出现可验收动作句: 同一关键段内写出主语、动作、对象和确认结果，"
+                f"直接完成「{goal_lock}」。"
+            )
+            if "比对" in goal_lock:
+                lines.append(
+                    "- 比对任务必须写出证据载体、比对对象和结论，不得只写感受、宣言或背景解释。"
+                )
         chapter_goal = str(contract.get("chapter_goal", "") or "").strip()
         if chapter_goal:
             lines.append(f"- 当前章节目标: {chapter_goal}")
@@ -3015,7 +3397,7 @@ class NovelGeneratorAgent:
             if len(term) < 2 or term in ANTI_DRIFT_GOAL_STOPWORDS or term in terms:
                 continue
             terms.append(term)
-            if len(terms) >= 8:
+            if len(terms) >= 12:
                 break
         for action in sorted(EVENT_ACTION_KEYWORDS, key=len, reverse=True):
             if action not in normalized_goal:
@@ -3030,10 +3412,22 @@ class NovelGeneratorAgent:
             object_tail = normalized_goal[action_index + len(action) :].strip()
             object_tail = re.sub(r"^(?:在|于|向|对|把|将|从|往|朝)", "", object_tail)
             object_tail = re.split(r"[，。；、：:！!？?\s/]+", object_tail, maxsplit=1)[0]
-            object_tail = object_tail[:8].strip()
-            if len(object_tail) >= 2 and object_tail not in ANTI_DRIFT_GOAL_STOPWORDS and object_tail not in terms:
-                terms.append(object_tail)
-            if len(terms) >= 8:
+            for anchor in sorted(EVENT_OBJECT_ANCHOR_HINTS, key=len, reverse=True):
+                if anchor in object_tail and anchor not in terms:
+                    terms.append(anchor)
+            object_tail_fragments = [
+                self._clean_anchor_candidate(fragment)[:8].strip()
+                for fragment in re.split(r"[与和及]+", object_tail)
+                if self._clean_anchor_candidate(fragment)
+            ] or [object_tail[:8].strip()]
+            for object_tail_fragment in object_tail_fragments[:3]:
+                if (
+                    len(object_tail_fragment) >= 2
+                    and object_tail_fragment not in ANTI_DRIFT_GOAL_STOPWORDS
+                    and object_tail_fragment not in terms
+                ):
+                    terms.append(object_tail_fragment)
+            if len(terms) >= 12:
                 break
         return terms
 
@@ -3100,7 +3494,7 @@ class NovelGeneratorAgent:
         """Return the goal terms present in a text snippet in stable order."""
         matches: list[str] = []
         for term in goal_terms:
-            if term in text and term not in matches:
+            if self._anchor_in_text(term, text) and term not in matches:
                 matches.append(term)
         return matches
 
@@ -3737,11 +4131,23 @@ class NovelGeneratorAgent:
             previous_summary=previous_summary,
             context=context,
         )
+        writing_options_context = (context or {}).get("writing_options") or {}
         try:
-            writer_rule_warnings = check_writer_rules(content)
+            writer_rule_warnings = check_writer_rules(
+                content,
+                humanization_level=writing_options_context.get(
+                    "humanization_level", "light"
+                ),
+            )
         except Exception as exc:
             logger.warning("Could not evaluate writer rules: %s", exc)
             writer_rule_warnings = []
+        style_review = build_style_review(
+            writer_rule_warnings,
+            humanization_level=writing_options_context.get(
+                "humanization_level", "light"
+            ),
+        )
         anti_drift_details = {
             **anti_drift_details,
             **goal_lock_details,
@@ -3906,6 +4312,7 @@ class NovelGeneratorAgent:
             "warning_issues": warning_issues,
             "semantic_review": semantic_review,
             "writer_rule_warnings": writer_rule_warnings,
+            "style_review": style_review,
             "chapter_intent_contract": dict(
                 (context or {}).get("chapter_intent_contract", {}) or {}
             ),
@@ -3995,6 +4402,11 @@ class NovelGeneratorAgent:
             for suffix in ("也", "已", "曾", "又", "再"):
                 if subject.endswith(suffix):
                     subject = subject[: -len(suffix)]
+            for suffix in ("缓缓", "慢慢", "渐渐", "逐渐", "轻轻", "微微"):
+                if subject.endswith(suffix):
+                    subject = subject[: -len(suffix)]
+            if subject in WORLD_FACT_GENERIC_SUBJECTS:
+                continue
             if subject and subject not in subjects:
                 subjects.append(subject)
         return subjects[:6]

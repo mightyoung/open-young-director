@@ -50,6 +50,35 @@ def test_deepseek_client_raises_on_api_error():
             client.generate([{"role": "user", "content": "test"}])
 
 
+def test_deepseek_client_formats_insufficient_balance_error():
+    client = DeepSeekClient(api_key="test-key")
+    mock_response = Mock()
+    mock_response.status_code = 402
+    mock_response.text = (
+        '{"error":{"message":"Insufficient Balance","type":"unknown_error",'
+        '"param":null,"code":"invalid_request_error"}}'
+    )
+    mock_response.json.return_value = {
+        "error": {
+            "message": "Insufficient Balance",
+            "type": "unknown_error",
+            "code": "invalid_request_error",
+        }
+    }
+
+    with patch("llm.deepseek_client.httpx.Client") as client_cls:
+        http_client = client_cls.return_value.__enter__.return_value
+        http_client.post.return_value = mock_response
+
+        with pytest.raises(RuntimeError) as exc_info:
+            client.generate([{"role": "user", "content": "test"}])
+
+    message = str(exc_info.value)
+    assert "DeepSeek API error (402)" in message
+    assert "Insufficient Balance" in message
+    assert "invalid_request_error" in message
+
+
 def test_deepseek_client_retries_on_empty_content():
     client = DeepSeekClient(api_key="test-key", empty_content_retries=2, retry_delay=0)
 

@@ -146,3 +146,177 @@ def test_build_case_from_review_payload_preserves_global_provenance():
         "goal_lock_false_inheritance",
     ]
     assert "开篇承接上一章尾部线索" in case.fix
+
+
+def test_promote_case_updates_status_and_preserves_retrieval_gate(tmp_path):
+    pool = GlobalExperiencePool(tmp_path)
+    pool.append_case(
+        ExperienceCase(
+            id="exp_captured_bridge",
+            status="captured",
+            stage="chapter.review",
+            issue_types=["scene_or_timeline_disconnect"],
+            lesson="开篇必须承接上一章尾部线索。",
+            experience_kind=EXPERIENCE_KIND_GENERATION,
+        )
+    )
+
+    assert (
+        pool.retrieve(
+            stage="chapter.review",
+            issue_types=["scene_or_timeline_disconnect"],
+            query_terms=["上一章"],
+            experience_kinds=[EXPERIENCE_KIND_GENERATION],
+        )
+        == []
+    )
+
+    promoted = pool.promote_case(
+        "exp_captured_bridge",
+        evidence_append={"event": "chapter_saved_after_revision"},
+    )
+
+    assert promoted is not None
+    assert promoted.status == "verified"
+    reloaded = pool.get_case("exp_captured_bridge")
+    assert reloaded is not None
+    assert reloaded.status == "verified"
+    assert reloaded.evidence["events"][0]["event"] == "chapter_saved_after_revision"
+    retrieved = pool.retrieve(
+        stage="chapter.review",
+        issue_types=["scene_or_timeline_disconnect"],
+        query_terms=["上一章"],
+        experience_kinds=[EXPERIENCE_KIND_GENERATION],
+    )
+    assert [case.id for _, case in retrieved] == ["exp_captured_bridge"]
+
+
+def test_record_usage_updates_case_counters(tmp_path):
+    pool = GlobalExperiencePool(tmp_path)
+    pool.append_case(
+        ExperienceCase(
+            id="exp_usage",
+            status="verified",
+            stage="chapter.review",
+            issue_types=["goal_lock_false_inheritance"],
+            lesson="目标锁必须在正文动作链里推进。",
+            experience_kind=EXPERIENCE_KIND_GENERATION,
+        )
+    )
+
+    pool.record_usage(
+        experience_ids=["exp_usage", "exp_usage"],
+        project_id="project-a",
+        run_id="run-a",
+        stage="chapter.save",
+        chapter_number=3,
+        outcome="helped",
+    )
+
+    reloaded = pool.get_case("exp_usage")
+    assert reloaded is not None
+    assert reloaded.usage_count == 1
+    assert reloaded.helped_count == 1
+    assert reloaded.hurt_count == 0
+    assert pool.usage_path.exists()
+
+
+def test_record_usage_ignores_empty_project_or_run_context(tmp_path):
+    pool = GlobalExperiencePool(tmp_path)
+    pool.append_case(
+        ExperienceCase(
+            id="exp_usage",
+            status="verified",
+            stage="chapter.review",
+            issue_types=["goal_lock_false_inheritance"],
+            lesson="目标锁必须在正文动作链里推进。",
+            experience_kind=EXPERIENCE_KIND_GENERATION,
+        )
+    )
+
+    pool.record_usage(
+        experience_ids=["exp_usage"],
+        project_id="",
+        run_id="",
+        stage="chapter.review",
+        chapter_number=4,
+        outcome="loaded",
+    )
+
+    reloaded = pool.get_case("exp_usage")
+    assert reloaded is not None
+    assert reloaded.usage_count == 0
+    assert not pool.usage_path.exists()
+
+
+def test_record_usage_preserves_unrelated_cases_during_rewrite(tmp_path):
+    pool = GlobalExperiencePool(tmp_path)
+    pool.append_case(
+        ExperienceCase(
+            id="exp_usage_target",
+            status="verified",
+            stage="chapter.review",
+            issue_types=["goal_lock_false_inheritance"],
+            lesson="目标锁必须在正文动作链里推进。",
+            experience_kind=EXPERIENCE_KIND_GENERATION,
+        )
+    )
+    pool.append_case(
+        ExperienceCase(
+            id="exp_usage_unrelated",
+            status="captured",
+            stage="chapter.review",
+            issue_types=["missing_key_events"],
+            lesson="关键事件必须写成场景行动。",
+            experience_kind=EXPERIENCE_KIND_GENERATION,
+        )
+    )
+
+    pool.record_usage(
+        experience_ids=["exp_usage_target"],
+        project_id="project-a",
+        run_id="run-a",
+        stage="chapter.save",
+        chapter_number=3,
+        outcome="helped",
+    )
+
+    assert pool.get_case("exp_usage_target").usage_count == 1
+    unrelated = pool.get_case("exp_usage_unrelated")
+    assert unrelated is not None
+    assert unrelated.status == "captured"
+
+
+def test_hurt_usage_lowers_retrieval_score(tmp_path):
+    pool = GlobalExperiencePool(tmp_path)
+    pool.append_case(
+        ExperienceCase(
+            id="exp_helped",
+            status="verified",
+            stage="chapter.review",
+            issue_types=["missing_key_events"],
+            lesson="关键事件必须写成场景行动。",
+            experience_kind=EXPERIENCE_KIND_GENERATION,
+            helped_count=2,
+        )
+    )
+    pool.append_case(
+        ExperienceCase(
+            id="exp_hurt",
+            status="verified",
+            stage="chapter.review",
+            issue_types=["missing_key_events"],
+            lesson="关键事件必须写成场景行动。",
+            experience_kind=EXPERIENCE_KIND_GENERATION,
+            hurt_count=2,
+        )
+    )
+
+    retrieved = pool.retrieve(
+        stage="chapter.review",
+        issue_types=["missing_key_events"],
+        query_terms=["关键事件"],
+        experience_kinds=[EXPERIENCE_KIND_GENERATION],
+    )
+
+    assert [case.id for _, case in retrieved][:2] == ["exp_helped", "exp_hurt"]

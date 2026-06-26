@@ -659,6 +659,20 @@ def test_pause_for_invalid_chapter_preserves_anti_drift_review_details(
                     "anchor": "禁词表",
                 }
             ],
+            "style_review": {
+                "warning_only": True,
+                "humanization_level": "light",
+                "score": 0.92,
+                "issue_groups": [
+                    {
+                        "category": "banned_wording",
+                        "matches_count": 1,
+                        "samples": ["突然"],
+                        "rewrite_hint": "删掉空泛垫话。",
+                    }
+                ],
+                "rewrite_targets": [],
+            },
             "anti_drift_details": {
                 "goal_lock": "守住宗门祖地",
                 "budget": 1,
@@ -710,6 +724,8 @@ def test_pause_for_invalid_chapter_preserves_anti_drift_review_details(
         pending["review_payload"]["writer_rule_warnings"][0]["category"]
         == "banned_wording"
     )
+    assert pending["review_payload"]["style_review"]["warning_only"] is True
+    assert pending["review_payload"]["style_review"]["issue_groups"][0]["category"] == "banned_wording"
     assert (
         pending["review_payload"]["chapter_intent_contract"]["planned_action"]
         == "韩林必须先稳住祖地防线。"

@@ -1154,6 +1154,26 @@ def test_chapter_review_helpers_surface_structured_evidence():
                 "anchor": "禁词表",
             }
         ],
+        "style_review": {
+            "warning_only": True,
+            "humanization_level": "standard",
+            "score": 0.87,
+            "issue_groups": [
+                {
+                    "category": "banned_wording",
+                    "matches_count": 2,
+                    "samples": ["突然", "非常"],
+                    "rewrite_hint": "删掉垫话，改用具体动作。",
+                }
+            ],
+            "rewrite_targets": [
+                {
+                    "category": "banned_wording",
+                    "samples": ["突然"],
+                    "rewrite_hint": "删掉垫话，改用具体动作。",
+                }
+            ],
+        },
         "rewrite_attempted": True,
         "rewrite_succeeded": False,
         "rewrite_history": [
@@ -1216,7 +1236,8 @@ def test_chapter_review_helpers_surface_structured_evidence():
     assert "attempt=1" in structured["重写尝试"]
     assert "下一步: 自动整章重写后仍未通过质量门" in structured["重写尝试"]
     assert "生成前意图检查已重写章节大纲" in structured["语义告警"]
-    assert "banned_wording" in structured["写作规则告警"]
+    assert "banned_wording" in structured["文风告警（不阻断）"]
+    assert "命中 2 次" in structured["文风告警（不阻断）"]
     assert "当前目标锁: 守住宗门祖地" in evidence["目标锁证据"]
     assert "上一场景锚点: 白昼环控制室" in evidence["剧情状态图输入"]
     assert "未对齐片段" in evidence["目标锁证据"]

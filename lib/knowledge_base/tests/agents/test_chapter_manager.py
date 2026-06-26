@@ -4,13 +4,13 @@ from datetime import datetime
 import json
 from pathlib import Path
 
+import young_writer.agents.chapter_manager as chapter_manager_module
 from young_writer.agents.chapter_manager import (
     ChapterContent,
     ChapterManager,
     ChapterMetadata,
     ChapterPlotSummary,
 )
-import young_writer.agents.chapter_manager as chapter_manager_module
 
 
 class TestChapterManagerInit:
@@ -242,6 +242,50 @@ class TestBuildContextStoryGraph:
         assert "剧情状态图摘要:" in str(context)
         assert "上一场景锚点: 白昼环控制室" in str(context)
 
+    def test_build_context_includes_narrative_state_packet_summary(
+        self, temp_novels_dir, monkeypatch
+    ):
+        project_id = "test_project_narrative_state_context"
+        manager = ChapterManager(project_id, base_dir=str(temp_novels_dir))
+
+        monkeypatch.setattr(
+            chapter_manager_module,
+            "build_narrative_state_packet",
+            lambda *_args, **_kwargs: {
+                "schema_version": "narrative_state_packet.v1",
+                "source_chapter_number": 3,
+                "timeline": {"physical_location": "白昼环控制室"},
+                "unresolved_goals": ["进入废弃港"],
+            },
+        )
+        monkeypatch.setattr(
+            chapter_manager_module,
+            "render_narrative_state_packet_summary",
+            lambda _packet: "状态来源: 截至第3章\n未解决事项: 进入废弃港",
+        )
+
+        context = manager.build_context(4)
+
+        assert context["narrative_state_packet"]["source_chapter_number"] == 3
+        assert context["narrative_state_summary"].startswith("状态来源")
+        assert "持久叙事状态:" in str(context)
+        assert "未解决事项: 进入废弃港" in str(context)
+
+    def test_build_context_ignores_corrupt_narrative_state_sidecar(
+        self, temp_novels_dir
+    ):
+        project_id = "test_project_corrupt_narrative_state"
+        manager = ChapterManager(project_id, base_dir=str(temp_novels_dir))
+        state_dir = manager.novel_dir / "narrative_state"
+        state_dir.mkdir(parents=True, exist_ok=True)
+        (state_dir / "current.json").write_text("{not-json", encoding="utf-8")
+
+        context = manager.build_context(2)
+
+        assert context["narrative_state_packet"] == {}
+        assert context["narrative_state_summary"] == ""
+        assert "持久叙事状态:" not in str(context)
+
     def test_get_chapter_list_returns_metadata(self, temp_novels_dir):
         """Test that chapter list returns ChapterMetadata objects."""
         project_id = "test_project_012"
@@ -360,6 +404,73 @@ class TestBuildContext:
         assert context["longform_memory"][0]["artifact_checksum"] == "abc123"
         assert "长程记忆证据" in context
         assert "祖地封印松动" in context
+
+    def test_build_context_deduplicates_longform_memory_covered_by_narrative_state(
+        self, temp_novels_dir, monkeypatch
+    ):
+        project_id = "test_project_memory_context_dedupe"
+
+        class FakeMemoryStore:
+            def retrieve(self, **_kwargs):
+                return [
+                    {
+                        "memory_type": "plot_anchor",
+                        "chapter_number": 2,
+                        "summary": "进入废弃港",
+                        "content_excerpt": "进入废弃港",
+                        "artifact_path": str(temp_novels_dir / "ch002.md"),
+                        "artifact_checksum": "abc123",
+                        "score": 1.0,
+                    },
+                    {
+                        "memory_type": "plot_anchor",
+                        "chapter_number": 1,
+                        "summary": "发现暗门",
+                        "content_excerpt": "发现暗门",
+                        "artifact_path": str(temp_novels_dir / "ch001.md"),
+                        "artifact_checksum": "def456",
+                        "score": 0.8,
+                    },
+                ]
+
+        monkeypatch.setattr(
+            chapter_manager_module,
+            "build_chapter_graph_packet",
+            lambda *_args, **_kwargs: {"goal_lock": "找到信号源"},
+        )
+        monkeypatch.setattr(
+            chapter_manager_module,
+            "render_chapter_graph_packet_summary",
+            lambda _packet: "主线目标锁: 找到信号源",
+        )
+        monkeypatch.setattr(
+            chapter_manager_module,
+            "build_narrative_state_packet",
+            lambda *_args, **_kwargs: {"recent_key_events": ["进入废弃港"]},
+        )
+        monkeypatch.setattr(
+            chapter_manager_module,
+            "render_narrative_state_packet_summary",
+            lambda _packet: "近期关键事件: 进入废弃港",
+        )
+
+        manager = ChapterManager(
+            project_id,
+            base_dir=str(temp_novels_dir),
+            longform_memory_store=FakeMemoryStore(),
+        )
+
+        context = manager.build_context(4)
+
+        assert context["memory_context_packet"]["longform_evidence"][0]["summary"] == (
+            "发现暗门"
+        )
+        assert context["memory_context_packet"]["suppressed_longform_duplicates"][0][
+            "summary"
+        ] == "进入废弃港"
+        assert str(context).count("进入废弃港") == 1
+        assert "发现暗门" in context
+        assert "长程记忆重复证据已合并: 第2章 plot_anchor" in context
 
 
 class TestExportToText:
