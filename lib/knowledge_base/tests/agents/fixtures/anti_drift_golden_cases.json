@@ -1,0 +1,105 @@
+[
+  {
+    "name": "goal_lock_false_inheritance_realistic_case",
+    "chapter_number": 38,
+    "previous_summary": "上一章末尾，韩林决定死守祖地北侧缺口，先稳住宗门祖地的防线。",
+    "previous_content": "韩林站在祖地残破的石阶上，亲手调换守阵次序，要求所有人先守住宗门祖地的北侧缺口。他很清楚，接下来的章节都必须围绕祖地防线继续推进。",
+    "current_content": "韩林仍站在祖地北侧缺口前，只是提到必须守住宗门祖地。可他始终没有布置新的守阵动作，大半篇幅都耗在长老们彼此试探、回忆旧怨和讨论无关礼制上，真正的防线缺口反而无人处理。",
+    "plot_summary": {
+      "l2_brief_summary": "韩林为了守住宗门祖地继续推进防线。"
+    },
+    "context_overrides": {
+      "chapter_number": 38,
+      "total_chapters": 60,
+      "volume_guidance_payload": {
+        "goal_lock": "守住宗门祖地",
+        "new_setting_budget": "1"
+      }
+    },
+    "expected_invalid": true,
+    "expected_issue_types": [
+      "goal_lock_false_inheritance"
+    ],
+    "expected_rewrite_actions": [
+      "rewrite_body_progression",
+      "demote_side_track",
+      "rebuild_goal_lock_chain"
+    ]
+  },
+  {
+    "name": "structure_drift_risk_realistic_case",
+    "chapter_number": 42,
+    "previous_summary": "上一章结束时，韩林已经确认本卷唯一优先级是守住宗门祖地，所有动作都必须围绕祖地防线展开。",
+    "previous_content": "祖地北侧的阵眼正在崩裂，韩林命所有弟子收缩阵线，只保留能直接支撑祖地防御的动作。他很清楚，这一卷不能再被新设定和旁枝议题拖走。",
+    "current_content": "传说中的远古秘境忽然现世，引得祖地外的修士一片震动。又一神秘体系在裂口深处显露轮廓，连关于古族血脉的新规则也被当场翻出来反复解读。韩林跟着众人一路讨论秘境源流、祭纹来历和古族谱系，却迟迟没有把这些新发现桥接回守住宗门祖地这件事。",
+    "context_overrides": {
+      "chapter_number": 42,
+      "total_chapters": 60,
+      "volume_guidance_payload": {
+        "goal_lock": "守住宗门祖地",
+        "new_setting_budget": "1"
+      }
+    },
+    "expected_invalid": true,
+    "expected_issue_types": [
+      "structure_drift_risk"
+    ],
+    "expected_rewrite_actions": [
+      "advance_goal_lock",
+      "trim_new_setting",
+      "enforce_budget",
+      "bridge_to_goal_lock"
+    ]
+  },
+  {
+    "name": "missing_key_events_realistic_case",
+    "chapter_number": 19,
+    "previous_summary": "上一章末尾，韩林在演武场上被叶尘当众挑衅，决定在本章正面反击。",
+    "previous_content": "演武场上的弟子越聚越多，叶尘故意当众逼韩林出手。韩林没有立刻回应，只说下一刻就会在众人面前把这笔账讨回来。",
+    "current_content": "韩林走进演武场后，只是冷眼看着四周的议论声扩散。叶尘几次出言相激，他也只是与几位长老短暂周旋，整章一直没有真正出手，更没有出现当众压下叶尘气焰的关键冲突。",
+    "metadata_overrides": {
+      "key_events": [
+        "当众击败叶尘"
+      ],
+      "outline_summary": "韩林在演武场当众击败叶尘，完成正面反击。"
+    },
+    "expected_invalid": true,
+    "expected_issue_types": [
+      "missing_key_events"
+    ],
+    "expected_rewrite_actions": [
+      "restore_outline_event"
+    ]
+  },
+  {
+    "name": "world_fact_violation_realistic_case",
+    "chapter_number": 27,
+    "previous_summary": "上一章柳如烟身亡，婚书也碎裂消散。",
+    "previous_content": "阵火吞没祭坛前，柳如烟替众人挡下最后一击，当场倒在火焰里。那份婚书也随之碎裂，被火星卷得无影无踪，众人亲眼看着她再无气息。",
+    "current_content": "柳如烟重新现身，对着众人高声说道自己早已看穿这一切。她甚至亲手拿出那份本该已经碎裂消散的婚书，当众翻给所有人看，仿佛上一章的死亡和焚毁从未发生。",
+    "expected_invalid": true,
+    "expected_issue_types": [
+      "scene_or_timeline_disconnect",
+      "world_fact_violation"
+    ],
+    "expected_rewrite_actions": [
+      "reconcile_canon_fact"
+    ]
+  },
+  {
+    "name": "scene_or_timeline_disconnect_realistic_case",
+    "chapter_number": 24,
+    "previous_summary": "上一章深夜，韩林刚在北城药坊安顿好昏迷的柳如烟，准备天亮前审问来客。",
+    "previous_content": "北城药坊里只剩下一盏孤灯，韩林按住伤口，把昏迷的柳如烟藏到药柜后。门外急促的敲门声刚停，他还来不及判断来客身份，整夜的紧张气氛仍悬在屋里。",
+    "current_content": "三天后，韩林已经独自站在山门广场上，像是中间什么都没有发生。柳如烟不见踪影，来客也再没人提起，他只是平静地听众弟子汇报近况，整章都没有解释药坊里那一夜是如何收束、又为何突然跳到山门这一刻。",
+    "expected_invalid": true,
+    "expected_issue_types": [
+      "scene_or_timeline_disconnect"
+    ],
+    "expected_rewrite_actions": [
+      "anchor_time_jump",
+      "restore_carryover",
+      "restore_causality"
+    ]
+  }
+]
