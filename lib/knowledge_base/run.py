@@ -12,7 +12,6 @@ Usage:
 
 import argparse
 import logging
-import os
 import sys
 from pathlib import Path
 from typing import Optional
@@ -23,15 +22,13 @@ _script_dir = Path(__file__).parent.absolute()
 if str(_script_dir) not in sys.path:
     sys.path.insert(0, str(_script_dir))
 
-from config import get_config, CrawlerConfig, NovelTarget
+from config import get_config, CrawlerConfig
 from crawlers import (
     get_crawler,
     list_supported_platforms,
-    BaseCrawler,
-    NovelInfo,
 )
 from storage import NovelStorage, ChapterCache
-from research import NovelResearcher, get_researcher
+from research import get_researcher
 
 
 def setup_logging(level: str = "INFO") -> logging.Logger:

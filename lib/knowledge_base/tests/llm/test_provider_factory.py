@@ -1,6 +1,8 @@
 """Tests for configurable provider factory."""
 
-from llm.provider_factory import build_llm_client
+import pytest
+
+from young_writer.llm.provider_factory import build_llm_client
 
 
 def test_build_doubao_client_normalizes_messages(monkeypatch):
@@ -51,35 +53,71 @@ def test_build_doubao_client_normalizes_messages(monkeypatch):
     assert captured["call"]["system"] == "系统提示"
     assert captured["call"]["temperature"] == 0.2
     assert captured["call"]["max_tokens"] == 512
+def test_build_deepseek_client(monkeypatch):
+    captured = {}
 
-
-def test_build_minimax_client_supports_helper_methods(monkeypatch):
-    class FakeMiniMaxClient:
+    class FakeDeepSeekClient:
         def __init__(self, **kwargs):
+            captured["init"] = kwargs
             self.model = kwargs["model"]
 
         def generate(self, messages, temperature=None, max_tokens=None):
-            return f"{messages[0]['content']}|{temperature}|{max_tokens}"
+            captured["call"] = {
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            }
+            return "deepseek-ok"
 
-    monkeypatch.setattr("llm.provider_factory.MiniMaxClient", FakeMiniMaxClient)
+    monkeypatch.setattr("llm.provider_factory.DeepSeekClient", FakeDeepSeekClient)
 
     client = build_llm_client(
-        "minimax",
+        "deepseek",
         {
             "api_key": "demo-key",
-            "base_url": "https://api.example.com/anthropic",
-            "model_name": "MiniMax-M2.5",
-            "temperature": 0.9,
-            "max_tokens": 8192,
-            "system_prompt": "",
+            "base_url": "https://api.deepseek.com",
+            "model_name": "deepseek-v4-flash",
+            "temperature": 0.6,
+            "max_tokens": 4096,
         },
     )
 
-    result = client.generate_scene_visualization(
-        scene_setting="古城雨夜",
-        time_of_day="夜晚",
-        mood="压抑",
-        key_elements=["旧城门", "火把"],
+    result = client.generate(
+        [{"role": "user", "content": "测试"}],
+        temperature=0.2,
+        max_tokens=512,
     )
 
-    assert "古城雨夜" in result
+    assert result == "deepseek-ok"
+    assert client.provider_name == "deepseek"
+    assert client.model_name == "deepseek-v4-flash"
+    assert captured["init"]["base_url"] == "https://api.deepseek.com"
+    assert captured["call"]["messages"][0]["content"] == "测试"
+
+
+def test_selected_provider_missing_credentials_fails_fast(monkeypatch):
+    monkeypatch.delenv("DOUBAO_API_KEY", raising=False)
+
+    with pytest.raises(ValueError, match="Doubao provider requires DOUBAO_API_KEY"):
+        build_llm_client(
+            "doubao",
+            {
+                "api_key": "",
+                "api_host": "https://ark.example.com/api/v3",
+                "model_name": "doubao-text-pro",
+            },
+        )
+
+
+def test_deepseek_provider_missing_credentials_fails_fast(monkeypatch):
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+
+    with pytest.raises(ValueError, match="DeepSeek provider requires DEEPSEEK_API_KEY"):
+        build_llm_client(
+            "deepseek",
+            {
+                "api_key": "",
+                "base_url": "https://api.deepseek.com",
+                "model_name": "deepseek-v4-flash",
+            },
+        )

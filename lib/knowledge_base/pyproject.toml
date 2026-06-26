@@ -1,13 +1,12 @@
 [project]
-name = "knowledge_base"
+name = "young_writer"
 dynamic = ["version"]
 description = "Novel knowledge base with multi-agent narrative generation"
 authors = [
     { name = "young-writer" }
 ]
-requires-python = ">=3.10, <3.14"
+requires-python = ">=3.10, <3.15"
 dependencies = [
-    "crewai",
     "chromadb>=0.4.0",
     "redis>=5.0.0",
     "psycopg2-binary>=2.9.0",
@@ -20,7 +19,27 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.version]
-path = "__init__.py"
+path = "young_writer/__init__.py"
+
+[tool.hatch.build]
+exclude = [
+    "young_writer/config/**",
+    "young_writer/runtime/**",
+]
 
 [tool.hatch.build.targets.wheel]
-packages = ["knowledge_base"]
+packages = [
+    "young_writer",
+    "knowledge_base",
+    "agents",
+    "consistency",
+    "consumers",
+    "crawlers",
+    "evaluation",
+    "llm",
+    "media",
+    "rl",
+    "scene_db",
+    "services",
+    "triggers",
+]

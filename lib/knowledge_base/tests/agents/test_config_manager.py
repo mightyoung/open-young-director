@@ -1,15 +1,34 @@
 """Tests for ConfigManager."""
 
 import json
+from pathlib import Path
 
 import pytest
 
-from agents.config_manager import (
+from young_writer.agents.config_manager import (
     ConfigManager,
     GenerationConfig,
     LLMProviderConfig,
     NovelProject,
 )
+from young_writer.agents.outline_loader import OutlineLoader
+from young_writer.services.project_assets import parse_project_asset_bundle
+from young_writer.services.story_input import STORY_INPUT_DIRNAME
+
+COMPLETE_CHAPTER_ARTIFACT = """# 第1章
+
+> 第1章 | 字数: 1200 | 生成时间: 2026-06-03T00:00:00
+
+**本章概要**: 沈夜返回空间城。
+
+**关键事件**: 无
+
+---
+
+正文。
+
+*(本章完)*
+"""
 
 
 @pytest.fixture
@@ -27,28 +46,6 @@ class TestConfigManagerInit:
 
         assert manager.config_dir == temp_config_dir
         assert manager.config_dir.exists()
-
-    def test_init_loads_fanqie_config(self, temp_config_dir, mock_env_vars):
-        """Test that initialization loads fanqie config."""
-        # Pre-create fanqie config file
-        fanqie_data = {
-            "book_id": "test_book_123",
-            "volume_id": "test_vol_456",
-            "author_name": "测试作者",
-            "cookies_path": "./cookies/fanqie_cookies.json",
-            "upload_delay_seconds": 10,
-            "retry_times": 5,
-            "enabled": True,
-        }
-        fanqie_file = temp_config_dir / "fanqie.json"
-        fanqie_file.write_text(json.dumps(fanqie_data, ensure_ascii=False), encoding="utf-8")
-
-        manager = ConfigManager(config_dir=str(temp_config_dir))
-
-        assert manager.fanqie.book_id == "test_book_123"
-        assert manager.fanqie.upload_delay_seconds == 10
-        assert manager.fanqie.enabled is True
-
     def test_init_loads_generation_config(self, temp_config_dir, mock_env_vars):
         """Test that initialization loads generation config."""
         # Pre-create generation config file
@@ -151,8 +148,66 @@ class TestCreateProject:
             outline="大纲",
         )
 
-        # output_dir template is set (expanded when set_current_project is called)
-        assert manager.generation.output_dir is not None
+        output_dir = manager.generation.output_dir
+        assert output_dir is not None
+        assert str(temp_config_dir.parent / "runtime" / "projects") in output_dir
+        assert (temp_config_dir.parent / "runtime" / "projects").exists()
+        assert "目录测试" in output_dir
+        story_input_dir = Path(output_dir) / STORY_INPUT_DIRNAME
+        assert story_input_dir.exists()
+        assert (story_input_dir / "chapter_plans.json").exists()
+        assert (story_input_dir / "project_bible.json").exists()
+
+    def test_create_project_uses_imported_project_assets(
+        self, temp_config_dir, mock_env_vars
+    ):
+        """Test imported schema assets seed project fields and metadata."""
+        manager = ConfigManager(config_dir=str(temp_config_dir))
+        assets = parse_project_asset_bundle(
+            {
+                "outline": {"premise": "导入大纲主线", "major_arcs": ["第一卷破局"]},
+                "world_setting": {
+                    "summary": "导入世界观",
+                    "rules": ["规则一不可违背"],
+                },
+                "characters": [{"name": "沈舟", "role": "主角"}],
+            }
+        )
+
+        project = manager.create_project(
+            title="导入测试",
+            author="作者",
+            genre="科幻",
+            outline="手填大纲",
+            world_setting="手填世界观",
+            character_intro="手填角色",
+            project_assets=assets,
+        )
+
+        assert "导入大纲主线" in project.outline
+        assert "规则一不可违背" in project.world_setting
+        assert "沈舟: 主角" in project.character_intro
+        assert project.metadata["project_assets"]["outline"]["premise"] == "导入大纲主线"
+
+    def test_existing_legacy_project_directory_is_preserved(
+        self, temp_config_dir, mock_env_vars
+    ):
+        """Test loaded projects preserve the legacy novels directory."""
+        manager = ConfigManager(config_dir=str(temp_config_dir))
+        legacy_project_dir = temp_config_dir.parent / "novels" / "旧项目_legacy001"
+        legacy_project_dir.mkdir(parents=True)
+
+        project = NovelProject(
+            id="legacy001",
+            title="旧项目",
+            author="作者",
+            genre="类型",
+            outline="大纲",
+        )
+
+        manager.set_current_project(project)
+
+        assert manager.generation.output_dir == str(legacy_project_dir.resolve())
 
     def test_create_project_generates_id(self, temp_config_dir, mock_env_vars):
         """Test that project ID is generated correctly."""
@@ -169,6 +224,185 @@ class TestCreateProject:
         assert project1.id != project2.id
         # IDs should be 12 characters (MD5 hash truncated)
         assert len(project1.id) == 12
+
+    def test_get_project_summary_recovers_progress_from_chapter_files(
+        self, temp_config_dir, mock_env_vars
+    ):
+        manager = ConfigManager(config_dir=str(temp_config_dir))
+        project = manager.create_project(
+            title="进度恢复测试",
+            author="作者",
+            genre="科幻",
+            outline="大纲",
+            world_setting="世界",
+            character_intro="沈夜：主角",
+            total_chapters=12,
+        )
+
+        chapters_dir = Path(manager.generation.output_dir) / "chapters"
+        chapters_dir.mkdir(parents=True, exist_ok=True)
+        (chapters_dir / "ch001_第1章.md").write_text(
+            COMPLETE_CHAPTER_ARTIFACT, encoding="utf-8"
+        )
+        (chapters_dir / "ch007_第7章.md").write_text(
+            COMPLETE_CHAPTER_ARTIFACT.replace("# 第1章", "# 第7章").replace(
+                "> 第1章 |", "> 第7章 |"
+            ),
+            encoding="utf-8",
+        )
+        manager.current_project.current_chapter = 0
+
+        summary = manager.get_project_summary()
+
+        assert summary["current_chapter"] == 7
+        assert summary["high_watermark_chapter"] == 7
+        assert summary["successful_chapter_count"] == 2
+        assert summary["contiguous_completed_chapter"] == 1
+        assert summary["progress_percent"] == pytest.approx(2 / 12 * 100)
+        assert manager.current_project.current_chapter == 0
+        reloaded = json.loads(
+            (temp_config_dir / f"project_{project.id}.json").read_text(encoding="utf-8")
+        )
+        assert reloaded["current_chapter"] == 0
+
+    def test_get_project_summary_ignores_incomplete_chapter_files(
+        self, temp_config_dir, mock_env_vars
+    ):
+        manager = ConfigManager(config_dir=str(temp_config_dir))
+        project = manager.create_project(
+            title="进度恢复测试",
+            author="作者",
+            genre="科幻",
+            outline="大纲",
+            total_chapters=12,
+        )
+
+        chapters_dir = Path(manager.generation.output_dir) / "chapters"
+        chapters_dir.mkdir(parents=True, exist_ok=True)
+        (chapters_dir / "ch001_第1章.md").write_text(
+            COMPLETE_CHAPTER_ARTIFACT, encoding="utf-8"
+        )
+        (chapters_dir / "ch007_第7章.md").write_text("# 第7章\n", encoding="utf-8")
+        manager.current_project.current_chapter = 0
+
+        summary = manager.get_project_summary()
+
+        assert summary["current_chapter"] == 1
+        assert summary["successful_chapter_count"] == 1
+        assert summary["contiguous_completed_chapter"] == 1
+        assert manager.current_project.current_chapter == 0
+        reloaded = json.loads(
+            (temp_config_dir / f"project_{project.id}.json").read_text(encoding="utf-8")
+        )
+        assert reloaded["current_chapter"] == 0
+
+    def test_create_project_materializes_seed_outline_files(
+        self, temp_config_dir, mock_env_vars
+    ):
+        manager = ConfigManager(config_dir=str(temp_config_dir))
+
+        project = manager.create_project(
+            title="深渊归航",
+            author="作者",
+            genre="科幻修真",
+            outline="沈夜带着异质核心归来。调查母舰失踪真相。拯救濒临坠毁的空间城。",
+            world_setting="世界以星舰航道和空间城为核心秩序。深渊航道是危险禁区。",
+            character_intro="沈夜：领航员。顾砚青：工程师。闻岚：猎航队指挥官。",
+            total_chapters=3,
+        )
+
+        outline_dir = Path(manager.generation.output_dir) / "outline"
+        outline_file = outline_dir / "第1卷详细章节规划.md"
+        assert outline_file.exists()
+
+        loader = OutlineLoader(str(outline_dir))
+        chapter_outline = loader.get_chapter_outline(1)
+
+        assert chapter_outline is not None
+        assert chapter_outline["title"] == "第1章"
+        assert "沈夜带着异质核心归来" in chapter_outline["summary"]
+        assert chapter_outline["realm"] == "科幻修真"
+        project_file = temp_config_dir / f"project_{project.id}.json"
+        assert project_file.exists()
+
+    def test_outline_loader_prefers_structured_chapter_plan_json(
+        self, temp_config_dir, mock_env_vars
+    ):
+        manager = ConfigManager(config_dir=str(temp_config_dir))
+        manager.create_project(
+            title="结构化计划测试",
+            author="作者",
+            genre="科幻修真",
+            outline="沈夜调查深渊航道真相。",
+            world_setting="空间城与深渊航道构成主要舞台。",
+            character_intro="沈夜：主角。顾砚青：工程师。",
+            total_chapters=3,
+        )
+
+        output_dir = Path(manager.generation.output_dir)
+        chapter_plans_file = output_dir / STORY_INPUT_DIRNAME / "chapter_plans.json"
+        chapter_plans = json.loads(chapter_plans_file.read_text(encoding="utf-8"))
+        chapter_plans[0]["title"] = "第1章：结构化标题"
+        chapter_plans[0]["summary"] = "结构化计划要求沈夜先回到空间城再追查异质核心。"
+        chapter_plans_file.write_text(
+            json.dumps(chapter_plans, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+        loader = OutlineLoader(str(output_dir / "outline"))
+        outline = loader.get_chapter_outline(1)
+
+        assert outline is not None
+        assert outline["title"] == "第1章：结构化标题"
+        assert "沈夜先回到空间城" in outline["summary"]
+
+    def test_seed_outline_materialization_ignores_non_plan_markdown(
+        self, temp_config_dir, mock_env_vars
+    ):
+        manager = ConfigManager(config_dir=str(temp_config_dir))
+
+        project = manager.create_project(
+            title="旁路文档测试",
+            author="作者",
+            genre="科幻修真",
+            outline="沈夜归来。",
+            world_setting="空间城。",
+            character_intro="沈夜：主角",
+            total_chapters=4,
+        )
+
+        outline_dir = Path(manager.generation.output_dir) / "outline"
+        for file in outline_dir.glob("第*卷详细章节规划.md"):
+            file.unlink()
+        (outline_dir / "README.md").write_text("notes", encoding="utf-8")
+
+        manager.set_current_project(project)
+
+        assert (outline_dir / "第1卷详细章节规划.md").exists()
+
+    def test_seed_outline_materialization_regenerates_plan_markdown_from_canonical_json(
+        self, temp_config_dir, mock_env_vars
+    ):
+        manager = ConfigManager(config_dir=str(temp_config_dir))
+        project = manager.create_project(
+            title="canonical export",
+            author="作者",
+            genre="科幻修真",
+            outline="沈夜守住空间城，再调查母舰失踪真相。",
+            world_setting="空间城与深渊航道构成主要舞台。",
+            character_intro="沈夜：主角。顾砚青：工程师。",
+            total_chapters=3,
+        )
+
+        outline_dir = Path(manager.generation.output_dir) / "outline"
+        outline_file = outline_dir / "第1卷详细章节规划.md"
+        outline_file.write_text("人为修改的 markdown 计划", encoding="utf-8")
+
+        manager.set_current_project(project)
+
+        refreshed = outline_file.read_text(encoding="utf-8")
+        assert "人为修改" not in refreshed
+        assert "| 001 | 第1章 |" in refreshed
 
     def test_create_project_auto_fills_missing_fields(self, temp_config_dir, mock_env_vars):
         """Test that empty project fields are auto-generated."""
@@ -339,42 +573,6 @@ class TestVolumeConfig:
         volumes = config.plan_volumes(total_chapters=300)
 
         assert len(volumes) == 6
-
-
-class TestFanqieConfig:
-    """Test Fanqie publishing configuration."""
-
-    def test_configure_fanqie(self, temp_config_dir, mock_env_vars):
-        """Test configuring Fanqie publishing."""
-        manager = ConfigManager(config_dir=str(temp_config_dir))
-
-        manager.configure_fanqie(
-            book_id="fanqie_book_123",
-            volume_id="fanqie_vol_456",
-            author_name="番茄作者",
-            upload_delay=15,
-        )
-
-        assert manager.fanqie.book_id == "fanqie_book_123"
-        assert manager.fanqie.volume_id == "fanqie_vol_456"
-        assert manager.fanqie.author_name == "番茄作者"
-        assert manager.fanqie.upload_delay_seconds == 15
-        assert manager.fanqie.enabled is True
-
-    def test_save_fanqie_config(self, temp_config_dir, mock_env_vars):
-        """Test saving Fanqie config to disk."""
-        manager = ConfigManager(config_dir=str(temp_config_dir))
-
-        manager.configure_fanqie(book_id="save_test_book")
-        manager.save_fanqie_config()
-
-        fanqie_file = temp_config_dir / "fanqie.json"
-        assert fanqie_file.exists()
-
-        data = json.loads(fanqie_file.read_text(encoding="utf-8"))
-        assert data["book_id"] == "save_test_book"
-
-
 class TestGetProjectSummary:
     """Test project summary functionality."""
 
@@ -404,8 +602,42 @@ class TestGetProjectSummary:
         assert summary["status"] == "ok"
         assert summary["title"] == "摘要测试"
         assert summary["current_chapter"] == 25
+        assert summary["high_watermark_chapter"] == 25
+        assert summary["successful_chapter_count"] == 0
+        assert summary["contiguous_completed_chapter"] == 0
         assert summary["total_chapters"] == 100
-        assert summary["progress_percent"] == 25.0
+        assert summary["progress_percent"] == 0.0
+
+    def test_get_summary_reads_failed_chapters_from_generation_results(
+        self, temp_config_dir, mock_env_vars
+    ):
+        manager = ConfigManager(config_dir=str(temp_config_dir))
+        project = manager.create_project(
+            title="失败摘要测试",
+            author="作者",
+            genre="类型",
+            outline="大纲",
+            total_chapters=10,
+        )
+
+        project_dir = Path(manager.generation.output_dir)
+        (project_dir / "generation_results.json").write_text(
+            json.dumps(
+                {
+                    "failed_chapters": [
+                        {"chapter_number": 2, "error": "invalid"},
+                        {"chapter_number": 5, "error": "invalid"},
+                    ]
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+
+        summary = manager.get_project_summary()
+
+        assert summary["title"] == project.title
+        assert summary["failed_chapters"] == [2, 5]
 
 
 class TestSetCurrentProject:
@@ -444,8 +676,9 @@ class TestGenerationConfig:
         assert config.chapter_word_count == 3000
         assert config.volume_enabled is False
         assert len(config.volumes) == 0
-        assert set(config.providers) == {"kimi", "doubao", "minimax"}
+        assert set(config.providers) == {"kimi", "doubao", "minimax", "deepseek"}
         assert isinstance(config.providers["kimi"], LLMProviderConfig)
+        assert config.providers["deepseek"].model_name == "deepseek-v4-flash"
 
     def test_volume_templates_exist(self):
         """Test that volume templates are defined."""
@@ -495,3 +728,83 @@ class TestProviderConfig:
 
         assert client.provider_name == "doubao"
         assert client.model_name == "doubao-text-pro"
+
+
+class TestConfigDiagnostics:
+    """Test non-secret integration diagnostics."""
+
+    def test_diagnostics_reports_missing_optional_integrations_without_secrets(
+        self, temp_config_dir, mock_env_vars, monkeypatch
+    ):
+        for key in [
+            "KIMI_API_KEY",
+            "DEEPSEEK_API_KEY",
+            "FIRECRAWL_API_KEY",
+            "DATABASE_URL",
+            "REDIS_URL",
+            "REDIS_HOST",
+        ]:
+            monkeypatch.delenv(key, raising=False)
+
+        manager = ConfigManager(config_dir=str(temp_config_dir))
+        manager.generation.providers["kimi"].use_cli = False
+        manager.generation.providers["kimi"].api_key = ""
+        diagnostics = manager.diagnose_integrations()
+        serialized = json.dumps(diagnostics, ensure_ascii=False)
+
+        assert diagnostics["kimi"] == {"configured": False, "source": "missing"}
+        assert diagnostics["deepseek"] == {"configured": False, "source": "missing"}
+        assert diagnostics["firecrawl"] == {"configured": False, "source": "missing"}
+        assert diagnostics["postgres"] == {
+            "configured": False,
+            "source": "missing",
+            "reachable": None,
+        }
+        assert diagnostics["redis"] == {
+            "configured": False,
+            "source": "missing",
+            "reachable": None,
+        }
+        assert "fake-secret-value-123" not in serialized
+
+    def test_diagnostics_reports_env_sources_without_secret_values(
+        self, temp_config_dir, mock_env_vars, monkeypatch
+    ):
+        monkeypatch.setenv("KIMI_API_KEY", "kimi-secret-token")
+        monkeypatch.setenv("DEEPSEEK_API_KEY", "deepseek-secret-token")
+        monkeypatch.setenv("FIRECRAWL_API_KEY", "firecrawl-secret-token")
+        monkeypatch.setenv("DATABASE_URL", "postgresql://user:secret@127.0.0.1:1/db")
+        monkeypatch.setenv("REDIS_HOST", "127.0.0.1")
+        monkeypatch.setenv("REDIS_PORT", "1")
+
+        manager = ConfigManager(config_dir=str(temp_config_dir))
+        diagnostics = manager.diagnose_integrations()
+        serialized = json.dumps(diagnostics, ensure_ascii=False)
+
+        assert diagnostics["kimi"] == {"configured": True, "source": "env"}
+        assert diagnostics["deepseek"] == {"configured": True, "source": "env"}
+        assert diagnostics["firecrawl"] == {"configured": True, "source": "env"}
+        assert diagnostics["postgres"]["configured"] is True
+        assert diagnostics["postgres"]["source"] == "env"
+        assert diagnostics["postgres"]["reachable"] in {True, False}
+        assert diagnostics["redis"]["configured"] is True
+        assert diagnostics["redis"]["reachable"] in {True, False}
+        assert "kimi-secret-token" not in serialized
+        assert "deepseek-secret-token" not in serialized
+        assert "firecrawl-secret-token" not in serialized
+        assert "secret@127.0.0.1" not in serialized
+
+    def test_diagnostics_handles_malformed_redis_port(
+        self, temp_config_dir, mock_env_vars, monkeypatch
+    ):
+        monkeypatch.setenv("REDIS_HOST", "127.0.0.1")
+        monkeypatch.setenv("REDIS_PORT", "not-a-port")
+
+        manager = ConfigManager(config_dir=str(temp_config_dir))
+        diagnostics = manager.diagnose_integrations()
+
+        assert diagnostics["redis"] == {
+            "configured": True,
+            "source": "env",
+            "reachable": False,
+        }

@@ -6,13 +6,13 @@ This script bypasses the Qidian API and directly uses Firecrawl to crawl novels.
 
 import json
 import os
+from pathlib import Path
+import re
 import sys
 import time
-import re
-from pathlib import Path
-from typing import Optional
 
 import requests
+
 
 # Load .env
 try:
@@ -22,13 +22,17 @@ except ImportError:
     pass
 
 
-FIRECRAWL_API_KEY = os.getenv("FIRECRAWL_API_KEY", "fc-2ecc789c4a13436aadbd7f8f2a1b4cba")
+FIRECRAWL_API_KEY = os.getenv("FIRECRAWL_API_KEY", "")
 FIRECRAWL_SCRAPE_URL = "https://api.firecrawl.dev/v0/scrape"
 OUTPUT_DIR = Path("./novels_output")
 
 
-def scrape_url(url: str, wait_for: int = 0) -> Optional[dict]:
+def scrape_url(url: str, wait_for: int = 0) -> dict | None:
     """Scrape a URL using Firecrawl API."""
+    if not FIRECRAWL_API_KEY:
+        print("  Firecrawl error: FIRECRAWL_API_KEY is not configured")
+        return None
+
     headers = {
         "Authorization": f"Bearer {FIRECRAWL_API_KEY}",
         "Content-Type": "application/json",
@@ -54,9 +58,8 @@ def scrape_url(url: str, wait_for: int = 0) -> Optional[dict]:
         result = response.json()
         if result.get("success"):
             return result.get("data")
-        else:
-            print(f"  Firecrawl error: {result.get('error')}")
-            return None
+        print(f"  Firecrawl error: {result.get('error')}")
+        return None
     except Exception as e:
         print(f"  Request error: {e}")
         return None

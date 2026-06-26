@@ -19,7 +19,6 @@ repos:
         language: system
         pass_filenames: true
         types: [python]
-        exclude: ^(lib/crewai/src/crewai/cli/templates/|lib/crewai/tests/|lib/crewai-tools/tests/|lib/crewai-files/tests/)
   - repo: https://github.com/astral-sh/uv-pre-commit
     rev: 0.9.3
     hooks:
@@ -30,4 +29,3 @@ repos:
       - id: commitizen
       - id: commitizen-branch
         stages: [ pre-push ]
-

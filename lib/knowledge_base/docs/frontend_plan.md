@@ -2,7 +2,7 @@
 
 ## 目标
 
-把当前以 `run_novel_generation.py` 为中心的命令行流程，扩展为一个本地可视化工作台，让用户能直接创建项目、调整写作参数、发起生成、查看章节和衍生内容，而不是记忆命令参数。
+把当前以 `run_novel_generation.py` 为中心的命令行流程，扩展为一个本地可视化工作台，让用户能直接创建项目、调整写作参数、发起生成、查看章节与导出结果，而不是记忆命令参数。
 
 ## 设计原则
 
@@ -25,7 +25,6 @@
 - `写作参数页`：风格预设、视角、节奏、对白密度、战斗写法等
 - `生成页`：起始章节、数量、dry-run、自动反馈开关、实时日志
 - `内容页`：章节列表、章节正文、plot summary、一致性报告
-- `衍生页`：播客、视频提示词、角色描述
 
 ### 第二阶段：FastAPI + React/Vite
 
@@ -82,34 +81,12 @@
   - 角色状态
   - 一致性报告
 
-### 5. 衍生内容面板
-- 视频 Prompt
-- 播客脚本
-- 角色描述
-- 场景描述
+### 5. 导出内容面板
 
-## 后端接口草案
+- Markdown 导出
+- JSON 状态与质量报告
 
-即便第一阶段先做 Streamlit，也建议把数据访问收敛成函数级接口，后续方便升到 API：
-
-- `list_projects()`
-- `create_project(payload)`
-- `load_project(project_id)`
-- `get_project_status(project_id)`
-- `get_writing_options(project_id)`
-- `update_writing_options(project_id, payload)`
-- `generate_chapters(project_id, payload)`
-- `list_chapters(project_id)`
-- `get_chapter(project_id, chapter_number)`
-- `list_derivatives(project_id)`
-
-## 实施顺序
-
-1. 已完成：统一写作参数定义，抽到 `writing_options.py`
-2. 已完成：CLI 和主生成链路支持写作参数
-3. 下一步：补一个 `streamlit_app.py`
-4. 然后：把生成日志和章节列表接到 UI
-5. 最后：增加章节阅读和衍生内容面板
+5. 最后：增加章节阅读和导出内容面板
 
 ## 最小可交付版本
 

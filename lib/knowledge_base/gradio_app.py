@@ -21,8 +21,8 @@ except ModuleNotFoundError as exc:  # pragma: no cover - local setup guard
         "Gradio 未安装。请先执行 `python3 -m pip install gradio pillow`，然后再运行 gradio_app.py。"
     ) from exc
 
-from agents.config_manager import get_config_manager
-from writing_options import (
+from young_writer.agents.config_manager import get_config_manager
+from young_writer.writing_options import (
     DEFAULT_WRITING_OPTIONS,
     STYLE_PRESET_CHOICES,
     BASE_STYLE_CHOICES,
@@ -256,30 +256,19 @@ def _read_chapter_detail(number: int) -> Tuple[str, str, str, str]:
     return "\n".join(detail_lines), plot_text, report_text, content
 
 
-def _derivative_summary() -> Tuple[str, List[List[str]]]:
+def _export_summary() -> Tuple[str, List[List[str]]]:
     root = _project_root()
     if not root:
         return "当前没有已加载项目。", []
 
-    scripts_dir = Path(get_config_manager().generation.scripts_dir)
-    film_drama_dir = Path(get_config_manager().generation.film_drama_dir)
-    rows: List[List[str]] = []
-    if scripts_dir.exists():
-        for file in sorted(scripts_dir.rglob("*")):
-            if file.is_file():
-                rows.append([file.parent.name, file.name, file.stat().st_size, str(file)])
-    if film_drama_dir.exists():
-        for file in sorted(film_drama_dir.glob("*.json")):
-            if file.is_file():
-                rows.append(["film_drama", file.name, file.stat().st_size, str(file)])
+    files: List[Path] = []
+    export_dir = root / "exports"
+    if export_dir.exists():
+        files.extend(file for file in sorted(export_dir.rglob("*")) if file.is_file())
+    files.extend(file for pattern in ("*.txt", "*.md") for file in sorted(root.glob(pattern)))
 
-    text = [
-        "### 衍生内容",
-        f"- 脚本目录: `{scripts_dir}`",
-        f"- 剧情目录: `{film_drama_dir}`",
-        f"- 文件数: `{len(rows)}`",
-    ]
-    return "\n".join(text), rows
+    rows = [["导出文件", file.name, str(file.stat().st_size), str(file)] for file in files]
+    return f"### 导出\n共 {len(rows)} 个导出文件。", rows
 
 
 def _writing_values_from_project() -> Tuple[str, ...]:
@@ -320,16 +309,16 @@ def create_project(
     )
     status = _active_project_info()["status"]
     chapter_update = gr.update(choices=_chapter_choices(), value=None)
-    derivative_text, derivative_rows = _derivative_summary()
-    return status, _project_dropdown_update(), chapter_update, _chapter_rows(), "", "", "", "", derivative_text
+    export_text, export_rows = _export_summary()
+    return status, _project_dropdown_update(), chapter_update, _chapter_rows(), "", "", "", "", export_text
 
 
 def load_project(project_id: str) -> Tuple[str, gr.Update, gr.Update, List[List[str]], str, str, str, str, str]:
     config_mgr = get_config_manager()
     if not project_id:
         status = _active_project_info()["status"]
-        derivative_text, _ = _derivative_summary()
-        return status, _project_dropdown_update(), gr.update(choices=_chapter_choices(), value=None), _chapter_rows(), "", "", "", "", derivative_text
+        export_text, _ = _export_summary()
+        return status, _project_dropdown_update(), gr.update(choices=_chapter_choices(), value=None), _chapter_rows(), "", "", "", "", export_text
 
     project = config_mgr.load_project(project_id)
     if not project:
@@ -348,12 +337,12 @@ def load_project(project_id: str) -> Tuple[str, gr.Update, gr.Update, List[List[
     status = _active_project_info()["status"]
     choices = _chapter_choices()
     chapter_update = gr.update(choices=choices, value=choices[0][1] if choices else None)
-    derivative_text, _ = _derivative_summary()
+    export_text, _ = _export_summary()
     if choices:
         detail, plot_text, report_text, body_text = _read_chapter_detail(int(choices[0][1]))
     else:
         detail, plot_text, report_text, body_text = "", "", "", ""
-    return status, _project_dropdown_update(), chapter_update, _chapter_rows(), detail, plot_text, report_text, body_text, derivative_text
+    return status, _project_dropdown_update(), chapter_update, _chapter_rows(), detail, plot_text, report_text, body_text, export_text
 
 
 def save_writing_options(*values: str) -> str:
@@ -382,7 +371,7 @@ def run_generation(
 ) -> Tuple[str, List[List[str]], str]:
     config_mgr = get_config_manager()
     if not config_mgr.current_project:
-        return "请先创建或加载项目。", [], _derivative_summary()[0]
+        return "请先创建或加载项目。", [], _export_summary()[0]
 
     options = normalize_writing_options(dict(zip(DEFAULT_WRITING_OPTIONS.keys(), writing_values)))
     config_mgr.current_project.metadata["writing_options"] = options
@@ -418,7 +407,7 @@ def run_generation(
     if result.returncode != 0:
         output = f"[exit={result.returncode}]\n{output}"
 
-    _, derivative_rows = _derivative_summary()
+    _, export_rows = _export_summary()
     return output, _chapter_rows(), _active_project_info()["status"]
 
 
@@ -431,8 +420,8 @@ def refresh_all_state() -> Tuple[str, gr.Update, gr.Update, List[List[str]], str
         detail = _read_chapter_detail(int(first))
     else:
         detail = ("", "", "", "")
-    derivative_text, _ = _derivative_summary()
-    return status, _project_dropdown_update(), chapter_update, _chapter_rows(), *detail, derivative_text
+    export_text, _ = _export_summary()
+    return status, _project_dropdown_update(), chapter_update, _chapter_rows(), *detail, export_text
 
 
 def _build_banner() -> object:
@@ -445,7 +434,7 @@ def _build_banner() -> object:
         draw.rectangle((40, 40, width - 40, height - 40), outline=(214, 179, 95), width=3)
         draw.rectangle((60, 60, width - 60, height - 60), outline=(79, 191, 159), width=1)
         draw.text((92, 92), "小说生成工作台", fill=(242, 242, 242))
-        draw.text((92, 150), "项目管理 · 写作参数 · 章节生成 · 衍生内容", fill=(176, 176, 176))
+        draw.text((92, 150), "项目管理 · 写作参数 · 章节生成 · 导出", fill=(176, 176, 176))
         draw.text((92, 214), "直接从项目状态进入生成和阅读，不需要记命令。", fill=(176, 176, 176))
         return image
     except Exception:
@@ -459,13 +448,13 @@ def build_app() -> gr.Blocks:
     chapter_choices = _chapter_choices()
     first_chapter = chapter_choices[0][1] if chapter_choices else None
     first_detail = _read_chapter_detail(int(first_chapter)) if first_chapter else ("", "", "", "")
-    derivative_text, derivative_rows = _derivative_summary()
+    export_text, export_rows = _export_summary()
 
     with gr.Blocks(title="小说生成工作台", css=CSS, elem_id="studio-shell") as demo:
         gr.Markdown("# 小说生成工作台")
         if banner is not None:
             gr.Image(value=banner, label="", interactive=False, show_label=False)
-        gr.Markdown("项目、参数、生成、章节和衍生内容放在同一处，按项目状态直接操作。")
+        gr.Markdown("项目、参数、生成、章节和导出放在同一处，按项目状态直接操作。")
 
         with gr.Tab("项目"):
             with gr.Row():
@@ -540,11 +529,11 @@ def build_app() -> gr.Blocks:
                 wrap=True,
             )
 
-        with gr.Tab("衍生内容"):
-            derivative_status = gr.Markdown(value=derivative_text)
-            derivative_table = gr.Dataframe(
+        with gr.Tab("导出"):
+            export_status = gr.Markdown(value=export_text)
+            gr.Dataframe(
                 headers=["分类", "文件名", "大小", "路径"],
-                value=derivative_rows,
+                value=export_rows,
                 interactive=False,
                 wrap=True,
             )
@@ -552,17 +541,17 @@ def build_app() -> gr.Blocks:
         create_btn.click(
             create_project,
             inputs=[project_title, genre, outline, world, characters, author, chapters],
-            outputs=[project_status, project_selector, chapter_selector, chapter_table, chapter_detail, chapter_plot, chapter_report, chapter_body, derivative_status],
+            outputs=[project_status, project_selector, chapter_selector, chapter_table, chapter_detail, chapter_plot, chapter_report, chapter_body, export_status],
         )
         load_btn.click(
             load_project,
             inputs=project_selector,
-            outputs=[project_status, project_selector, chapter_selector, chapter_table, chapter_detail, chapter_plot, chapter_report, chapter_body, derivative_status],
+            outputs=[project_status, project_selector, chapter_selector, chapter_table, chapter_detail, chapter_plot, chapter_report, chapter_body, export_status],
         )
         refresh_btn.click(
             refresh_all_state,
             inputs=[],
-            outputs=[project_status, project_selector, chapter_selector, chapter_table, chapter_detail, chapter_plot, chapter_report, chapter_body, derivative_status],
+            outputs=[project_status, project_selector, chapter_selector, chapter_table, chapter_detail, chapter_plot, chapter_report, chapter_body, export_status],
         )
         save_writing_btn.click(
             save_writing_options,
@@ -582,7 +571,7 @@ def build_app() -> gr.Blocks:
         chapter_refresh.click(
             refresh_all_state,
             inputs=[],
-            outputs=[project_status, project_selector, chapter_selector, chapter_table, chapter_detail, chapter_plot, chapter_report, chapter_body, derivative_status],
+            outputs=[project_status, project_selector, chapter_selector, chapter_table, chapter_detail, chapter_plot, chapter_report, chapter_body, export_status],
         )
 
     return demo

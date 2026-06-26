@@ -1,6 +1,6 @@
 """Tests for file-backed run telemetry storage."""
 
-from services.run_storage import (
+from young_writer.services.run_storage import (
     create_run,
     ensure_run_initialized,
     format_eta,

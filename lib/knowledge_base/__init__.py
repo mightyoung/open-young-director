@@ -1,4 +1,5 @@
-"""Knowledge Base - A content generation knowledge management system."""
+"""Package metadata for the young_writer distribution root."""
 
-# Namespace package marker
-__version__ = "0.1.0"
+from __future__ import annotations
+
+from young_writer import __version__

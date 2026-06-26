@@ -1,0 +1,51 @@
+{
+  "schema_version": "writer_rules.v1",
+  "source": "WRITER.md",
+  "rules": [
+    {
+      "id": "style.banned_fillers",
+      "category": "banned_wording",
+      "anchor": "禁词表",
+      "severity": "warning",
+      "blocking": false,
+      "terms": ["突然", "居然", "竟然", "恐怖如斯", "倒吸一口冷气", "极其", "非常", "仿佛", "似乎", "某种", "令人惊讶的是"],
+      "guidance": "避免 AI 腔垫话和套路化惊叹，改用具体动作、场景压力或因果推进。"
+    },
+    {
+      "id": "style.physicalized_emotion",
+      "category": "physicalized_emotion",
+      "anchor": "物理化",
+      "severity": "warning",
+      "blocking": false,
+      "terms": ["愤怒", "恐惧", "悲伤", "开心", "绝望"],
+      "guidance": "情绪不要只写抽象名词，应落实到心跳、冷汗、手指颤抖、呼吸变化等物理反馈。"
+    },
+    {
+      "id": "world.geography_logic",
+      "category": "world_geography_combat",
+      "anchor": "地理逻辑",
+      "severity": "warning",
+      "blocking": false,
+      "terms": ["瞬间移动", "眨眼间便到了", "凭空出现在"],
+      "guidance": "角色移动必须符合 character_gps 和前文位置，需要路程、代价或桥接。"
+    },
+    {
+      "id": "world.combat_cost",
+      "category": "world_geography_combat",
+      "anchor": "战力天平",
+      "severity": "warning",
+      "blocking": false,
+      "terms": ["轻松越阶", "随手击败高境界", "毫无代价"],
+      "guidance": "低境界胜高境界必须描写惨烈代价或规则漏洞。"
+    },
+    {
+      "id": "character.behavior_logic",
+      "category": "character_behavior",
+      "anchor": "拒绝降智",
+      "severity": "warning",
+      "blocking": false,
+      "terms": ["反派突然犯蠢", "毫无理由地放过", "无脑"],
+      "guidance": "角色决定必须符合 hidden_agenda，反派应有对等智商和生存逻辑。"
+    }
+  ]
+}

@@ -55,12 +55,10 @@ logs/
 chroma.sqlite3
 chromadb-*.lock
 
-# CrewAI specific dev artifacts
+# Local young-writer dev artifacts
 memory.db
 schema.sql
-crew_tasks_output.json
 test_flow.html
-crewairules.mdc
 plan.md
 conceptual_plan.md
 build_image
@@ -73,41 +71,47 @@ old_en.json
 # Dev state directories (regenerateable)
 .swarm/
 .young/
+lib/knowledge_base/young_writer/config/
+lib/knowledge_base/young_writer/runtime/
 .pytest_cache
 
-# Knowledge base workspace (separate project)
-knowledge_base/.env
-knowledge_base/__pycache__
-knowledge_base/.pytest_cache
-knowledge_base/.ruff_cache
-knowledge_base/logs/*
-knowledge_base/chapter_cache/*
-knowledge_base/novels/*
-knowledge_base/novels_output/*
-knowledge_base/rl_experiences.db
-knowledge_base/agents/__pycache__
-knowledge_base/consumers/__pycache__
-knowledge_base/crawlers/__pycache__
-knowledge_base/docs/__pycache__
-knowledge_base/llm/__pycache__
-knowledge_base/scene_db/*
-knowledge_base/skills/__pycache__
-knowledge_base/tests/__pycache__
-knowledge_base/triggers/__pycache__
-knowledge_base/media/*
-knowledge_base/cookies/*
-knowledge_base/evaluation/*
-knowledge_base/config/*
-knowledge_base/lib/*
-knowledge_base/film_drama_scripts/*
-knowledge_base/generated_scripts/*
-knowledge_base/resources/*
-knowledge_base/examples/*
-knowledge_base/*.pkl
-knowledge_base/*.json
-!knowledge_base/.env.example
-!knowledge_base/pyproject.toml
-!knowledge_base/pytest.ini
+# Knowledge base runtime workspace
+lib/knowledge_base/.env
+lib/knowledge_base/runtime/
+lib/knowledge_base/.young/
+lib/knowledge_base/logs/
+lib/knowledge_base/chapter_cache/
+lib/knowledge_base/novels/
+lib/knowledge_base/novels_output/
+lib/knowledge_base/generated_scripts/*
+!lib/knowledge_base/generated_scripts/fixtures/
+!lib/knowledge_base/generated_scripts/fixtures/**
+!lib/knowledge_base/generated_scripts/samples/
+!lib/knowledge_base/generated_scripts/samples/**
+lib/knowledge_base/film_drama_scripts/*
+!lib/knowledge_base/film_drama_scripts/fixtures/
+!lib/knowledge_base/film_drama_scripts/fixtures/**
+!lib/knowledge_base/film_drama_scripts/samples/
+!lib/knowledge_base/film_drama_scripts/samples/**
+lib/knowledge_base/cookies/
+lib/knowledge_base/resources/web_novels/*
+!lib/knowledge_base/resources/web_novels/fixtures/
+!lib/knowledge_base/resources/web_novels/fixtures/**
+!lib/knowledge_base/resources/web_novels/samples/
+!lib/knowledge_base/resources/web_novels/samples/**
+lib/knowledge_base/rl_experiences.db
+lib/knowledge_base/scene_db/*.db
+lib/knowledge_base/*.pkl
+lib/knowledge_base/config/current_project.txt
+lib/knowledge_base/config/generation.json
+lib/knowledge_base/config/project_*.json
+!lib/knowledge_base/config/project_fixture*.json
+!lib/knowledge_base/config/project_sample*.json
+lib/knowledge_base/config/*.local.json
+/data/
+!lib/knowledge_base/.env.example
+!lib/knowledge_base/pyproject.toml
+!lib/knowledge_base/pytest.ini
 
 # Trained agents (regenerateable)
 trained_agents_data.pkl
