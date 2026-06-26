@@ -91,10 +91,11 @@ uv run pytest \
 
 ### Runtime Notes
 
-- `lib/knowledge_base/.env` is local-only and should not be committed.
-- Generated project data under `lib/knowledge_base/config/`, `novels/`,
-  `generated_scripts/`, and run directories can contain local working state and
-  should be reviewed before committing.
+- Do not commit `lib/knowledge_base/.env`.
+- Do not commit local working state from `lib/knowledge_base/runtime/`,
+  legacy `novels/`, `generated_scripts/`, `film_drama_scripts/`,
+  `chapter_cache/`, `novels_output/`, `resources/web_novels/`, or local
+  project config files.
 - `status.json` is telemetry, not the authoritative resume source.
 - Longform resume state lives in `longform_state.v1.json`.
 

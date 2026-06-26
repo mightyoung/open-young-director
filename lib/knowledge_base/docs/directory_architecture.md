@@ -58,13 +58,21 @@ Generated project data is ignored for future writes:
 - local config state such as `config/current_project.txt` and
   `config/project_*.json`
 - local caches, cookies, logs, and crawled web novel resources
+- generated derivative assets under `generated_scripts/` and
+  `film_drama_scripts/`
+- historical nested runtime artifacts under `lib/knowledge_base/lib/`
 
 `fixtures/` and `samples/` subdirectories under legacy generated-output roots
 are explicitly left visible so reviewed examples can still be versioned.
 
-Tracked historical data is not automatically removed by `.gitignore`. Future
-cleanup should be a separate reviewed migration that distinguishes fixtures
-from local project state.
+Tracked historical runtime data should be removed from version control after
+reviewing that no tests or docs depend on it. Compatibility shim packages stay
+tracked until their import contracts are intentionally retired.
+
+If browser cookies or session storage were ever tracked, removing the files from
+HEAD is only the repository cleanup step. Revoke or expire the affected sessions,
+and use a separate history-cleanup/security process when history exposure must
+be remediated.
 
 ## Entrypoint Boundary
 
